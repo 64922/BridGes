@@ -110,13 +110,17 @@ class _ServiceStreamMixin:
                     # Issue 03：作答证据、提示记录与待答绑定先提交，再更新
                     # 局部进展；两者与消息 streaming→done 同事务，原子可见。
                     # 停止/失败路径不进入本回调，未展示的问题绝不激活。
-                    verification_repository.commit_turn_in_transaction(
+                    # Issue 05：真正写入作答证据时，在同一事务登记诊断任务
+                    # （回复终态、证据与任务入队原子一致，不丢任务）。
+                    candidate = verification_repository.commit_turn_in_transaction(
                         self._repo,
                         run,
                         user_message,
                         assistant_message_id,
                         content,
                     )
+                    if candidate is not None and self._study_diagnosis is not None:
+                        self._study_diagnosis.schedule_in_transaction(candidate)
                     progress_repository.save_completed_turn_in_transaction(
                         self._repo, run, user_message, content
                     )

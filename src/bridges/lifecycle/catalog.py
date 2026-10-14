@@ -69,6 +69,11 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "study_goal_routes",
     "study_goals",
     "study_local_progress",
+    # Issue 05：诊断结果外键指向诊断任务，先于任务删除；任务与档案先于
+    # accounts/conversations（外键 CASCADE，仍显式删除不依赖级联）。
+    "study_diagnosis_results",
+    "study_diagnosis_tasks",
+    "study_learning_records",
     # Issue 03：待答问题与学习证据。证据先于待答问题删除，二者都先于
     # conversations（外键 CASCADE，仍显式删除不依赖级联）。
     "study_evidence",
@@ -214,6 +219,18 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
             "study_session_controls",
             "study_session_pauses",
             "study_session_summaries",
+        ),
+        1024,
+    ),
+    # Issue 05：诊断任务（含私有评价依据）、结果版本与账户级学习档案；
+    # 整行导出即可读，保留结果版本与证据顺序。
+    ExportCategory(
+        "study_diagnosis",
+        "学习诊断与档案",
+        (
+            "study_diagnosis_results",
+            "study_diagnosis_tasks",
+            "study_learning_records",
         ),
         1024,
     ),
@@ -444,6 +461,9 @@ def logical_summary(
         "study_session_controls",
         "study_session_pauses",
         "study_session_summaries",
+        "study_diagnosis_tasks",
+        "study_diagnosis_results",
+        "study_learning_records",
         "image_tasks",
         "image_versions",
         "image_assets",

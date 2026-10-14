@@ -38,6 +38,10 @@ from bridges.contracts.study_controls import (
     StudySessionPauseProjection,
     StudySessionSummaryProjection,
 )
+from bridges.contracts.study_diagnosis import (
+    StudyDiagnosisTaskProjection,
+    StudyLearningRecordProjection,
+)
 from bridges.contracts.study_goals import StudyGoalProjection
 from bridges.contracts.study_history import (
     StudyHistoryProjection,
@@ -584,6 +588,15 @@ class ChatConversationProjection(BaseModel):
         default=None,
         description="最近一次阶段小结的规范原文与真实交付状态；"
         "未核验项保持待确认，不输出掌握百分比。",
+    )
+    study_diagnosis_tasks: list[StudyDiagnosisTaskProjection] = Field(
+        default_factory=list,
+        description="本对话的诊断任务真实业务状态；队列领取状态不是正式学情。",
+    )
+    study_learning_record: list[StudyLearningRecordProjection] = Field(
+        default_factory=list,
+        description="与本对话核验证据相关的账户级学习档案；"
+        "单次完成不是长期掌握，同名不同上下文的知识点不合并。",
     )
     study_history_status: StudyHistoryStatusProjection | None = Field(
         default=None,

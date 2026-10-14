@@ -452,3 +452,136 @@ describe("Issue 04 学习控制、暂停与阶段小结", () => {
     expect(screen.queryByText(/阶段小结/)).toBeNull();
   });
 });
+
+describe("后台核验与学习档案", () => {
+  const pendingTask = {
+    task_id: "dx-1",
+    status: "pending" as const,
+    question: "A、B 互斥时 P(A∩B) 是多少？",
+    knowledge_context: "互斥与独立",
+    evidence_message_id: "assistant-2",
+    failure_reason: "",
+    attempts: 0,
+    retryable: false,
+    created_at: "2026-10-14T00:00:00Z",
+    updated_at: "2026-10-14T00:00:00Z",
+  };
+  const record = {
+    record_id: "lr-1",
+    subject: "概率论",
+    title: "互斥与独立",
+    usage_context: "理解事件关系",
+    verdict: "independent_completion" as const,
+    performance: "能说明互斥不等于独立。",
+    supporting: ["给出了正确的反例"],
+    refuting: [],
+    uncertainty: "只在单题上验证过。",
+    next_validation: "换一个条件概率题再验证。",
+    pending_confirmation: false,
+    evidence_count: 1,
+    evidences: [{
+      evidence_id: "ev-1",
+      question: "A、B 互斥时 P(A∩B) 是多少？",
+      knowledge_context: "互斥与独立",
+      assistance: "independent" as const,
+      verdict: "independent_completion" as const,
+      answer_message_id: "user-9",
+      feedback_message_id: "assistant-9",
+      occurred_at: "2026-10-14T00:00:00Z",
+    }],
+    created_at: "2026-10-14T00:00:00Z",
+    updated_at: "2026-10-14T00:00:00Z",
+  };
+
+  it("展示待核验真实状态与档案判断，不渲染百分比或能力标签", () => {
+    render(<StudyProgress
+      studyLocalProgress={{
+        topic: "互斥与独立",
+        knowledge_context: "两个事件不能同时发生。",
+        current_focus: "互斥是不是独立？",
+        source_message_ids: ["user-1", "assistant-1"],
+        version: 1,
+        runtime_run_id: "run-1",
+        updated_at: "2026-10-14T00:00:00Z",
+      }}
+      studyDiagnosisTasks={[pendingTask]}
+      studyLearningRecord={[record]}
+    />);
+
+    expect(screen.getByLabelText("学习档案")).toBeTruthy();
+    expect(screen.getByText("核验状态")).toBeTruthy();
+    expect(screen.getByText(/「A、B 互斥时 P\(A∩B\) 是多少？」：待后台核验/)).toBeTruthy();
+    expect(screen.getByText(/后台独立核验只针对当时的实际作答/)).toBeTruthy();
+    expect(screen.getByText(/（概率论 · 理解事件关系）：独立完成/)).toBeTruthy();
+    expect(screen.getByText(/表现：能说明互斥不等于独立/)).toBeTruthy();
+    expect(screen.getByText(/依据与证据（1 条）/)).toBeTruthy();
+    expect(screen.getByText("支持：给出了正确的反例")).toBeTruthy();
+    expect(screen.getByText("不确定性：只在单题上验证过。")).toBeTruthy();
+    expect(screen.getByText(/提示后作答|作答前无提示|无提示/)).toBeTruthy();
+    expect(screen.queryByText(/掌握度|百分比|能力等级|人格/)).toBeNull();
+  });
+
+  it("失败任务可手动重试，来源失效如实标注", async () => {
+    const onRetry = vi.fn(async () => {});
+    render(<StudyProgress
+      studyLocalProgress={{
+        topic: "互斥与独立",
+        knowledge_context: "两个事件不能同时发生。",
+        current_focus: "互斥是不是独立？",
+        source_message_ids: ["user-1", "assistant-1"],
+        version: 2,
+        runtime_run_id: "run-2",
+        updated_at: "2026-10-14T00:00:00Z",
+      }}
+      studyDiagnosisTasks={[
+        { ...pendingTask, task_id: "dx-failed", status: "failed" as const,
+          failure_reason: "诊断能力未配置或不可用。", attempts: 3, retryable: true },
+        { ...pendingTask, task_id: "dx-invalid", status: "invalidated" as const,
+          failure_reason: "来源证据已失效，未形成诊断。", retryable: false },
+      ]}
+      onRetryDiagnosis={onRetry}
+    />);
+
+    expect(screen.getByText(/核验失败 · 诊断能力未配置或不可用/)).toBeTruthy();
+    expect(screen.getByText(/来源已失效，未形成诊断/)).toBeTruthy();
+    const button = screen.getByRole("button", { name: "重试核验" });
+    fireEvent.click(button);
+    await waitFor(() => expect(onRetry).toHaveBeenCalledWith("dx-failed"));
+  });
+
+  it("冲突证据标注待进一步验证，不伪造成单一结论", () => {
+    render(<StudyProgress
+      studyLocalProgress={{
+        topic: "互斥与独立",
+        knowledge_context: "两个事件不能同时发生。",
+        current_focus: "互斥是不是独立？",
+        source_message_ids: ["user-1", "assistant-1"],
+        version: 3,
+        runtime_run_id: "run-3",
+        updated_at: "2026-10-14T00:00:00Z",
+      }}
+      studyLearningRecord={[{ ...record, verdict: "misconception" as const,
+        pending_confirmation: true }]}
+    />);
+
+    expect(screen.getByText(/存在具体误解，证据方向冲突，待进一步验证/)).toBeTruthy();
+  });
+
+  it("没有任务与档案时不渲染学习档案面板", () => {
+    render(<StudyProgress
+      studyLocalProgress={{
+        topic: "互斥与独立",
+        knowledge_context: "两个事件不能同时发生。",
+        current_focus: "互斥是不是独立？",
+        source_message_ids: ["user-1", "assistant-1"],
+        version: 4,
+        runtime_run_id: "run-4",
+        updated_at: "2026-10-14T00:00:00Z",
+      }}
+      studyDiagnosisTasks={[]}
+      studyLearningRecord={[]}
+    />);
+
+    expect(screen.queryByLabelText("学习档案")).toBeNull();
+  });
+});

@@ -41,6 +41,10 @@ from bridges.contracts.study_verification import (
     StudyUserIntent,
 )
 from bridges.storage.database import BridgesDatabase
+from bridges.study.diagnosis_repository import (
+    StudyDiagnosisCandidate,
+    evidence_input_version,
+)
 from bridges.study.local_progress import StudyLocalProgressRepository
 from bridges.study.session_summary import (
     SummaryEvidenceItem,
@@ -288,6 +292,21 @@ class StudyVerificationRepository:
         ).fetchall()
         return _evidence_records(rows)
 
+    def get_evidence(
+        self, account_id: str, evidence_id: str
+    ) -> StudyEvidenceRecord | None:
+        """按证据身份读取单条证据；供后台诊断独立核验。"""
+
+        row = self._database.scoped(account_id).execute(
+            "SELECT * FROM study_evidence"
+            " WHERE account_id = ? AND evidence_id = ?",
+            (account_id, evidence_id),
+        ).fetchone()
+        if row is None:
+            return None
+        records = _evidence_records([row])
+        return records[0] if records else None
+
     # ------------------------------------------------------------------
     # 终态提交（在消息 streaming→done 的同一事务内调用）
     # ------------------------------------------------------------------
@@ -301,22 +320,26 @@ class StudyVerificationRepository:
         content: str,
         *,
         now: datetime | None = None,
-    ) -> None:
+    ) -> StudyDiagnosisCandidate | None:
         """按规划快照提交本轮：评价证据、提示记录与新待答问题激活。
 
         快照来自运行配置（规划时写入，重试沿用）；缺少或损坏时不做
         任何验证写入，不伪造评价。停止/失败轮次不会进入本方法。
+
+        真正写入一条可诊断证据时返回诊断候选，供调用方在同一事务内
+        登记后台诊断任务；重复作答（防重复记账命中）与非作答返回 None。
         """
 
         latest = repository.get_generation_run(run.account_id, run.run_id)
         config = (latest.config if latest is not None else run.config) or {}
         snapshot = config.get("study_verification")
         if not isinstance(snapshot, dict):
-            return
+            return None
         timestamp = now or datetime.now(UTC)
         action = str(snapshot.get("action") or "")
         intent = str(snapshot.get("intent") or "")
         bound = snapshot.get("bound_check")
+        candidate: StudyDiagnosisCandidate | None = None
         # 明确跳过或要求直接完整讲解：解除绑定问题的等待，如实记录
         # 「未验证」允许继续；旧控制重试只作用于其绑定的问题（Issue 04）。
         if (
@@ -325,7 +348,7 @@ class StudyVerificationRepository:
         ):
             self._release_skipped_check(run, user_message, bound, timestamp)
         if action == "evaluate" and isinstance(bound, dict):
-            self._write_answer_evidence(
+            candidate = self._write_answer_evidence(
                 run, user_message, assistant_message_id, bound, snapshot, timestamp
             )
         elif (
@@ -339,6 +362,7 @@ class StudyVerificationRepository:
             self._activate_posed_check(
                 run, assistant_message_id, posed, content, timestamp
             )
+        return candidate
 
     # ------------------------------------------------------------------
     # 内部写入
@@ -352,17 +376,17 @@ class StudyVerificationRepository:
         bound: dict[str, Any],
         snapshot: dict[str, Any],
         now: datetime,
-    ) -> None:
+    ) -> StudyDiagnosisCandidate | None:
         evaluation = snapshot.get("evaluation")
         if not isinstance(evaluation, dict):
-            return
+            return None
         try:
             kind = StudyCheckKind(str(bound.get("kind") or ""))
             outcome = StudyEvidenceOutcome(str(evaluation.get("outcome") or ""))
         except ValueError:
-            return
+            return None
         if outcome == StudyEvidenceOutcome.NO_ANSWER:
-            return
+            return None
         assistance_value = str(
             snapshot.get("assistance") or StudyEvidenceAssistance.INDEPENDENT.value
         )
@@ -414,9 +438,33 @@ class StudyVerificationRepository:
             feedback_message_id=assistant_message_id,
             created_at=now,
         )
-        self._insert_evidence(evidence)
+        inserted = self._insert_evidence(evidence)
+        # 诊断候选携带展示前冻结的私有评价依据：取自已绑定待答问题的
+        # 冻结行（当前回合快照的 posed_check 属于下一题，不能混用）。
+        pending = self.get_pending(run.account_id, run.conversation_id)
+        frozen_basis = (
+            pending.basis.model_dump(mode="json")
+            if pending is not None and pending.check_id == evidence.check_id
+            else _basis_payload(snapshot)
+        )
         self._close_pending_if_current(
             run.account_id, run.conversation_id, evidence.check_id
+        )
+        if not inserted or evidence.semantics == StudyEvidenceSemantics.UNVERIFIED:
+            # 重复作答（防重复记账命中）或未验证语义：不重复登记诊断。
+            return None
+        return StudyDiagnosisCandidate(
+            account_id=evidence.account_id,
+            conversation_id=evidence.conversation_id,
+            evidence_id=evidence.evidence_id,
+            question=evidence.question,
+            knowledge_context=evidence.knowledge_context,
+            input_version=evidence_input_version(evidence),
+            basis=frozen_basis,
+            assistance=evidence.assistance.value,
+            answer_message_id=user_message.message_id,
+            check_kind=evidence.check_kind.value,
+            source_refs=list(evidence.source_refs),
         )
 
     def _append_hint(
@@ -597,9 +645,11 @@ class StudyVerificationRepository:
         )
         self._insert_evidence(evidence)
 
-    def _insert_evidence(self, evidence: StudyEvidenceRecord) -> None:
+    def _insert_evidence(self, evidence: StudyEvidenceRecord) -> bool:
+        """写入证据；重复作答（同账户同回答消息）命中时不重复记账。"""
+
         payload = evidence.model_dump(mode="json")
-        self._database.scoped(evidence.account_id).execute(
+        cursor = self._database.scoped(evidence.account_id).execute(
             "INSERT INTO study_evidence"
             " (evidence_id, account_id, conversation_id, run_id, check_id,"
             " check_kind, check_version, question, knowledge_context,"
@@ -637,6 +687,7 @@ class StudyVerificationRepository:
                 payload["created_at"],
             ),
         )
+        return cursor.rowcount > 0
 
     def _close_pending_if_current(
         self, account_id: str, conversation_id: str, check_id: str
@@ -1441,6 +1492,22 @@ def _semantics_for(
     if outcome == StudyEvidenceOutcome.MISCONCEPTION:
         return StudyEvidenceSemantics.MISCONCEPTION
     return StudyEvidenceSemantics.UNVERIFIED
+
+
+def _basis_payload(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """从冻结快照提取诊断用私有评价依据（与展示前依据同源）。"""
+
+    posed = snapshot.get("posed_check")
+    if not isinstance(posed, dict):
+        return StudyEvaluationBasis().model_dump(mode="json")
+    basis = StudyEvaluationBasis(
+        evaluation_points=_text_list(posed.get("evaluation_points")),
+        accepted_equivalents=_text_list(posed.get("accepted_equivalents")),
+        key_misconceptions=_text_list(posed.get("key_misconceptions")),
+        assumptions=_text_list(posed.get("assumptions")),
+        expected_answer=_short_text(str(posed.get("expected_answer") or ""), 300),
+    )
+    return basis.model_dump(mode="json")
 
 
 def _stuck_state(
