@@ -746,35 +746,3 @@ def test_understanding_snapshot_export_and_deletion_contract(tmp_path: Path) -> 
             f"SELECT COUNT(*) AS count FROM {table} WHERE account_id = ?", ("alice",)
         ).fetchone()
         assert row["count"] == 0
-
-
-# ---------------------------------------------------------------------------
-# 学习阶段门（L05/L08）：否定/引语/假设/作答不切换阶段
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("content", "expected"),
-    [
-        ("开始复盘", "start"),
-        ("学完本节了，开始复盘吧", "start"),
-        ("暂停复盘", "pause"),
-        ("先暂停一下复盘吧", "pause"),
-        ("回到辅导", "pause"),
-        ("给我讲解一下", "tutor"),
-        ("再讲讲", "tutor"),
-        ("还没学完", None),
-        ("我不想开始复盘", None),
-        ("他说“开始复盘”", None),
-        ("如果开始复盘呢", None),
-        ("不用开始复盘了", None),
-        ("取消整个学习任务", None),
-        ("暂不暂停复盘", None),
-    ],
-)
-def test_review_stage_gate_negation_quote_and_pause(
-    content: str, expected: str | None
-) -> None:
-    from bridges.study.review import review_intent
-
-    assert review_intent(content) == expected

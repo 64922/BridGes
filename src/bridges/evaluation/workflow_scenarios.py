@@ -117,6 +117,10 @@ def validate_workflow_scenarios() -> list[str]:
         problems.append("场景编号存在重复。")
 
     for scenario in WORKFLOW_SCENARIOS:
+        # 工单 12：退役场景保留编号与历史证据锚点，不参与现行校验
+        # （锚点存在性、零容忍守卫映射均按退役时的历史登记保留）。
+        if scenario.retired:
+            continue
         if not scenario.tests:
             problems.append(f"{scenario.scenario_id} 没有任何可执行测试证据。")
         for node in scenario.tests:

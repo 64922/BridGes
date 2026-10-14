@@ -3,15 +3,34 @@
 import json
 
 from bridges.contracts.study import StudyState
-from bridges.study.service import StudyRepository
 from tests.lifecycle.harness import Harness
+
+
+def _seed_study_state(
+    harness: Harness, account_id: str, conversation_id: str, payload: dict
+) -> None:
+    harness.database.scoped(account_id).execute(
+        "INSERT INTO study_states(account_id, conversation_id, state_json, updated_at)"
+        " VALUES (?, ?, ?, ?)",
+        (
+            account_id,
+            conversation_id,
+            json.dumps(payload, ensure_ascii=False),
+            "2026-10-04T00:00:00+00:00",
+        ),
+    )
+
+
+def _read_state(harness: Harness, account_id: str, conversation_id: str):
+    from bridges.study.history import StudyHistoryReader
+
+    return StudyHistoryReader(harness.database).read(account_id, conversation_id)
 
 
 def test_frozen_and_legacy_rubrics_survive_lifecycle_without_cross_account_leak(tmp_path):
     harness = Harness(tmp_path)
     first = harness.create_conversation(harness.acc1, "新评分", 0)
     second = harness.create_conversation(harness.acc2, "旧评分", 0)
-    repository = StudyRepository(harness.database)
     current = StudyState.model_validate({
         "subsection_id": first, "state_version": 3, "stage": "review",
         "review": {"scope_version_id": "frozen-scope", "protocol_version": "study-review-v2",
@@ -35,7 +54,7 @@ def test_frozen_and_legacy_rubrics_survive_lifecycle_without_cross_account_leak(
                        },
                    }]},
     })
-    repository.save(harness.acc1, first, current)
+    _seed_study_state(harness, harness.acc1, first, json.loads(current.model_dump_json()))
     legacy = {
         "subsection_id": second, "state_version": 2, "stage": "summary",
         "review": {"questions": [{"question_id": "old-rq", "question": "旧题",
@@ -44,14 +63,9 @@ def test_frozen_and_legacy_rubrics_survive_lifecycle_without_cross_account_leak(
                                   "asked": True, "judgement": "correct",
                                   "canonical_answer": "历史答案乙", "explanation": "旧判定"}]},
     }
-    harness.database.scoped(harness.acc2).execute(
-        "INSERT INTO study_states(account_id, conversation_id, state_json, updated_at)"
-        " VALUES (?, ?, ?, ?)",
-        (harness.acc2, second, json.dumps(legacy, ensure_ascii=False),
-         "2026-10-04T00:00:00+00:00"),
-    )
-    before_first = repository.get(harness.acc1, first).model_dump()
-    before_second = repository.get(harness.acc2, second).model_dump()
+    _seed_study_state(harness, harness.acc2, second, legacy)
+    before_first = _read_state(harness, harness.acc1, first).study.model_dump(mode="json")
+    before_second = _read_state(harness, harness.acc2, second).study.model_dump(mode="json")
     assert before_second["review"]["questions"][0]["legacy"] is True
     for account, own, foreign in (
         (harness.acc1, "私有答案甲", "历史答案乙"),
@@ -66,11 +80,11 @@ def test_frozen_and_legacy_rubrics_survive_lifecycle_without_cross_account_leak(
     harness.database.connection.execute("DELETE FROM study_states")
     restored = harness.backup.restore_backup("评分依据恢复口令", backup, confirmation="恢复")
     assert restored.ok, restored.reasons
-    assert repository.get(harness.acc1, first).model_dump() == before_first
-    assert repository.get(harness.acc2, second).model_dump() == before_second
-    assert repository.get(harness.acc1, second) is None
-    assert repository.get(harness.acc2, first) is None
+    assert _read_state(harness, harness.acc1, first).study.model_dump(mode="json") == before_first
+    assert _read_state(harness, harness.acc2, second).study.model_dump(mode="json") == before_second
+    assert _read_state(harness, harness.acc1, second).study is None
+    assert _read_state(harness, harness.acc2, first).study is None
     harness.delete_account(harness.acc1)
-    assert repository.get(harness.acc1, first) is None
-    assert repository.get(harness.acc2, second).model_dump() == before_second
+    assert _read_state(harness, harness.acc1, first).study is None
+    assert _read_state(harness, harness.acc2, second).study.model_dump(mode="json") == before_second
     assert "export_create" in harness.audit_actions()

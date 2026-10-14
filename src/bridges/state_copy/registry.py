@@ -121,6 +121,7 @@ def validate_state_copy_registry() -> None:
     seen_paths: set[str] = set()
     category_states: dict[CopyCategory, set[str]] = {}
     module_states: dict[str, set[str]] = {}
+    module_owner_states: dict[str, set[str]] = {}
     failure_classes: set[str] = set()
 
     for entry in STATE_COPY_ENTRIES:
@@ -156,6 +157,12 @@ def validate_state_copy_registry() -> None:
             )
         if entry.category in {CopyCategory.MODULE, CopyCategory.STUDY}:
             module_states.setdefault(entry.owner, set()).update(entry.states)
+        if entry.category is CopyCategory.MODULE:
+            # 工单 12：学习旧五阶段执行已退役，学习不再是有自有成功/停止
+            # 生命周期的模块——其结果由回合结果投影（chat.result.study.*）
+            # 与通用停止文案覆盖，因此每个模块所有者的成功/停止登记要求
+            # 只适用于 MODULE 类别。
+            module_owner_states.setdefault(entry.owner, set()).update(entry.states)
 
     missing_categories = REQUIRED_CATEGORIES - set(category_states)
     if missing_categories:
@@ -165,16 +172,16 @@ def validate_state_copy_registry() -> None:
     missing_classes = REQUIRED_FAILURE_CLASSES - failure_classes
     if missing_classes:
         problems.append(
-            "缺少失败类别：" + "、".join(sorted(c.value for c in missing_classes))
+            "缺少失败类别：" + "、".join(sorted(missing_classes))
         )
     covered_module_states = set().union(*module_states.values()) if module_states else set()
     missing_states = REQUIRED_MODULE_STATES - covered_module_states
     if missing_states:
         problems.append("模块/学习清单缺少结果状态：" + "、".join(sorted(missing_states)))
-    for owner in sorted(module_states):
-        if "success" not in module_states[owner]:
+    for owner in sorted(module_owner_states):
+        if "success" not in module_owner_states[owner]:
             problems.append(f"模块 {owner} 缺少成功状态登记")
-        if "stopped" not in module_states[owner]:
+        if "stopped" not in module_owner_states[owner]:
             problems.append(f"模块 {owner} 缺少停止状态登记")
 
     if problems:

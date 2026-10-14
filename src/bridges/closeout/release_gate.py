@@ -682,8 +682,10 @@ _FALLBACK_SEARCH_ENV_KEYS = (
 RELEASE_GATE_PYTHON_TESTS: tuple[str, ...] = (
     "tests/closeout/test_three_journeys.py",
     "tests/closeout/test_release_gate.py",
-    "tests/chat/test_issue08_conversational_learning.py",
-    "tests/chat/test_issue03_learning_evidence_chat.py",
+    # 工单 12：旧教学门（V2 03/08）测试随旧五阶段学习执行退役，门禁改挂
+    # 现行学习导师的会话续学与按需查证降级语义测试。
+    "tests/chat/test_issue08_resume_and_goal_switch.py",
+    "tests/chat/test_issue11_demand_driven_verification.py",
     "tests/chat/test_arxiv_search_chat.py",
     "tests/chat/test_issue05_deadline_cancellation.py",
     "tests/chat/test_issue06_latency_budget.py",

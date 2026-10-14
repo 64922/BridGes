@@ -158,10 +158,10 @@ def test_verify_path_receipts_requires_model_locks_and_long_runs() -> None:
 
     missing_lock = _complete_paths_payload()
     for entry in missing_lock["paths"]:
-        if entry["path_id"] == "study.tutoring":
+        if entry["path_id"] == "chat.study":
             entry["model_locks"] = []
     problems = verify_path_receipts(missing_lock)
-    assert any("study.tutoring" in problem for problem in problems)
+    assert any("chat.study" in problem for problem in problems)
 
     missing_runs = _complete_paths_payload()
     missing_runs["long_task_runs"] = missing_runs["long_task_runs"][:1]

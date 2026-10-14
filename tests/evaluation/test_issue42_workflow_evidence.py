@@ -90,8 +90,8 @@ def test_zero_tolerance_guard_failure_is_a_blocking_problem() -> None:
 
 def test_parametrized_node_requires_all_expansions_to_pass() -> None:
     node = (
-        "tests/chat/test_improvement12_hybrid_entry.py"
-        "::test_review_stage_gate_negation_quote_and_pause"
+        "tests/chat/test_improvement12_task_relations.py"
+        "::test_profile_or_new_topic_does_not_answer_wait"
     )
     classname, name = expected_junit_key(node)
     cases = []
@@ -104,8 +104,8 @@ def test_parametrized_node_requires_all_expansions_to_pass() -> None:
             cases.append((*key, ""))
     report = build_evidence_report(_xml(cases), pytest_exit_code=1)
     entries = {entry["scenario_id"]: entry for entry in report["scenarios"]}
-    assert entries["L05"]["ok"] is False
-    assert node in entries["L05"]["failed"]
+    assert entries["A07"]["ok"] is False
+    assert node in entries["A07"]["failed"]
 
 
 def test_markdown_lists_every_scenario() -> None:
