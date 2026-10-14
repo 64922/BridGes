@@ -460,8 +460,15 @@ def limit_facts() -> dict[str, Any]:
 
     probes = [0.9999, 0.999999, 1.000001, 1.0001]
     values = [f(x) for x in probes]
+    # 恒等式抽样用精确分数运算，避免浮点相等比较产生假阴性。
     algebraic = all(
-        (x - 1) * (x + 1) == x * x - 1 for x in (0.5, 1.7, -2.3, 10.0)
+        (x - 1) * (x + 1) == x * x - 1
+        for x in (
+            Fraction(1, 2),
+            Fraction(17, 10),
+            Fraction(-23, 10),
+            Fraction(10),
+        )
     )
     undefined_at_one = False
     try:
