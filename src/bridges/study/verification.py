@@ -970,6 +970,7 @@ class StudyVerificationPlanner:
         source_verification: Mapping[str, Any] | None = None,
         material_refs: list[dict[str, Any]] | None = None,
         has_new_material: bool = False,
+        learning_context: dict[str, Any] | None = None,
     ) -> str | None:
         # 重试（或租约恢复重放）沿用本轮冻结的评价快照：旧作答始终绑定
         # 当时的待答问题与版本，不会被判到之后的新问题上，也不重复记账。
@@ -1002,6 +1003,7 @@ class StudyVerificationPlanner:
             refs,
             has_new_material,
             pause,
+            learning_context,
         )
         output = self._invoke(request, run_context, gateway, model_override, model_quota, budget)
         if output is None:
@@ -1175,6 +1177,7 @@ class StudyVerificationPlanner:
         material_refs: list[dict[str, Any]],
         has_new_material: bool,
         pause: StudySessionPauseProjection | None,
+        learning_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         progress = self._local_progress.get(account_id, conversation_id)
         knowledge_context = (
@@ -1229,6 +1232,8 @@ class StudyVerificationPlanner:
             ],
             "knowledge_context": knowledge_context,
             "stuck": stuck,
+            # Issue 09：本轮正式采用的已核验学情与调整方向（无采用时为空对象）。
+            "learning_adaptation": learning_context or {},
             "recent_messages": [
                 {
                     "role": str(message.get("role") or ""),

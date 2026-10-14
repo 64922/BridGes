@@ -188,6 +188,12 @@ from bridges.state_copy import (
     WEB_SEARCH_INTERNAL_TEXT,
     WEB_SEARCH_STAGE_TIMEOUT_TEXT,
 )
+from bridges.study.adaptation import (
+    StudyAdaptationService,
+    StudyAdaptationTurnState,
+    planner_context,
+    revalidate_snapshot,
+)
 from bridges.study.demand_verification import (
     StudyVerificationDemand,
     build_verification_snapshot,
@@ -2748,6 +2754,8 @@ class TurnOrchestrator:
         web_search_allowed: bool = True,
         study_tutor: bool = False,
         study_goal_block: str | None = None,
+        study_adaptation_block: str | None = None,
+        study_adaptation_state: StudyAdaptationTurnState | None = None,
         persist_study_progress: Callable[[str], None] | None = None,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成：调用网关流式接口，边收边落库，结束时收敛状态。
@@ -2842,9 +2850,13 @@ class TurnOrchestrator:
             if study_tutor:
                 # Issue 07：目标/路线区块是规划角色的结构化结果，注入导师
                 # 提示词；无规划时保持 02 的导师提示词不变。
+                # Issue 09：采用学情区块同样进入导师提示词；模型调用前复验
+                # 失效时从历史撤回（见 _revalidate_study_adaptation）。
                 tutor_prompt = STUDY_TUTOR_SYSTEM_PROMPT
                 if study_goal_block:
                     tutor_prompt = f"{tutor_prompt}\n\n{study_goal_block}"
+                if study_adaptation_block:
+                    tutor_prompt = f"{tutor_prompt}\n\n{study_adaptation_block}"
                 history = [dict(message) for message in history]
                 if history and history[0].get("role") == "system":
                     history[0]["content"] = tutor_prompt
@@ -4486,6 +4498,12 @@ class TurnOrchestrator:
             # （成功终态）生效；未展示的问题不激活。指令进入系统规则块，
             # 评价依据只供模型使用，不写入消息、投影或清单正文。
             if study_tutor:
+                # Issue 09：规划角色调用前复验采用快照——编译期间发生的
+                # 纠正/删除/来源失效或目标、路线版本变化使旧学情失效，
+                # 撤回区块与规划上下文后再继续，不向任何模型外发旧判断。
+                self._revalidate_study_adaptation(
+                    account_id, study_adaptation_state, history
+                )
                 verification_directive = self._prepare_study_verification(
                     account_id=account_id,
                     conversation_id=conversation_id,
@@ -4503,6 +4521,18 @@ class TurnOrchestrator:
                     has_new_material=self._has_new_material(
                         account_id, conversation_id, route_owner
                     ),
+                    learning_context=(
+                        planner_context(study_adaptation_state.snapshot)
+                        if study_adaptation_state is not None
+                        and study_adaptation_state.snapshot is not None
+                        and not study_adaptation_state.invalid_reason
+                        else None
+                    ),
+                )
+                # 规划调用期间仍可能发生并发纠正；主生成调用前再复验一次，
+                # 失效则从历史撤回区块，主载荷不会携带旧采用。
+                self._revalidate_study_adaptation(
+                    account_id, study_adaptation_state, history
                 )
                 # Issue 11：查证结果作为生成硬约束——实际来源/读取范围、
                 # 缺口与「搜索成功不等于已核实」的边界都由此注入。
@@ -4744,6 +4774,14 @@ class TurnOrchestrator:
                         account_id, assistant_message_id, content, datetime.now(UTC)
                     )
                     yield StreamEvent(kind="delta", delta=prefix_delta)
+            # Issue 09：主生成确实带着仍有效的采用学情开始，标记本轮采用
+            # 生效；终态事务据此写入采用记录，停止/失败轮不写、不虚报。
+            if (
+                study_adaptation_state is not None
+                and study_adaptation_state.snapshot is not None
+                and not study_adaptation_state.invalid_reason
+            ):
+                study_adaptation_state.applied = True
             for event in gateway.stream(
                 CHAT_CAPABILITY_NAME,
                 CHAT_CAPABILITY_VERSION,
@@ -5548,6 +5586,7 @@ class TurnOrchestrator:
         source_verification: Mapping[str, Any] | None = None,
         material_refs: list[dict[str, Any]] | None = None,
         has_new_material: bool = False,
+        learning_context: dict[str, Any] | None = None,
     ) -> str | None:
         """Issue 03：学习导师轮的验证规划（评价/帮助/出题）。
 
@@ -5560,6 +5599,8 @@ class TurnOrchestrator:
         查证未完成时不再冻结依赖外部证据的正式练习与误解判定。
         Issue 10：本轮实际读取的资料引用与「是否携带新材料」随规划
         冻结进快照，供依据绑定与补拍/失效判定。
+        Issue 09：``learning_context`` 是采用中的学情与调整方向，规划
+        据此调整检查目标、提示粒度与例子；快照失效时为空。
         """
 
         from bridges.study.local_progress import StudyLocalProgressRepository
@@ -5588,7 +5629,42 @@ class TurnOrchestrator:
             source_verification=source_verification,
             material_refs=material_refs,
             has_new_material=has_new_material,
+            learning_context=learning_context,
         )
+
+    def _revalidate_study_adaptation(
+        self,
+        account_id: str,
+        state: StudyAdaptationTurnState | None,
+        history: list[dict[str, Any]],
+    ) -> None:
+        """Issue 09：模型调用前复验采用快照，失效即撤回并审计。
+
+        学情被纠正/删除/来源失效，或目标、路线版本已变化时，快照不再
+        外发：从导师系统提示词中撤回采用区块、清空本轮采用状态，并以
+        BLOCKED 结果审计（只含采用标识/版本与失效原因，不含正文）。
+        """
+
+        if (
+            state is None
+            or state.snapshot is None
+            or state.invalid_reason
+        ):
+            return
+        reason = revalidate_snapshot(self._repo.database, account_id, state.snapshot)
+        if reason is None:
+            return
+        block = state.block
+        state.invalid_reason = reason
+        state.applied = False
+        if block and history and history[0].get("role") == "system":
+            content = str(history[0].get("content") or "")
+            if f"\n\n{block}" in content:
+                history[0]["content"] = content.replace(f"\n\n{block}", "", 1)
+        state.block = ""
+        StudyAdaptationService(
+            self._repo.database, observability=self._observability
+        ).audit_invalidated(account_id, state.snapshot, reason)
 
     def _has_new_material(
         self,

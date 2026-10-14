@@ -763,3 +763,58 @@ describe("后台核验与学习档案", () => {
     expect(screen.getByText(/一条依据（来源已不可读）/)).toBeTruthy();
   });
 });
+
+// Issue 09：学习详情按需查看真实生效的采用依据（采用了哪些学情、按什么
+// 方向调整）；不展示模型提示词、内部推理或未生效的采用。
+describe("按学情调整教法的可见依据", () => {
+  const adoptionProgress = {
+    topic: "互斥与独立",
+    knowledge_context: "两个事件不能同时发生。",
+    current_focus: "互斥是不是独立？",
+    source_message_ids: ["user-1", "assistant-1"],
+    version: 3,
+    runtime_run_id: "run-3",
+    updated_at: "2026-10-14T00:00:00Z",
+  };
+
+  it("展示真实生效的采用学情与调整方向", () => {
+    render(<StudyProgress
+      studyLocalProgress={adoptionProgress}
+      studyRecordAdoptions={[{
+        adoption_id: "sa-1",
+        goal_id: "",
+        goal_version: 0,
+        route_version: 0,
+        status: "applied",
+        invalid_reason: "",
+        uncertainty_note: "",
+        created_at: "2026-10-14T00:00:00Z",
+        entries: [{
+          record_id: "lr-1",
+          record_version: 2,
+          subject: "概率论",
+          title: "互斥与独立",
+          usage_context: "理解事件关系",
+          verdict: "misconception",
+          performance: "把互斥理解为互不影响。",
+          adjustments: ["prerequisite_review", "hint_granularity"],
+          reason: "已核验存在具体误解：先检查或补讲这个知识点。",
+        }],
+      }]}
+    />);
+
+    expect(screen.getByText(/教学采用的学情依据（1 次）/)).toBeTruthy();
+    expect(screen.getAllByText(/存在具体误解/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/补讲前置知识点、改用更小粒度提示/)).toBeTruthy();
+    expect(screen.getByText(/一次完成不代表长期掌握/)).toBeTruthy();
+  });
+
+  it("没有生效采用时不显示依据区域", () => {
+    render(<StudyProgress
+      studyLocalProgress={adoptionProgress}
+      studyRecordAdoptions={[]}
+    />);
+
+    expect(screen.queryByText(/教学采用的学情依据/)).toBeNull();
+  });
+});

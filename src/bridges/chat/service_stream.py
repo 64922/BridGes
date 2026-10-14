@@ -33,6 +33,13 @@ from bridges.contracts.understanding import (
     understanding_from_snapshot,
 )
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.study.adaptation import (
+    STUDY_ADAPTATION_CONFIG_KEY,
+    StudyAdaptationService,
+    StudyAdaptationTurnState,
+    render_directive,
+    suggest_route_revision,
+)
 from bridges.study.controls import StudyControlRepository
 from bridges.study.demand_verification import StudySourceVerificationRepository
 from bridges.study.goal_planning import StudyGoalPlanner
@@ -89,6 +96,8 @@ class _ServiceStreamMixin:
         )
         persist_study_progress = None
         study_goal_block: str | None = None
+        study_adaptation_block: str | None = None
+        study_adaptation_state: StudyAdaptationTurnState | None = None
         if study_tutor and run is not None:
             user_message = self._repo.get_message(account_id, run.user_message_id)
             if user_message is not None:
@@ -100,6 +109,66 @@ class _ServiceStreamMixin:
                 )
                 if goal_turn is not None:
                     study_goal_block = goal_turn.prompt_block or None
+                # Issue 09：本轮唯一采用快照——按知识上下文、目标与证据
+                # 适用性从 06 的有效档案边界选择相关、已核验且有效的学情；
+                # 快照随运行配置冻结（重试沿用），调用前由回合编排逐条复验。
+                goal_repository = StudyGoalRepository(self._repo.database)
+                linked_goal = goal_repository.get_linked_goal(
+                    run.account_id, conversation_id
+                )
+                linked_route = (
+                    linked_goal.route if linked_goal is not None else None
+                )
+                local_progress = progress_repository.get(
+                    run.account_id, conversation_id
+                )
+                adaptation_service = StudyAdaptationService(
+                    self._repo.database, observability=self._observability
+                )
+                adaptation_snapshot = adaptation_service.load_or_compile(
+                    account_id=run.account_id,
+                    conversation_id=conversation_id,
+                    run_config=run.config,
+                    goal=linked_goal,
+                    route=linked_route,
+                    knowledge_context=(
+                        local_progress.knowledge_context
+                        if local_progress is not None
+                        else ""
+                    ),
+                    current_focus=(
+                        local_progress.current_focus
+                        if local_progress is not None
+                        else ""
+                    ),
+                    user_message=user_message.content,
+                )
+                if not adaptation_snapshot.is_empty():
+                    adaptation_service.audit_compiled(
+                        run.account_id, adaptation_snapshot
+                    )
+                    study_adaptation_state = StudyAdaptationTurnState(
+                        snapshot=adaptation_snapshot,
+                        block=render_directive(adaptation_snapshot),
+                        route_revision=suggest_route_revision(
+                            adaptation_snapshot,
+                            route=linked_route,
+                            user_message=user_message.content,
+                        ),
+                    )
+                    study_adaptation_block = study_adaptation_state.block or None
+                    try:
+                        persisted_config = dict(run.config or {})
+                        persisted_config[STUDY_ADAPTATION_CONFIG_KEY] = (
+                            adaptation_snapshot.model_dump(mode="json")
+                        )
+                        self._repo.update_generation_config(
+                            run.account_id, run.run_id, persisted_config
+                        )
+                    except Exception:  # noqa: BLE001 - 快照持久化失败不阻断本轮
+                        logger.exception(
+                            "采用快照持久化失败：run_id=%s", run.run_id
+                        )
                 verification_repository = StudyVerificationRepository(
                     self._repo.database
                 )
@@ -147,6 +216,38 @@ class _ServiceStreamMixin:
                     if goal_turn is not None:
                         # 同一终态事务：目标/路线与消息 done、局部进展一起提交。
                         goal_service.commit(goal_turn, run, user_message)
+                    if (
+                        study_adaptation_state is not None
+                        and study_adaptation_state.applied
+                        and not study_adaptation_state.invalid_reason
+                        and study_adaptation_state.snapshot is not None
+                    ):
+                        # Issue 09：采用记录与消息 done 同事务；停止/失败轮
+                        # 不写，主生成中被撤回的采用不虚报保存。
+                        adaptation_service.commit_in_transaction(
+                            run.account_id,
+                            run.run_id,
+                            assistant_message_id,
+                            study_adaptation_state.snapshot,
+                        )
+                        revision = study_adaptation_state.route_revision
+                        if revision is not None and linked_route is not None:
+                            # 路线修订按既有版本守卫提交；冲突时不覆盖，
+                            # 也不虚报保存（守卫失败即如实跳过）。
+                            goal_repository.save_route_revision_in_transaction(
+                                account_id=run.account_id,
+                                goal_id=revision.goal_id,
+                                route=linked_route.model_copy(
+                                    update={
+                                        "version": revision.expected_route_version + 1,
+                                        "current_node_id": revision.target_node_id,
+                                        "revision_reason": revision.reason,
+                                        "origin": "assistant_proposal",
+                                        "created_at": datetime.now(UTC),
+                                    }
+                                ),
+                                expected_version=revision.expected_route_version,
+                            )
 
         understanding = understanding_from_snapshot(
             (run.config or {}).get("understanding") if run is not None else None
@@ -172,6 +273,8 @@ class _ServiceStreamMixin:
             web_search_allowed=web_search_allowed,
             study_tutor=study_tutor,
             study_goal_block=study_goal_block,
+            study_adaptation_block=study_adaptation_block,
+            study_adaptation_state=study_adaptation_state,
             persist_study_progress=persist_study_progress,
         )
         # 改进工单 17：不在执行器后台链路上的直接编排（测试/脚本）同样

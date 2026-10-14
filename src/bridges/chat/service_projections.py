@@ -48,6 +48,7 @@ from bridges.contracts.humanizer import (
 )
 from bridges.contracts.image import ImageTaskProjection
 from bridges.contracts.speech import ReadAloudProjection
+from bridges.contracts.study_adaptation import StudyAdoptionProjection
 from bridges.contracts.study_diagnosis import (
     StudyDiagnosisTaskProjection,
     StudyLearningRecordProjection,
@@ -57,6 +58,7 @@ from bridges.contracts.video import VideoTaskProjection
 from bridges.github.contracts import GithubProjectsProjection
 from bridges.paper.contracts import PaperSearchProjection
 from bridges.resources.contracts import LearningResourcesProjection
+from bridges.study.adaptation import StudyAdaptationService
 from bridges.study.controls import StudyControlRepository
 from bridges.study.diagnosis_repository import StudyDiagnosisRepository
 from bridges.study.goals import StudyGoalRepository
@@ -436,6 +438,7 @@ class _ServiceProjectionsMixin:
         # 来源不可用按真实状态标注。
         study_diagnosis_tasks: list[StudyDiagnosisTaskProjection] = []
         study_learning_record: list[StudyLearningRecordProjection] = []
+        study_record_adoptions: list[StudyAdoptionProjection] = []
         if mode == ChatMode.STUDY:
             diagnosis_repository = StudyDiagnosisRepository(self._repo.database)
             study_diagnosis_tasks = diagnosis_repository.list_tasks(
@@ -444,6 +447,11 @@ class _ServiceProjectionsMixin:
             study_learning_record = StudyRecordControlService(
                 self._repo.database
             ).record_projections(account_id, conversation_id)
+            # Issue 09：真实生效的采用记录（采用了哪些学情与调整方向）；
+            # 只读状态为 applied 的行，撤回/失败不虚报展示。
+            study_record_adoptions = StudyAdaptationService(
+                self._repo.database
+            ).projections(account_id, conversation_id)
         return ChatConversationProjection(
             conversation_id=conversation_id,
             title=title,
@@ -457,6 +465,7 @@ class _ServiceProjectionsMixin:
             study_summary=study_summary,
             study_diagnosis_tasks=study_diagnosis_tasks,
             study_learning_record=study_learning_record,
+            study_record_adoptions=study_record_adoptions,
             study_history_status=(
                 study_history.status if study_history is not None else None
             ),
