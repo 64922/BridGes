@@ -32652,6 +32652,39 @@
             ],
             "description": "当前待答问题与帮助状态；只含已展示的问题，不含评价依据或未提出的问题。"
           },
+          "study_last_control": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyControlProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近一次用户学习控制（直接讲解、跳过、暂停、继续或要求小结）及作用的问题；未验证项如实标注，不当作错答或掌握。"
+          },
+          "study_pause": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudySessionPauseProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前暂停状态与可继续位置；已恢复或未暂停时为 null。"
+          },
+          "study_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudySessionSummaryProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近一次阶段小结的规范原文与真实交付状态；未核验项保持待确认，不输出掌握百分比。"
+          },
           "study_history_status": {
             "anyOf": [
               {
@@ -57404,6 +57437,57 @@
         "title": "StudyContentCheck",
         "description": "关键定义/公式/关系与书页原文的逐点核对结果（与结构门分开）。"
       },
+      "StudyControlKind": {
+        "type": "string",
+        "enum": [
+          "full_explanation",
+          "skip",
+          "pause",
+          "resume",
+          "summary_request"
+        ],
+        "title": "StudyControlKind",
+        "description": "用户明确的学习控制；按完整语义识别，不是关键词匹配。"
+      },
+      "StudyControlProjection": {
+        "properties": {
+          "control_id": {
+            "type": "string",
+            "title": "Control Id",
+            "description": "稳定控制记录标识。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StudyControlKind",
+            "description": "控制类型。"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question",
+            "description": "本次控制作用的待答问题；没有关联时为空。",
+            "default": ""
+          },
+          "released": {
+            "type": "boolean",
+            "title": "Released",
+            "description": "是否解除了该问题的作答等待。",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "控制生效时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "control_id",
+          "kind",
+          "created_at"
+        ],
+        "title": "StudyControlProjection",
+        "description": "最近一次学习控制的用户可见投影；含作用的问题与是否解除等待。"
+      },
       "StudyCoverageEntry": {
         "properties": {
           "fragment_id": {
@@ -58628,6 +58712,109 @@
         "title": "StudyScope",
         "description": "一个经核验的有效知识范围版本；旧版本保留供导出与恢复。"
       },
+      "StudySessionPauseProjection": {
+        "properties": {
+          "pause_id": {
+            "type": "string",
+            "title": "Pause Id",
+            "description": "稳定暂停记录标识。"
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic",
+            "description": "暂停时的学习主题。",
+            "default": ""
+          },
+          "position": {
+            "type": "string",
+            "title": "Position",
+            "description": "可继续的位置（暂停时的当前关注内容）。",
+            "default": ""
+          },
+          "pending_question": {
+            "type": "string",
+            "title": "Pending Question",
+            "description": "暂停时保留的待答问题；已解除或没有时为空。",
+            "default": ""
+          },
+          "progress_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Progress Version",
+            "description": "绑定的会话进展版本。"
+          },
+          "source_message_id": {
+            "type": "string",
+            "title": "Source Message Id",
+            "description": "声明暂停的用户消息标识。"
+          },
+          "paused_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Paused At",
+            "description": "暂停时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pause_id",
+          "progress_version",
+          "source_message_id",
+          "paused_at"
+        ],
+        "title": "StudySessionPauseProjection",
+        "description": "当前暂停状态：可恢复位置与暂停时的问题处置。"
+      },
+      "StudySessionSummaryProjection": {
+        "properties": {
+          "summary_id": {
+            "type": "string",
+            "title": "Summary Id",
+            "description": "稳定小结标识。"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/StudySummaryTrigger",
+            "description": "小结触发来源。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StudySummaryStatus",
+            "description": "complete：原文已完整随回复交付；partial：回复未完整包含原文。"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "生成时确定的规范小结文字。"
+          },
+          "source_message_id": {
+            "type": "string",
+            "title": "Source Message Id",
+            "description": "请求/触发该小结的用户消息标识。"
+          },
+          "assistant_message_id": {
+            "type": "string",
+            "title": "Assistant Message Id",
+            "description": "承载该小结的助手消息标识。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "小结生成时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary_id",
+          "trigger",
+          "status",
+          "content",
+          "source_message_id",
+          "assistant_message_id",
+          "created_at"
+        ],
+        "title": "StudySessionSummaryProjection",
+        "description": "最近一次阶段小结：规范原文与真实交付状态。\n\n依据引用（证据、进展版本与生成时问题处置）保存在服务端，不在此\n投影中重复输出；``content`` 是生成时确定的规范小结文字，不随后续\n学习被覆盖。"
+      },
       "StudySource": {
         "properties": {
           "source_id": {
@@ -58917,6 +59104,25 @@
         ],
         "title": "StudySummaryRecord",
         "description": "一节历史总结及其依据范围版本（工单 35）。\n\n追加书页或范围变化使当前总结失效时，旧总结移入 ``StudyState.summary_history``\n保留，标注生成时的有效范围版本；后续总结不得冒用旧版本结论。"
+      },
+      "StudySummaryStatus": {
+        "type": "string",
+        "enum": [
+          "complete",
+          "partial"
+        ],
+        "title": "StudySummaryStatus",
+        "description": "小结的真实交付状态；失败或部分展示必须如实呈现。"
+      },
+      "StudySummaryTrigger": {
+        "type": "string",
+        "enum": [
+          "explicit_request",
+          "natural_completion",
+          "pause"
+        ],
+        "title": "StudySummaryTrigger",
+        "description": "小结的触发来源：用户要求、完成后的自然收尾或暂停收尾。"
       },
       "StudySupplementAttempt": {
         "properties": {

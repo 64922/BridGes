@@ -9642,6 +9642,12 @@ export interface components {
             study_goal?: components["schemas"]["StudyGoalProjection"] | null;
             /** @description 当前待答问题与帮助状态；只含已展示的问题，不含评价依据或未提出的问题。 */
             study_pending_check?: components["schemas"]["StudyPendingCheckProjection"] | null;
+            /** @description 最近一次用户学习控制（直接讲解、跳过、暂停、继续或要求小结）及作用的问题；未验证项如实标注，不当作错答或掌握。 */
+            study_last_control?: components["schemas"]["StudyControlProjection"] | null;
+            /** @description 当前暂停状态与可继续位置；已恢复或未暂停时为 null。 */
+            study_pause?: components["schemas"]["StudySessionPauseProjection"] | null;
+            /** @description 最近一次阶段小结的规范原文与真实交付状态；未核验项保持待确认，不输出掌握百分比。 */
+            study_summary?: components["schemas"]["StudySessionSummaryProjection"] | null;
             /** @description 旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。 */
             study_history_status?: components["schemas"]["StudyHistoryStatusProjection"] | null;
             /**
@@ -24653,6 +24659,43 @@ export interface components {
             fragment_ids?: string[];
         };
         /**
+         * StudyControlKind
+         * @description 用户明确的学习控制；按完整语义识别，不是关键词匹配。
+         * @enum {string}
+         */
+        StudyControlKind: "full_explanation" | "skip" | "pause" | "resume" | "summary_request";
+        /**
+         * StudyControlProjection
+         * @description 最近一次学习控制的用户可见投影；含作用的问题与是否解除等待。
+         */
+        StudyControlProjection: {
+            /**
+             * Control Id
+             * @description 稳定控制记录标识。
+             */
+            control_id: string;
+            /** @description 控制类型。 */
+            kind: components["schemas"]["StudyControlKind"];
+            /**
+             * Question
+             * @description 本次控制作用的待答问题；没有关联时为空。
+             * @default
+             */
+            question: string;
+            /**
+             * Released
+             * @description 是否解除了该问题的作答等待。
+             * @default false
+             */
+            released: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 控制生效时间。
+             */
+            created_at: string;
+        };
+        /**
          * StudyCoverageEntry
          * @description 覆盖矩阵的一行：一个实质教学片段与知识点/排除理由的关系。
          */
@@ -25337,6 +25380,91 @@ export interface components {
              */
             legacy: boolean;
         };
+        /**
+         * StudySessionPauseProjection
+         * @description 当前暂停状态：可恢复位置与暂停时的问题处置。
+         */
+        StudySessionPauseProjection: {
+            /**
+             * Pause Id
+             * @description 稳定暂停记录标识。
+             */
+            pause_id: string;
+            /**
+             * Topic
+             * @description 暂停时的学习主题。
+             * @default
+             */
+            topic: string;
+            /**
+             * Position
+             * @description 可继续的位置（暂停时的当前关注内容）。
+             * @default
+             */
+            position: string;
+            /**
+             * Pending Question
+             * @description 暂停时保留的待答问题；已解除或没有时为空。
+             * @default
+             */
+            pending_question: string;
+            /**
+             * Progress Version
+             * @description 绑定的会话进展版本。
+             */
+            progress_version: number;
+            /**
+             * Source Message Id
+             * @description 声明暂停的用户消息标识。
+             */
+            source_message_id: string;
+            /**
+             * Paused At
+             * Format: date-time
+             * @description 暂停时间。
+             */
+            paused_at: string;
+        };
+        /**
+         * StudySessionSummaryProjection
+         * @description 最近一次阶段小结：规范原文与真实交付状态。
+         *
+         *     依据引用（证据、进展版本与生成时问题处置）保存在服务端，不在此
+         *     投影中重复输出；``content`` 是生成时确定的规范小结文字，不随后续
+         *     学习被覆盖。
+         */
+        StudySessionSummaryProjection: {
+            /**
+             * Summary Id
+             * @description 稳定小结标识。
+             */
+            summary_id: string;
+            /** @description 小结触发来源。 */
+            trigger: components["schemas"]["StudySummaryTrigger"];
+            /** @description complete：原文已完整随回复交付；partial：回复未完整包含原文。 */
+            status: components["schemas"]["StudySummaryStatus"];
+            /**
+             * Content
+             * @description 生成时确定的规范小结文字。
+             */
+            content: string;
+            /**
+             * Source Message Id
+             * @description 请求/触发该小结的用户消息标识。
+             */
+            source_message_id: string;
+            /**
+             * Assistant Message Id
+             * @description 承载该小结的助手消息标识。
+             */
+            assistant_message_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 小结生成时间。
+             */
+            created_at: string;
+        };
         /** StudySource */
         StudySource: {
             /** Source Id */
@@ -25449,6 +25577,18 @@ export interface components {
              */
             superseded_reason: string;
         };
+        /**
+         * StudySummaryStatus
+         * @description 小结的真实交付状态；失败或部分展示必须如实呈现。
+         * @enum {string}
+         */
+        StudySummaryStatus: "complete" | "partial";
+        /**
+         * StudySummaryTrigger
+         * @description 小结的触发来源：用户要求、完成后的自然收尾或暂停收尾。
+         * @enum {string}
+         */
+        StudySummaryTrigger: "explicit_request" | "natural_completion" | "pause";
         /**
          * StudySupplementAttempt
          * @description 一层补证的真实执行结果（用于审计“为何没查/没查到”）。

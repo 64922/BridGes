@@ -53,6 +53,7 @@ from bridges.contracts.video import VideoTaskProjection
 from bridges.github.contracts import GithubProjectsProjection
 from bridges.paper.contracts import PaperSearchProjection
 from bridges.resources.contracts import LearningResourcesProjection
+from bridges.study.controls import StudyControlRepository
 from bridges.study.goals import StudyGoalRepository
 from bridges.study.local_progress import StudyLocalProgressRepository
 from bridges.study.verification import StudyVerificationRepository
@@ -406,6 +407,23 @@ class _ServiceProjectionsMixin:
             if mode == ChatMode.STUDY
             else None
         )
+        # Issue 04：学习控制、暂停与阶段小结只按账户会话读取真实记录。
+        control_repository = StudyControlRepository(self._repo.database)
+        study_last_control = (
+            control_repository.latest_control(account_id, conversation_id)
+            if mode == ChatMode.STUDY
+            else None
+        )
+        study_pause = (
+            control_repository.active_pause(account_id, conversation_id)
+            if mode == ChatMode.STUDY
+            else None
+        )
+        study_summary = (
+            control_repository.latest_summary(account_id, conversation_id)
+            if mode == ChatMode.STUDY
+            else None
+        )
         return ChatConversationProjection(
             conversation_id=conversation_id,
             title=title,
@@ -414,6 +432,9 @@ class _ServiceProjectionsMixin:
             study_local_progress=study_local_progress,
             study_goal=study_goal,
             study_pending_check=study_pending_check,
+            study_last_control=study_last_control,
+            study_pause=study_pause,
+            study_summary=study_summary,
             study_history_status=(
                 study_history.status if study_history is not None else None
             ),

@@ -19,6 +19,56 @@ const JUDGEMENT_LABEL: Record<string, string> = {
   incorrect: "错误",
 };
 
+// Issue 04：用户学习控制的自然语言状态；未验证如实标注，不当作错答或掌握。
+const SUMMARY_TRIGGER_LABEL: Record<string, string> = {
+  explicit_request: "按你的要求生成",
+  natural_completion: "完成后自然生成",
+  pause: "暂停时生成",
+};
+
+function StudyControlStatus({
+  studyLastControl,
+  studyPause,
+  studySummary,
+}: {
+  studyLastControl?: ChatConversationProjection["study_last_control"];
+  studyPause?: ChatConversationProjection["study_pause"];
+  studySummary?: ChatConversationProjection["study_summary"];
+}) {
+  const skipLabel = studyLastControl?.kind === "full_explanation" ? "直接讲解"
+    : studyLastControl?.kind === "skip" ? "跳过" : null;
+  return (
+    <>
+      {studyPause && (
+        <p role="status" aria-label="暂停状态">
+          已暂停在「{studyPause.position || studyPause.topic}」，进展已保存；
+          发送「继续」即可接着学。
+          {studyPause.pending_question && `（保留问题「${studyPause.pending_question}」保持未验证）`}
+        </p>
+      )}
+      {skipLabel && studyLastControl?.question && (
+        <p role="status" aria-label="跳过状态">
+          已{skipLabel}：「{studyLastControl.question}」保持未验证
+          {studyLastControl.released ? "，可以继续下一步" : ""}。
+        </p>
+      )}
+      {studySummary && (
+        <details>
+          <summary>
+            阶段小结（{SUMMARY_TRIGGER_LABEL[studySummary.trigger] ?? studySummary.trigger}，
+            {studySummary.status === "complete"
+              ? "已随回复完整交付"
+              : "回复未完整包含原文，可重试该消息补全"}）
+          </summary>
+          <div className={styles.studySummaryNote} style={{ whiteSpace: "pre-wrap" }}>
+            {studySummary.content}
+          </div>
+        </details>
+      )}
+    </>
+  );
+}
+
 // 四段兜底文案与消息内总结一致：空段只陈述实际判定，不额外宣称掌握；
 // 未作答/尚未判定单独成段，不与答对或漏洞混排（工单 36）。
 const SUMMARY_SECTIONS = [
@@ -62,11 +112,14 @@ function evidenceLabels(
   return labels;
 }
 
-export function StudyProgress({ study: state, studyLocalProgress, studyGoal, studyPendingCheck, historyStatus, busy = false, onAction }: {
+export function StudyProgress({ study: state, studyLocalProgress, studyGoal, studyPendingCheck, studyLastControl, studyPause, studySummary, historyStatus, busy = false, onAction }: {
   study?: ChatConversationProjection["study"];
   studyLocalProgress?: ChatConversationProjection["study_local_progress"];
   studyGoal?: ChatConversationProjection["study_goal"];
   studyPendingCheck?: ChatConversationProjection["study_pending_check"];
+  studyLastControl?: ChatConversationProjection["study_last_control"];
+  studyPause?: ChatConversationProjection["study_pause"];
+  studySummary?: ChatConversationProjection["study_summary"];
   historyStatus?: ChatConversationProjection["study_history_status"];
   busy?: boolean;
   onAction?: (text: string) => Promise<boolean>;
@@ -75,6 +128,7 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
   if (studyGoal) {
     // Issue 07：顶部固定显示长期目标与当前知识点，路线按需展开；
     // 只呈现已提交的真实状态——无路线不虚报，跳节点不标掌握。
+    // Issue 04：控制/暂停/小结状态在同一区域如实呈现。
     const route = studyGoal.route;
     const nodes = route?.nodes ?? [];
     const currentNode = nodes.find((node) => node.node_id === route?.current_node_id);
@@ -97,6 +151,11 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
             {studyPendingCheck.assistance === "hinted" && "（已提供提示，本次将按提示后完成记录）"}
           </p>
         )}
+        <StudyControlStatus
+          studyLastControl={studyLastControl}
+          studyPause={studyPause}
+          studySummary={studySummary}
+        />
         {route && nodes.length > 0 && (
           <details>
             <summary>
@@ -146,6 +205,11 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
             {studyPendingCheck.assistance === "hinted" && "（已提供提示，本次将按提示后完成记录）"}
           </p>
         )}
+        <StudyControlStatus
+          studyLastControl={studyLastControl}
+          studyPause={studyPause}
+          studySummary={studySummary}
+        />
       </section>
     );
   }

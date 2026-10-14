@@ -33,6 +33,11 @@ from bridges.contracts.retrieval import (
 )
 from bridges.contracts.routing import RouteDecision
 from bridges.contracts.speech import ReadAloudProjection
+from bridges.contracts.study_controls import (
+    StudyControlProjection,
+    StudySessionPauseProjection,
+    StudySessionSummaryProjection,
+)
 from bridges.contracts.study_goals import StudyGoalProjection
 from bridges.contracts.study_history import (
     StudyHistoryProjection,
@@ -565,6 +570,20 @@ class ChatConversationProjection(BaseModel):
         default=None,
         description="当前待答问题与帮助状态；只含已展示的问题，"
         "不含评价依据或未提出的问题。",
+    )
+    study_last_control: StudyControlProjection | None = Field(
+        default=None,
+        description="最近一次用户学习控制（直接讲解、跳过、暂停、继续或要求小结）"
+        "及作用的问题；未验证项如实标注，不当作错答或掌握。",
+    )
+    study_pause: StudySessionPauseProjection | None = Field(
+        default=None,
+        description="当前暂停状态与可继续位置；已恢复或未暂停时为 null。",
+    )
+    study_summary: StudySessionSummaryProjection | None = Field(
+        default=None,
+        description="最近一次阶段小结的规范原文与真实交付状态；"
+        "未核验项保持待确认，不输出掌握百分比。",
     )
     study_history_status: StudyHistoryStatusProjection | None = Field(
         default=None,
