@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 — 直接讲解、跳过验证与自然小结；07 — 系统性目标与简短学习路线。
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **发布状态：** 用户已确认拆分与依赖，正式发布；尚未实施。
 
@@ -43,15 +43,15 @@
 
 ## 验收标准
 
-- [ ] 新对话可继续正确的本人目标，不重建、不搬移原消息。
-- [ ] 多目标歧义有一次必要澄清，未采用无依据默认候选。
-- [ ] 临时提问不改变目标，明确切换才保存并暂停原目标。
-- [ ] 切换原子提交，待答问题和旧控制不能串到新目标。
-- [ ] 两会话并发提交产生正确守卫与反馈，不静默覆盖进展。
-- [ ] 暂停与另一会话恢复按最新版本处理，旧缓存不复活已删除目标。
-- [ ] 恢复使用必要且有权前文，跳过内容保持未验证。
-- [ ] 模式锁定、账户隔离、详情展示和失败/重试一致。
-- [ ] 生命周期、合同同步和 C01 审查完成。
+- [x] 新对话可继续正确的本人目标，不重建、不搬移原消息。
+- [x] 多目标歧义有一次必要澄清，未采用无依据默认候选。
+- [x] 临时提问不改变目标，明确切换才保存并暂停原目标。
+- [x] 切换原子提交，待答问题和旧控制不能串到新目标。
+- [x] 两会话并发提交产生正确守卫与反馈，不静默覆盖进展。
+- [x] 暂停与另一会话恢复按最新版本处理，旧缓存不复活已删除目标。
+- [x] 恢复使用必要且有权前文，跳过内容保持未验证。
+- [x] 模式锁定、账户隔离、详情展示和失败/重试一致。
+- [x] 生命周期、合同同步和 C01 审查完成。
 
 ## 验证与交付证据
 
@@ -65,3 +65,19 @@
 2026-10-13：跨会话续学与单当前目标切片草稿，待拆分确认。
 
 2026-10-13：用户确认「按此发布」，本票发布到本地问题跟踪器。分诊状态表示信息齐备；须待直接阻塞票验收完成后实施，本轮未开始编码。
+
+2026-10-14：工单 08 在独立分支 `codex/issue-08-resume-and-goal-switch` 实施并完成验证（依赖 04/07 已合入 main）。实施与验证记录如下。
+
+- **实现与所有权：** 新增 `bridges.study.goal_events`（`StudyGoalEventRepository`：link/switch_out/conflict/clarification/clarification_lapsed 五类目标事件的按账户追加读写与最新通知派生）与 `bridges.study.resume_context`（恢复渲染：目标、路线当前位置、待答处置与必要前文按上下文预算选择，跳过内容标注未验证）；`bridges.study.goals` 增补关联/暂停/恢复/替换/删除与 `replace_goal_in_transaction`、`reactivate_goal_in_transaction`（paused→active 且版本 +1）；`bridges.study.goal_turn` 目标回合核心（link/switch/reactivate/lapse 模式判定、planner 失败不记 lapse、澄清二次未决落 lapse、切换原子提交后才关闭旧待答、删除目标连同路线行）；`goal_planning`/`goal_intent` 扩展 RESUME/SWITCH 触发器与规划；`verification` 目标绑定（待答/证据/诊断均带 goal_id）、激活守卫（posed.goal_id 与当前关联一致或本轮来源消息有 link/switch_out 事件）与 `close_pending_for_goal_switch`；`diagnosis_repository` 带 goal_id。
+- **并发守卫：** 消息与目标提交按目标/进展版本行进；冲突只记事件、消息照常交付；会话已关联目标被其他会话暂停时，明确「继续学」按最新版本恢复（reactivate 无需 planner）。消息交付与进度提交冲突分开显示（事件与投影独立）。
+- **投影与界面：** `ChatConversationProjection.study_goal_notice` 由权威事件派生（restored/switched/conflict/clarification）；新增 `GET /chat/study/goals` 返回本人目标列表（含当前节点标题，隐藏他人与无权来源）；前端 `StudyProgress.tsx` 增目标通知与暂停状态组件（客户端不改名字），`page.tsx` 接线。
+- **持久化与生命周期：** v77 迁移新增 `study_goal_events`（CHECK 五类 kind、FK conversations ON DELETE CASCADE、会话索引）并为 `study_pending_checks`/`study_evidence`/`study_diagnosis_tasks` 补加 `goal_id` 列（无旧数据回填）；登记 `REQUIRED_TABLES`/`REQUIRED_INDEXES`/`REQUIRED_TABLE_COLUMNS`/`MIGRATION_ADDED_COLUMNS`；`ACCOUNT_TABLES`、导出类别「学习目标」（含目标事件）、逻辑清单、备份恢复与账户删除全部接入。
+- **验收标准证据：** ①新会话续学关联本人 active/paused 目标且不搬移原消息；②多候选只澄清一个必要问题、无依据候选被拒；③临时提问不动目标、明确切换才暂停原目标；④切换单事务提交、旧待答与旧控制不串新目标（关闭旧待答记未验证证据）；⑤两会话并发提交按版本守卫、冲突不静默覆盖；⑥暂停/恢复按最新版本处理、删除目标不复活（含路线级联删除）；⑦恢复按预算选必要前文、跳过保持未验证；⑧模式锁定不允许切日常、跨账户 404、详情与失败/重试一致；⑨迁移/导出/删除/生命周期测试与 openapi 同步断言覆盖。
+- **后端验证（conda `agent`）：** 聚焦 65 项通过（本票 6 + 迁移 v77 + v76/v75/v72 回归 + 06/07/10/11 回归 + `test_openapi_sync.py`、`test_v2_17_study_pages.py`）。合并前经代理 fetch 后把最新 main（`0534f0db`，含 06）合入分支（`53377848`：迁移重编号 v77、`SCHEMA_VERSION=77`、v75 断言注释合并、api/chat 导入与 StudyProgress props 按双方语义合并），随后主树全量对账：本票树 349 失败/5813 通过，主库基线（`0534f0db`）351 失败/5795 通过；失败集合差异仅 1 项 order-dependent 用例（`test_improvement13_acceptance.py::test_121...`，经隔离复跑确认 main 同样红）与 3 项 main-only 波动（api_boot ×2、openapi 未再生成），无本票新增回归。
+- **前端验证：** vitest 282 通过（含本票 4 例：目标通知与暂停状态）、`tsc --noEmit` 干净、`next build` 成功。
+- **静态检查：** 改动文件 Ruff 无新增（`api/chat.py` 两条 F401/F841 与 `database.py:1671` E501 为 main 既有）；mypy 12 文件无新增报错。
+- **C01：** 契约、模块、提示词与测试均按 BridGes 自身需求与既有模式自主设计，未复制参考项目代码或提示词；无新增依赖、未恢复退役模块。
+- **剩余限制与后续：** 真实双设备/双窗口并发体验由 13 实测；目标列表页面呈现如需图卡由后续展示票消费，本票只保证接口与通知可用。
+- **备注：** 实现中发现并补齐「会话已关联目标被其他会话暂停后明确恢复」路径（reactivate），对应验收第 6 条；恢复不依赖 planner，事务内 paused→active 且版本 +1，失败不半提交。
+
+2026-10-14（交付记录）：本票实现提交 `a3a51b8e`（23 文件），分支内两次对齐 main：先合并 `9af3c325`（issues 10/11；`a69d6afa`，迁移先重编号 76），再合并 `0534f0db`（issue 06；`53377848`，迁移最终重编号 v77、`SCHEMA_VERSION=77`，冲突按双方语义合并：database 保留 06 的 76 与 08 的 77、REQUIRED_TABLES/INDEXES/ADDED_COLUMNS 双方条目并存、api/chat 导入与 StudyProgress props 合并、v75 断言注释合并、`test_schema_v77_study_goal_events.py` 由 v76 更名并改升级起点为 v76）。随后以 `--no-ff` 合入 main，合并提交 `15c807ca`。合并后聚焦 65 项通过、前端 vitest 282 通过、`tsc --noEmit` 干净、`next build` 成功、openapi.json（317 paths）与 `generated.ts` 重新生成且 `test_openapi_sync.py` 通过。本交付记录提交后随 main 推送；推送确认后删除本票 worktree（`.worktrees/08-resume-and-goal-switch`）、前端工具 junction 与本地分支 `codex/issue-08-resume-and-goal-switch`，其他任务的分支与目录未触碰。
