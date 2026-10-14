@@ -42,7 +42,10 @@ from bridges.contracts.study_diagnosis import (
     StudyDiagnosisTaskProjection,
     StudyLearningRecordProjection,
 )
-from bridges.contracts.study_goals import StudyGoalProjection
+from bridges.contracts.study_goals import (
+    StudyGoalNoticeProjection,
+    StudyGoalProjection,
+)
 from bridges.contracts.study_history import (
     StudyHistoryProjection,
     StudyHistoryStatusProjection,
@@ -569,6 +572,11 @@ class ChatConversationProjection(BaseModel):
     study_goal: StudyGoalProjection | None = Field(
         default=None,
         description="本对话当前关联的账户级学习目标与路线；局部问题对话为 null。",
+    )
+    study_goal_notice: StudyGoalNoticeProjection | None = Field(
+        default=None,
+        description="会话目标通知（已恢复/已切换/冲突/待确认）；"
+        "由目标关联与切换的权威事件派生，不由客户端自行切换状态。",
     )
     study_pending_check: StudyPendingCheckProjection | None = Field(
         default=None,

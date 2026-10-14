@@ -62,6 +62,7 @@ from bridges.contracts.study_diagnosis import (
     StudyRecordCorrectionRequest,
     StudyRecordDeletionRequest,
 )
+from bridges.contracts.study_goals import StudyGoalListProjection
 from bridges.contracts.teaching_progress import (
     LearningProgressProjection,
     PlanAdjustment,
@@ -1546,6 +1547,21 @@ def list_learning_plan_adjustments(
         return service.learning_adjustments(subject.account_id, conversation_id)
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
+
+
+@router.get(
+    "/study/goals",
+    response_model=StudyGoalListProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+    },
+)
+def list_study_goals(
+    service: ChatServiceDep,
+    subject: SubjectDep,
+) -> StudyGoalListProjection:
+    """列出本人学习目标（活动/暂停，最近在前），供续学选择。"""
+    return service.list_study_goals(subject.account_id)
 
 
 @router.post(

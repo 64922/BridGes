@@ -58,6 +58,55 @@ ADJUSTMENT_MARKERS: tuple[str, ...] = (
     "补充基础",
 )
 
+#: 用户可能想继续既有目标的触发词（Issue 08）。命中只表示值得交给规划
+#: 角色判断是不是续学请求；是否命中既有目标、是否歧义由规划决定，不按
+#: 最近关键词自动关联目标。
+RESUME_MARKERS: tuple[str, ...] = (
+    "继续上次",
+    "继续之前",
+    "继续上回",
+    "继续学",
+    "继续学习",
+    "接着上次",
+    "接着学",
+    "接着学习",
+    "接着之前",
+    "恢复学习",
+    "恢复上次",
+    "恢复之前",
+    "回到上次",
+    "回去学",
+    "上次那个",
+    "上次的",
+    "之前那个",
+    "之前说的那个",
+    "还学",
+    "继续吧",
+)
+
+#: 用户明确要求改学新目标的触发词（Issue 08）。命中后由规划角色区分
+#: 「明确切换」与「顺便提问」，只有明确切换才暂停原目标。
+SWITCH_MARKERS: tuple[str, ...] = (
+    "改学",
+    "改学别的",
+    "换学",
+    "换个目标",
+    "换目标",
+    "换个方向学",
+    "先不学",
+    "不学这个了",
+    "不学这个",
+    "改一下目标",
+    "新目标",
+    "另一个目标",
+    "接下来改学",
+    "接下来学",
+    "现在改学",
+    "现在想学",
+    "暂停这个目标",
+    "换个内容学",
+)
+
 
 def goal_candidate(text: str) -> bool:
     """用户消息是否显式表达学习目标，值得交给规划角色判断。"""
@@ -69,3 +118,19 @@ def adjustment_candidate(text: str) -> bool:
     """用户消息是否显式要求调整既有路线，值得交给规划角色判断。"""
 
     return any(marker in text for marker in ADJUSTMENT_MARKERS)
+
+
+def resume_candidate(text: str) -> bool:
+    """用户消息是否可能要求继续既有目标，值得交给规划角色判断。
+
+    只是「是否调用规划」的确定性触发器；未命中绝不调用规划，命中也不会
+    自动关联目标——是否命中既有目标由规划角色按完整语义判断。
+    """
+
+    return any(marker in text for marker in RESUME_MARKERS)
+
+
+def switch_candidate(text: str) -> bool:
+    """用户消息是否可能要求改学新目标；同样只是规划触发器。"""
+
+    return any(marker in text for marker in SWITCH_MARKERS)

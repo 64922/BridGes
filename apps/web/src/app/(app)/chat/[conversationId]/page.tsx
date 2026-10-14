@@ -909,6 +909,7 @@ export default function ChatConversationPage() {
                   study={conversation.study}
                   studyLocalProgress={conversation.study_local_progress}
                   studyGoal={conversation.study_goal}
+                  studyGoalNotice={conversation.study_goal_notice}
                   studyPendingCheck={conversation.study_pending_check}
                   studyLastControl={conversation.study_last_control}
                   studyPause={conversation.study_pause}

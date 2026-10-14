@@ -351,10 +351,39 @@ function StudyDiagnosisPanel({
   );
 }
 
-export function StudyProgress({ study: state, studyLocalProgress, studyGoal, studyPendingCheck, studyLastControl, studyPause, studySummary, studyDiagnosisTasks, studyLearningRecord, historyStatus, busy = false, onAction, onRetryDiagnosis, onCorrectRecord, onDeleteRecord }: {
+function StudyGoalNotice({
+  notice,
+}: {
+  notice?: ChatConversationProjection["study_goal_notice"];
+}) {
+  // Issue 08：目标恢复/切换/冲突/待确认由权威事件派生，客户端不自行改名字。
+  if (!notice) return null;
+  return (
+    <p role="status" aria-label="目标通知" className={styles.studySummaryNote}>
+      {notice.message}
+    </p>
+  );
+}
+
+function StudyGoalPausedStatus({
+  studyGoal,
+}: {
+  studyGoal: NonNullable<ChatConversationProjection["study_goal"]>;
+}) {
+  // 目标被其他会话改学暂停：如实呈现，明确恢复方式（不虚构已恢复）。
+  if (studyGoal.status !== "paused") return null;
+  return (
+    <p role="status" aria-label="目标暂停状态" className={styles.studySummaryNote}>
+      该目标已在其他会话被暂停；明确说「继续学」即可在此恢复，原进展保持已保存。
+    </p>
+  );
+}
+
+export function StudyProgress({ study: state, studyLocalProgress, studyGoal, studyGoalNotice, studyPendingCheck, studyLastControl, studyPause, studySummary, studyDiagnosisTasks, studyLearningRecord, historyStatus, busy = false, onAction, onRetryDiagnosis, onCorrectRecord, onDeleteRecord }: {
   study?: ChatConversationProjection["study"];
   studyLocalProgress?: ChatConversationProjection["study_local_progress"];
   studyGoal?: ChatConversationProjection["study_goal"];
+  studyGoalNotice?: ChatConversationProjection["study_goal_notice"];
   studyPendingCheck?: ChatConversationProjection["study_pending_check"];
   studyLastControl?: ChatConversationProjection["study_last_control"];
   studyPause?: ChatConversationProjection["study_pause"];
@@ -382,6 +411,8 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
     const currentNode = nodes.find((node) => node.node_id === route?.current_node_id);
     return (
       <section className={styles.studyProgress} aria-label="学习目标">
+        <StudyGoalNotice notice={studyGoalNotice} />
+        <StudyGoalPausedStatus studyGoal={studyGoal} />
         <p className={styles.studyGoalStatement}>目标：{studyGoal.statement}</p>
         {currentNode ? (
           <p role="status">当前知识点：{currentNode.title}</p>
@@ -453,6 +484,7 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
   if (studyLocalProgress) {
     return (
       <section className={styles.studyProgress} aria-label="局部学习进展">
+        <StudyGoalNotice notice={studyGoalNotice} />
         <p className={styles.studySummaryNote}>正在学习：{studyLocalProgress.topic}</p>
         {studyLocalProgress.current_focus && (
           <p role="status">当前关注：{studyLocalProgress.current_focus}</p>

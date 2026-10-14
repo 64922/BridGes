@@ -52,6 +52,10 @@ from bridges.contracts.study_diagnosis import (
     StudyDiagnosisTaskProjection,
     StudyLearningRecordProjection,
 )
+from bridges.contracts.study_goals import (
+    StudyGoalListProjection,
+    StudyGoalSummaryProjection,
+)
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection
 from bridges.github.contracts import GithubProjectsProjection
@@ -59,6 +63,7 @@ from bridges.paper.contracts import PaperSearchProjection
 from bridges.resources.contracts import LearningResourcesProjection
 from bridges.study.controls import StudyControlRepository
 from bridges.study.diagnosis_repository import StudyDiagnosisRepository
+from bridges.study.goal_events import StudyGoalEventRepository
 from bridges.study.goals import StudyGoalRepository
 from bridges.study.local_progress import StudyLocalProgressRepository
 from bridges.study.record_controls import StudyRecordControlService
@@ -406,6 +411,15 @@ class _ServiceProjectionsMixin:
             if mode == ChatMode.STUDY
             else None
         )
+        # Issue 08：目标通知（已恢复/已切换/冲突/待确认）由权威事件派生；
+        # 非学习模式不读取，客户端不自行切换目标状态。
+        study_goal_notice = (
+            StudyGoalEventRepository(self._repo.database).latest_notice(
+                account_id, conversation_id
+            )
+            if mode == ChatMode.STUDY
+            else None
+        )
         study_pending_check = (
             StudyVerificationRepository(self._repo.database).pending_projection(
                 account_id, conversation_id
@@ -451,6 +465,7 @@ class _ServiceProjectionsMixin:
             study=study_history.study if study_history is not None else None,
             study_local_progress=study_local_progress,
             study_goal=study_goal,
+            study_goal_notice=study_goal_notice,
             study_pending_check=study_pending_check,
             study_last_control=study_last_control,
             study_pause=study_pause,
@@ -485,3 +500,32 @@ class _ServiceProjectionsMixin:
                 for event in (mode_events or [])
             ],
         )
+
+    def list_study_goals(
+        self: ChatService, account_id: str
+    ) -> StudyGoalListProjection:
+        """Issue 08：本人目标列表用于续学选择；只含当前账户活动/暂停目标。"""
+        goals = StudyGoalRepository(self._repo.database).list_goals(account_id)
+        summaries: list[StudyGoalSummaryProjection] = []
+        for goal in goals:
+            node_title = ""
+            if goal.route is not None:
+                node_title = next(
+                    (
+                        node.title
+                        for node in goal.route.nodes
+                        if node.node_id == goal.route.current_node_id
+                    ),
+                    "",
+                )
+            summaries.append(
+                StudyGoalSummaryProjection(
+                    goal_id=goal.goal_id,
+                    statement=goal.statement,
+                    status=goal.status,
+                    current_node_title=node_title,
+                    route_version=goal.route.version if goal.route is not None else 0,
+                    updated_at=goal.updated_at,
+                )
+            )
+        return StudyGoalListProjection(goals=summaries)

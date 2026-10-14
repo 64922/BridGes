@@ -143,6 +143,8 @@ class StudyCheckRecord:
     version: int
     created_at: datetime
     updated_at: datetime
+    #: Issue 08：问题所属的目标；切换目标后新回答不能填旧题。
+    goal_id: str = ""
 
     def assistance(self) -> StudyCheckAssistance:
         return (
@@ -198,6 +200,8 @@ class StudyEvidenceRecord(BaseModel):
     answer_message_id: str | None = None
     feedback_message_id: str | None = None
     created_at: datetime
+    #: Issue 08：回答时所属的目标；旧目标的结果不能更新新目标。
+    goal_id: str = ""
 
 
 class _PlannerOutput(BaseModel):
@@ -251,7 +255,8 @@ class StudyVerificationRepository:
     ) -> StudyCheckRecord | None:
         row = self._database.scoped(account_id).execute(
             "SELECT check_id, kind, question, knowledge_context, basis_json,"
-            " hint_history_json, source_message_id, version, created_at, updated_at"
+            " hint_history_json, source_message_id, version, created_at, updated_at,"
+            " goal_id"
             " FROM study_pending_checks"
             " WHERE account_id = ? AND conversation_id = ?",
             (account_id, conversation_id),
@@ -275,6 +280,7 @@ class StudyVerificationRepository:
                 version=int(row["version"]),
                 created_at=_parse_time(row["created_at"]),
                 updated_at=_parse_time(row["updated_at"]),
+                goal_id=str(row["goal_id"] or ""),
             )
         except (TypeError, ValueError, KeyError, ValidationError):
             return None
@@ -587,6 +593,7 @@ class StudyVerificationRepository:
             answer_message_id=user_message.message_id,
             feedback_message_id=assistant_message_id,
             created_at=now,
+            goal_id=str(bound.get("goal_id") or ""),
         )
         inserted = self._insert_evidence(evidence)
         # 诊断候选携带展示前冻结的私有评价依据：取自已绑定待答问题的
@@ -615,6 +622,7 @@ class StudyVerificationRepository:
             answer_message_id=user_message.message_id,
             check_kind=evidence.check_kind.value,
             source_refs=list(evidence.source_refs),
+            goal_id=evidence.goal_id,
         )
 
     def _basis_incomplete(self, run: GenerationRunRecord, check_id: str) -> bool:
@@ -689,6 +697,11 @@ class StudyVerificationRepository:
         if not question or not _question_displayed(question, content):
             # 未实际展示（失配、截断或改写）：不激活未展示的问题。
             return
+        goal_id = self._activation_goal_id(run, posed)
+        if goal_id is None:
+            # Issue 08：规划时的问题已不再属于当前关联目标（例如改学或
+            # 其他会话切换后重试旧运行）：旧结果不能挂到新目标上。
+            return
         # Issue 11：本轮查证未完成时不得冻结依赖外部证据的标准答案；
         # 正式练习降级为开放探查（不判分、不设唯一答案）。
         expected_answer = _short_text(str(posed.get("expected_answer") or ""), 300)
@@ -724,8 +737,8 @@ class StudyVerificationRepository:
             "INSERT INTO study_pending_checks"
             " (account_id, conversation_id, check_id, kind, question,"
             " knowledge_context, basis_json, hint_history_json, source_message_id,"
-            " version, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            " version, created_at, updated_at, goal_id)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT(account_id, conversation_id) DO UPDATE SET"
             " check_id = excluded.check_id, kind = excluded.kind,"
             " question = excluded.question,"
@@ -733,7 +746,8 @@ class StudyVerificationRepository:
             " basis_json = excluded.basis_json,"
             " hint_history_json = excluded.hint_history_json,"
             " source_message_id = excluded.source_message_id,"
-            " version = excluded.version, updated_at = excluded.updated_at",
+            " version = excluded.version, updated_at = excluded.updated_at,"
+            " goal_id = excluded.goal_id",
             (
                 run.account_id,
                 run.conversation_id,
@@ -750,8 +764,70 @@ class StudyVerificationRepository:
                 version,
                 now.isoformat(),
                 now.isoformat(),
+                goal_id,
             ),
         )
+
+    def _activation_goal_id(
+        self, run: GenerationRunRecord, posed: dict[str, Any]
+    ) -> str | None:
+        """问题归属目标守卫：返回应绑定的目标，冲突时返回 None（不激活）。
+
+        - 规划时已有目标：只有该目标仍是当前关联时才成立；
+        - 规划时尚未关联目标（新建/续学的同一轮）：只有本轮来源消息确实
+          提交过目标关联/切换（与终态回调同一事务）才把问题挂到新目标；
+        - 旧运行在改学之后重放时不满足上述条件，问题不会被挂到新目标。
+        """
+
+        snapshot_goal = str(posed.get("goal_id") or "")
+        current = self.linked_goal_id(run.account_id, run.conversation_id)
+        if snapshot_goal:
+            return current if snapshot_goal == current else None
+        if not current:
+            return ""
+        source_message_id = str(posed.get("source_user_message_id") or "")
+        if not source_message_id:
+            return None
+        from bridges.study.goal_events import StudyGoalEventRepository
+
+        events = StudyGoalEventRepository(self._database)
+        if events.has_transition_for_message(
+            run.account_id, run.conversation_id, source_message_id
+        ):
+            return current
+        return None
+
+    def linked_goal_id(self, account_id: str, conversation_id: str) -> str:
+        """当前关联的目标标识；未关联时为空串（Issue 08 归属判定用）。"""
+
+        row = self._database.scoped(account_id).execute(
+            "SELECT goal_id FROM study_conversation_goals"
+            " WHERE account_id = ? AND conversation_id = ?",
+            (account_id, conversation_id),
+        ).fetchone()
+        return str(row["goal_id"]) if row is not None else ""
+
+    def close_pending_for_goal_switch(
+        self, run: GenerationRunRecord, now: datetime
+    ) -> dict[str, str] | None:
+        """Issue 08：明确改学时把当前待答如实记为未验证并解除等待。
+
+        返回被处置问题的快照，供切换事件保留原目标的待答处置；同一
+        终态事务内调用，切换失败整体回滚，不留半次处置。
+        """
+
+        current = self.get_pending(run.account_id, run.conversation_id)
+        if current is None:
+            return None
+        self._write_unverified_evidence(run, current, now)
+        self._close_pending_if_current(
+            run.account_id, run.conversation_id, current.check_id
+        )
+        return {
+            "check_id": current.check_id,
+            "question": current.question,
+            "goal_id": current.goal_id,
+        }
 
     def _release_skipped_check(
         self,
@@ -848,6 +924,7 @@ class StudyVerificationRepository:
             source_refs=list(source_refs or [])[:_MATERIAL_REF_LIMIT],
             evidence_contract_version=VERIFICATION_CONTRACT_VERSION,
             created_at=now,
+            goal_id=check.goal_id,
         )
         self._insert_evidence(evidence)
 
@@ -862,9 +939,9 @@ class StudyVerificationRepository:
             " basis_protocol_version, answered, outcome, semantics, assistance,"
             " reasoning_note, supporting_json, missing_json, hint_message_ids_json,"
             " source_message_ids_json, source_refs_json, evidence_contract_version,"
-            " answer_message_id, feedback_message_id, created_at)"
+            " answer_message_id, feedback_message_id, created_at, goal_id)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-            " ?, ?, ?, ?)"
+            " ?, ?, ?, ?, ?)"
             " ON CONFLICT(account_id, answer_message_id) DO NOTHING",
             (
                 payload["evidence_id"],
@@ -891,6 +968,7 @@ class StudyVerificationRepository:
                 payload["answer_message_id"],
                 payload["feedback_message_id"],
                 payload["created_at"],
+                payload["goal_id"],
             ),
         )
         return cursor.rowcount > 0
@@ -1040,6 +1118,12 @@ class StudyVerificationPlanner:
             stale_reason=stale_reason,
             pause=pause,
             summary=summary,
+            linked_goal_id=self._verification.linked_goal_id(
+                account_id, conversation_id
+            ),
+            source_user_message_id=(
+                user_message.message_id if user_message is not None else ""
+            ),
         )
         self._persist_snapshot(account_id, run_context.run_id, snapshot)
         return _directive(
@@ -1452,6 +1536,8 @@ def _build_snapshot(
     stale_reason: str | None = None,
     pause: StudySessionPauseProjection | None = None,
     summary: dict[str, Any] | None = None,
+    linked_goal_id: str = "",
+    source_user_message_id: str = "",
 ) -> dict[str, Any]:
     assistance: str | None = None
     if pending is not None and plan.evaluation is not None:
@@ -1496,6 +1582,8 @@ def _build_snapshot(
                 "version": pending.version,
                 "source_message_id": pending.source_message_id,
                 "material_refs": bound_refs,
+                # Issue 08：作答证据携带问题所属目标。
+                "goal_id": pending.goal_id,
             }
             if pending is not None
             else None
@@ -1515,6 +1603,9 @@ def _build_snapshot(
                 **plan.posed_check.model_dump(mode="json"),
                 "check_id": plan.posed_check_id,
                 "material_refs": question_refs,
+                # Issue 08：问题归属目标与来源消息；终态激活在跨目标时跳过。
+                "goal_id": linked_goal_id,
+                "source_user_message_id": source_user_message_id,
             }
             if plan.posed_check is not None
             else None
@@ -1915,6 +2006,7 @@ def _evidence_records(rows: Any) -> list[StudyEvidenceRecord]:
                     answer_message_id=row["answer_message_id"],
                     feedback_message_id=row["feedback_message_id"],
                     created_at=_parse_time(row["created_at"]),
+                    goal_id=str(row["goal_id"] or ""),
                 )
             )
         except (TypeError, ValueError, KeyError, ValidationError):

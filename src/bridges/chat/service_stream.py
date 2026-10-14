@@ -35,6 +35,7 @@ from bridges.contracts.understanding import (
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.study.controls import StudyControlRepository
 from bridges.study.demand_verification import StudySourceVerificationRepository
+from bridges.study.goal_events import StudyGoalEventRepository
 from bridges.study.goal_planning import StudyGoalPlanner
 from bridges.study.goal_turn import StudyGoalTurn, StudyGoalTurnService
 from bridges.study.goals import StudyGoalRepository
@@ -111,11 +112,16 @@ class _ServiceStreamMixin:
                 )
 
                 def persist_study_progress(content: str) -> None:
-                    # Issue 03：作答证据、提示记录与待答绑定先提交，再更新
+                    # Issue 08：目标/路线/切换先提交，随后的问题激活据此绑定
+                    # 切换后的目标；目标冲突只登记事件，与消息交付分开。
+                    # Issue 03：作答证据、提示记录与待答绑定随后提交，再更新
                     # 局部进展；两者与消息 streaming→done 同事务，原子可见。
                     # 停止/失败路径不进入本回调，未展示的问题绝不激活。
                     # Issue 05：真正写入作答证据时，在同一事务登记诊断任务
                     # （回复终态、证据与任务入队原子一致，不丢任务）。
+                    if goal_turn is not None:
+                        # 同一终态事务：目标/路线与消息 done、局部进展一起提交。
+                        goal_service.commit(goal_turn, run, user_message)
                     candidate = verification_repository.commit_turn_in_transaction(
                         self._repo,
                         run,
@@ -144,9 +150,6 @@ class _ServiceStreamMixin:
                         assistant_message_id,
                         content,
                     )
-                    if goal_turn is not None:
-                        # 同一终态事务：目标/路线与消息 done、局部进展一起提交。
-                        goal_service.commit(goal_turn, run, user_message)
 
         understanding = understanding_from_snapshot(
             (run.config or {}).get("understanding") if run is not None else None
@@ -196,6 +199,8 @@ class _ServiceStreamMixin:
         service = StudyGoalTurnService(
             StudyGoalRepository(self._repo.database),
             StudyGoalPlanner(self._gateway),
+            StudyVerificationRepository(self._repo.database),
+            StudyGoalEventRepository(self._repo.database),
         )
         quota = RunModelQuota.from_config(
             (run.config or {}).get(RUN_MODEL_QUOTA_CONFIG_KEY)

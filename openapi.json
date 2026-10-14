@@ -6,6 +6,82 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/health/live": {
+      "get": {
+        "summary": "Health Live",
+        "description": "Liveness probe: process event loop can respond.",
+        "operationId": "health_live_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthProjection"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "summary": "Health Ready",
+        "description": "Readiness probe: required dependencies are healthy.\n\nIssue 06：未就绪（含数据库 schema 未达当前版本或核心对象缺失）时\n返回 HTTP 503 而非 200——Playwright 的 webServer URL 轮询只认状态码，\n只有 schema-ready 后才放行用户测试；初始化失败时启动明确失败而不是\n在首个会话请求中报 500。响应体始终是同一份 HealthProjection。",
+        "operationId": "health_ready_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthProjection"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/degraded": {
+      "get": {
+        "summary": "Health Degraded",
+        "description": "Degraded probe: optional dependencies and degradation capability.",
+        "operationId": "health_degraded_health_degraded_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthProjection"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Summary",
+        "description": "Combined health summary.",
+        "operationId": "health_summary_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthProjection"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/register": {
       "post": {
         "tags": [
@@ -5025,6 +5101,66 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/study/goals": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "List Study Goals",
+        "description": "列出本人学习目标（活动/暂停，最近在前），供续学选择。",
+        "operationId": "list_study_goals_chat_study_goals_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudyGoalListProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
           },
           "422": {
             "description": "Validation Error",
@@ -27576,82 +27712,6 @@
         }
       }
     },
-    "/health/live": {
-      "get": {
-        "summary": "Health Live",
-        "description": "Liveness probe: process event loop can respond.",
-        "operationId": "health_live_health_live_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HealthProjection"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/health/ready": {
-      "get": {
-        "summary": "Health Ready",
-        "description": "Readiness probe: required dependencies are healthy.\n\nIssue 06：未就绪（含数据库 schema 未达当前版本或核心对象缺失）时\n返回 HTTP 503 而非 200——Playwright 的 webServer URL 轮询只认状态码，\n只有 schema-ready 后才放行用户测试；初始化失败时启动明确失败而不是\n在首个会话请求中报 500。响应体始终是同一份 HealthProjection。",
-        "operationId": "health_ready_health_ready_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HealthProjection"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/health/degraded": {
-      "get": {
-        "summary": "Health Degraded",
-        "description": "Degraded probe: optional dependencies and degradation capability.",
-        "operationId": "health_degraded_health_degraded_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HealthProjection"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/health": {
-      "get": {
-        "summary": "Health Summary",
-        "description": "Combined health summary.",
-        "operationId": "health_summary_health_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HealthProjection"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/me": {
       "get": {
         "summary": "Me",
@@ -32977,6 +33037,17 @@
               }
             ],
             "description": "本对话当前关联的账户级学习目标与路线；局部问题对话为 null。"
+          },
+          "study_goal_notice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyGoalNoticeProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "会话目标通知（已恢复/已切换/冲突/待确认）；由目标关联与切换的权威事件派生，不由客户端自行切换状态。"
           },
           "study_pending_check": {
             "anyOf": [
@@ -58215,6 +58286,61 @@
         ],
         "title": "StudyFragment"
       },
+      "StudyGoalListProjection": {
+        "properties": {
+          "goals": {
+            "items": {
+              "$ref": "#/components/schemas/StudyGoalSummaryProjection"
+            },
+            "type": "array",
+            "title": "Goals"
+          }
+        },
+        "type": "object",
+        "title": "StudyGoalListProjection",
+        "description": "本人目标列表：无目标时为空列表，加载失败由接口层如实报错。"
+      },
+      "StudyGoalNoticeProjection": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "restored",
+              "switched",
+              "conflict",
+              "clarification"
+            ],
+            "title": "Kind",
+            "description": "通知语义。"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Message",
+            "description": "固定中文状态文案。"
+          },
+          "goal_statement": {
+            "type": "string",
+            "title": "Goal Statement",
+            "description": "相关目标原话；无则空。",
+            "default": ""
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "事件发生时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "message",
+          "created_at"
+        ],
+        "title": "StudyGoalNoticeProjection",
+        "description": "会话目标通知：恢复/切换/冲突/待确认由权威事件派生。"
+      },
       "StudyGoalProjection": {
         "properties": {
           "goal_id": {
@@ -58309,6 +58435,62 @@
         ],
         "title": "StudyGoalProjection",
         "description": "账户级长期学习目标；身份独立于会话，会话通过引用关联。"
+      },
+      "StudyGoalSummaryProjection": {
+        "properties": {
+          "goal_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Goal Id",
+            "description": "稳定目标标识。"
+          },
+          "statement": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Statement",
+            "description": "用户目标原话。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "completed"
+            ],
+            "title": "Status",
+            "description": "目标活动状态。"
+          },
+          "current_node_title": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Current Node Title",
+            "description": "当前路线节点的名称；未形成路线时为空。",
+            "default": ""
+          },
+          "route_version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Route Version",
+            "description": "当前路线版本；未形成时为 0。",
+            "default": 0
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "goal_id",
+          "statement",
+          "status",
+          "updated_at"
+        ],
+        "title": "StudyGoalSummaryProjection",
+        "description": "账户内本人目标的选择/续学条目；不含他人目标与无权来源。"
       },
       "StudyGradeRecord": {
         "properties": {
