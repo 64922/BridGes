@@ -56,6 +56,7 @@ from bridges.contracts.feedback import (
 )
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.retrieval import CitationDetailProjection
+from bridges.contracts.study_diagnosis import StudyDiagnosisTaskProjection
 from bridges.contracts.teaching_progress import (
     LearningProgressProjection,
     PlanAdjustment,
@@ -68,6 +69,7 @@ from bridges.retirement import (
     record_compatibility_observation,
 )
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
+from bridges.study.diagnosis import StudyDiagnosisError, StudyDiagnosisService
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -113,6 +115,26 @@ def _get_chat_service(request: Request) -> ChatService:
 
 
 ChatServiceDep = Annotated[ChatService, Depends(_get_chat_service)]
+
+
+def _get_diagnosis_service(request: Request) -> StudyDiagnosisService:
+    service: StudyDiagnosisService | None = getattr(
+        request.app.state, "study_diagnosis_service", None
+    )
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ChatError(
+                error="diagnosis_unavailable",
+                message="学习诊断未启用，当前实例拒绝诊断操作。",
+            ).model_dump(),
+        )
+    return service
+
+
+DiagnosisServiceDep = Annotated[
+    StudyDiagnosisService, Depends(_get_diagnosis_service)
+]
 
 
 def _get_attachment_service(request: Request) -> ChatAttachmentService:
@@ -1216,6 +1238,37 @@ def stop_message(
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
     return ChatStopResponse(message=message)
+
+
+@router.post(
+    "/conversations/{conversation_id}/study/diagnosis/{task_id}/retry",
+    response_model=StudyDiagnosisTaskProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def retry_study_diagnosis(
+    conversation_id: str,
+    task_id: str,
+    diagnosis: DiagnosisServiceDep,
+    subject: SubjectDep,
+) -> StudyDiagnosisTaskProjection:
+    """手动重试失败的诊断任务；同一任务与幂等单元，不重复记账。
+
+    仅失败状态可重试；成功后任务回到待处理，由后台执行器按租约领取。
+    """
+    try:
+        return diagnosis.retry_task(
+            subject.account_id, task_id, conversation_id=conversation_id
+        )
+    except StudyDiagnosisError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=ChatError(error=exc.code, message=exc.message).model_dump(),
+        ) from exc
 
 
 @router.post(

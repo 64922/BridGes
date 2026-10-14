@@ -19,6 +19,56 @@ const JUDGEMENT_LABEL: Record<string, string> = {
   incorrect: "错误",
 };
 
+// Issue 04：用户学习控制的自然语言状态；未验证如实标注，不当作错答或掌握。
+const SUMMARY_TRIGGER_LABEL: Record<string, string> = {
+  explicit_request: "按你的要求生成",
+  natural_completion: "完成后自然生成",
+  pause: "暂停时生成",
+};
+
+function StudyControlStatus({
+  studyLastControl,
+  studyPause,
+  studySummary,
+}: {
+  studyLastControl?: ChatConversationProjection["study_last_control"];
+  studyPause?: ChatConversationProjection["study_pause"];
+  studySummary?: ChatConversationProjection["study_summary"];
+}) {
+  const skipLabel = studyLastControl?.kind === "full_explanation" ? "直接讲解"
+    : studyLastControl?.kind === "skip" ? "跳过" : null;
+  return (
+    <>
+      {studyPause && (
+        <p role="status" aria-label="暂停状态">
+          已暂停在「{studyPause.position || studyPause.topic}」，进展已保存；
+          发送「继续」即可接着学。
+          {studyPause.pending_question && `（保留问题「${studyPause.pending_question}」保持未验证）`}
+        </p>
+      )}
+      {skipLabel && studyLastControl?.question && (
+        <p role="status" aria-label="跳过状态">
+          已{skipLabel}：「{studyLastControl.question}」保持未验证
+          {studyLastControl.released ? "，可以继续下一步" : ""}。
+        </p>
+      )}
+      {studySummary && (
+        <details>
+          <summary>
+            阶段小结（{SUMMARY_TRIGGER_LABEL[studySummary.trigger] ?? studySummary.trigger}，
+            {studySummary.status === "complete"
+              ? "已随回复完整交付"
+              : "回复未完整包含原文，可重试该消息补全"}）
+          </summary>
+          <div className={styles.studySummaryNote} style={{ whiteSpace: "pre-wrap" }}>
+            {studySummary.content}
+          </div>
+        </details>
+      )}
+    </>
+  );
+}
+
 // 四段兜底文案与消息内总结一致：空段只陈述实际判定，不额外宣称掌握；
 // 未作答/尚未判定单独成段，不与答对或漏洞混排（工单 36）。
 const SUMMARY_SECTIONS = [
@@ -62,19 +112,136 @@ function evidenceLabels(
   return labels;
 }
 
-export function StudyProgress({ study: state, studyLocalProgress, studyGoal, studyPendingCheck, historyStatus, busy = false, onAction }: {
+// Issue 05：后台核验状态与学习档案文案。诊断结论是证据语义（完成方式、
+// 具体误解与不确定性），不渲染百分比、人格或整体能力标签；一次完成不
+// 代表长期掌握，来源失效如实标注而不冒充结论。
+const DIAGNOSIS_STATUS_LABEL: Record<string, string> = {
+  pending: "待后台核验",
+  running: "后台核验中",
+  failed: "核验失败",
+  invalidated: "来源已失效，未形成诊断",
+};
+
+const DIAGNOSIS_VERDICT_LABEL: Record<string, string> = {
+  independent_completion: "独立完成",
+  hinted_completion: "提示后完成",
+  misconception: "存在具体误解",
+  unverified: "尚未验证",
+  undetermined: "当前无法判断",
+};
+
+const ANSWER_ASSISTANCE_LABEL: Record<string, string> = {
+  independent: "作答前无提示",
+  after_hint: "提示后作答",
+  none: "无提示",
+};
+
+function StudyDiagnosisPanel({ tasks, records, busy, onRetry }: {
+  tasks: NonNullable<ChatConversationProjection["study_diagnosis_tasks"]>;
+  records: NonNullable<ChatConversationProjection["study_learning_record"]>;
+  busy: boolean;
+  onRetry?: (taskId: string) => Promise<void>;
+}) {
+  const [retrying, setRetrying] = useState<string | null>(null);
+  if (tasks.length === 0 && records.length === 0) return null;
+  return (
+    <div className={styles.studySummary} aria-label="学习档案">
+      <p className={styles.studySummaryNote}>
+        后台独立核验只针对当时的实际作答；一次完成不代表长期掌握，结论会随新证据更新。
+      </p>
+      {tasks.length > 0 && (
+        <div className={styles.studySummarySection}>
+          <h3>核验状态</h3>
+          <ul>
+            {tasks.map((task) => (
+              <li key={task.task_id}>
+                {task.question ? `「${task.question}」：` : ""}
+                {DIAGNOSIS_STATUS_LABEL[task.status] ?? task.status}
+                {task.failure_reason && ` · ${task.failure_reason}`}
+                {task.status === "failed" && task.retryable && onRetry && (
+                  <Button variant="secondary" size="sm"
+                    disabled={busy || retrying === task.task_id}
+                    onClick={async () => {
+                      setRetrying(task.task_id);
+                      try { await onRetry(task.task_id); } finally { setRetrying(null); }
+                    }}>
+                    重试核验
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {records.length > 0 && (
+        <div className={styles.studySummarySection}>
+          <h3>已核验的知识点</h3>
+          <ul>
+            {records.map((record) => (
+              <li key={record.record_id}>
+                <strong>{record.title}</strong>
+                {record.subject && `（${record.subject}`
+                  + `${record.usage_context ? ` · ${record.usage_context}` : ""}）`}
+                ：{DIAGNOSIS_VERDICT_LABEL[record.verdict] ?? record.verdict}
+                {record.pending_confirmation && "，证据方向冲突，待进一步验证"}
+                {record.performance && <span> · 表现：{record.performance}</span>}
+                <details>
+                  <summary>依据与证据（{record.evidence_count} 条）</summary>
+                  {((record.supporting ?? []).length > 0
+                    || (record.refuting ?? []).length > 0
+                    || record.uncertainty) && (
+                    <ul>
+                      {(record.supporting ?? []).map((item, index) => (
+                        <li key={`supporting-${index}`}>支持：{item}</li>
+                      ))}
+                      {(record.refuting ?? []).map((item, index) => (
+                        <li key={`refuting-${index}`}>抵触：{item}</li>
+                      ))}
+                      {record.uncertainty && <li>不确定性：{record.uncertainty}</li>}
+                    </ul>
+                  )}
+                  <ol>
+                    {(record.evidences ?? []).map((evidence) => (
+                      <li key={evidence.evidence_id}>
+                        「{evidence.question}」
+                        {ANSWER_ASSISTANCE_LABEL[evidence.assistance]
+                          && `（${ANSWER_ASSISTANCE_LABEL[evidence.assistance]}）`}
+                        {evidence.verdict
+                          && ` · 核验：${DIAGNOSIS_VERDICT_LABEL[evidence.verdict]
+                            ?? evidence.verdict}`}
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function StudyProgress({ study: state, studyLocalProgress, studyGoal, studyPendingCheck, studyLastControl, studyPause, studySummary, studyDiagnosisTasks, studyLearningRecord, historyStatus, busy = false, onAction, onRetryDiagnosis }: {
   study?: ChatConversationProjection["study"];
   studyLocalProgress?: ChatConversationProjection["study_local_progress"];
   studyGoal?: ChatConversationProjection["study_goal"];
   studyPendingCheck?: ChatConversationProjection["study_pending_check"];
+  studyLastControl?: ChatConversationProjection["study_last_control"];
+  studyPause?: ChatConversationProjection["study_pause"];
+  studySummary?: ChatConversationProjection["study_summary"];
   historyStatus?: ChatConversationProjection["study_history_status"];
+  studyDiagnosisTasks?: ChatConversationProjection["study_diagnosis_tasks"];
+  studyLearningRecord?: ChatConversationProjection["study_learning_record"];
   busy?: boolean;
   onAction?: (text: string) => Promise<boolean>;
+  onRetryDiagnosis?: (taskId: string) => Promise<void>;
 }) {
   const [sending, setSending] = useState(false);
   if (studyGoal) {
     // Issue 07：顶部固定显示长期目标与当前知识点，路线按需展开；
     // 只呈现已提交的真实状态——无路线不虚报，跳节点不标掌握。
+    // Issue 04：控制/暂停/小结状态在同一区域如实呈现。
     const route = studyGoal.route;
     const nodes = route?.nodes ?? [];
     const currentNode = nodes.find((node) => node.node_id === route?.current_node_id);
@@ -99,6 +266,11 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
               && "（本题依据的资料已不可用或已更新，将按未验证处理，不按旧依据判定）"}
           </p>
         )}
+        <StudyControlStatus
+          studyLastControl={studyLastControl}
+          studyPause={studyPause}
+          studySummary={studySummary}
+        />
         {route && nodes.length > 0 && (
           <details>
             <summary>
@@ -132,6 +304,12 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
             </p>
           </details>
         )}
+        <StudyDiagnosisPanel
+          tasks={studyDiagnosisTasks ?? []}
+          records={studyLearningRecord ?? []}
+          busy={busy}
+          onRetry={onRetryDiagnosis}
+        />
       </section>
     );
   }
@@ -150,6 +328,17 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
               && "（本题依据的资料已不可用或已更新，将按未验证处理，不按旧依据判定）"}
           </p>
         )}
+        <StudyControlStatus
+          studyLastControl={studyLastControl}
+          studyPause={studyPause}
+          studySummary={studySummary}
+        />
+        <StudyDiagnosisPanel
+          tasks={studyDiagnosisTasks ?? []}
+          records={studyLearningRecord ?? []}
+          busy={busy}
+          onRetry={onRetryDiagnosis}
+        />
       </section>
     );
   }

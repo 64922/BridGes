@@ -371,6 +371,22 @@ export async function stopChatMessage(
 }
 
 /**
+ * Issue 05：针对失败的后台诊断任务手动重试（同一任务、同一幂等单元）。
+ * 返回更新后的任务投影；队列再次领取后由轮询刷新核验状态与档案。
+ */
+export async function retryStudyDiagnosis(
+  conversationId: string,
+  taskId: string
+): Promise<NonNullable<ChatConversationProjection["study_diagnosis_tasks"]>[number]> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/study/diagnosis/${encodeURIComponent(taskId)}/retry`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
  * 单条引用的证据详情（Issue 20）：点击引用时实时校验授权并给出
  * 打开原文入口；原文已删除或权限变化时返回安全中文状态。
  */

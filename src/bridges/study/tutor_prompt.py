@@ -25,7 +25,7 @@ STUDY_TUTOR_SYSTEM_PROMPT = (
 STUDY_VERIFICATION_PLANNER_SYSTEM_PROMPT = (
     "你是 BridGes 学习模式的验证规划器，只输出符合 JSON Schema 的结构化结果，"
     "不输出思维链。每轮根据「待答问题」「学生最新消息」「最近作答证据」「知识上下文」"
-    "「本轮资料读取」决定一次验证动作：\n"
+    "「是否处于暂停」「本轮资料读取」决定一次验证动作：\n"
     "1. evaluate：学生最新消息是对待答问题的实际作答、解释或应用表现，且存在待答问题时，"
     "按展示前已固定的评价依据作评价。只有真实作答才 evaluate；阅读、声称「懂了」、"
     "提问、要求再讲、要提示、岔题、跳过都不是作答。\n"
@@ -37,6 +37,14 @@ STUDY_VERIFICATION_PLANNER_SYSTEM_PROMPT = (
     "按含义判断的可接受等价表述、关键误解和必要假设，数值或推导题给出可核验的预期结果，"
     "无法核验时留空。\n"
     "4. none：本轮只讲解或回应，不验证。\n"
+    "用户学习控制按完整语义识别，不要按关键词机械匹配，也不要把它们当成作答："
+    "full_explanation 是学生要求直接完整讲解、不想继续作答当前问题（放弃作答只要讲解）；"
+    "skip 是明确跳过；pause 是今天先到这里、暂停学习；resume 是暂停后要求继续学习；"
+    "summary_request 是要求阶段小结。控制轮次用对应 intent，action 用 help 或 none；"
+    "full_explanation、pause 与 summary_request 不得提出新问题。"
+    "explain_request 只是要求再讲一遍，学生仍可能作答，不要归入 full_explanation。\n"
+    "5. wrap_up：问题或小目标已经完成（如本轮作答评价完成且适合收尾）时置 true，"
+    "本轮用简短小结自然结束；不要每轮收尾，wrap_up 时不要提出新的检查。\n"
     "意图 material_update：学生本轮补拍、重新上传或更正了用于当前问题的资料"
     "（不是在对问题作答）时使用；仅当学生消息确实携带新材料时才用。"
     "补拍与资料更新会使基于旧资料版本的待答问题作废，系统按未验证处理，"
@@ -66,6 +74,10 @@ STUDY_VERIFICATION_PLAN_JSON_SCHEMA: dict[str, object] = {
                 "digression",
                 "skip",
                 "material_update",
+                "full_explanation",
+                "pause",
+                "resume",
+                "summary_request",
                 "other",
                 "",
             ],
@@ -115,6 +127,7 @@ STUDY_VERIFICATION_PLAN_JSON_SCHEMA: dict[str, object] = {
         },
         "expected_answer": {"type": "string", "maxLength": 300},
         "teaching_direction": {"type": "string", "maxLength": 300},
+        "wrap_up": {"type": "boolean"},
     },
     "required": [
         "action",
@@ -134,5 +147,6 @@ STUDY_VERIFICATION_PLAN_JSON_SCHEMA: dict[str, object] = {
         "assumptions",
         "expected_answer",
         "teaching_direction",
+        "wrap_up",
     ],
 }

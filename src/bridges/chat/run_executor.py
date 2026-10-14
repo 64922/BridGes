@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from bridges.chat.service import ChatService
     from bridges.chat.summary import ChatSummaryService
     from bridges.profiles.automatic import AutomaticProfileService
+    from bridges.study.diagnosis import StudyDiagnosisService
 
 #: 领取循环默认轮询间隔（秒）——停止请求在 ≤2 秒内可见。
 DEFAULT_POLL_INTERVAL_SECONDS = 0.5
@@ -93,6 +94,7 @@ class GenerationRunExecutor:
         max_attempts: int = MAX_EXECUTION_ATTEMPTS,
         profile_extraction_service: AutomaticProfileService | None = None,
         summary_service: ChatSummaryService | None = None,
+        diagnosis_service: StudyDiagnosisService | None = None,
     ) -> None:
         self._service = service
         self._repo = service._repo  # noqa: SLF001 - 执行器是服务编排的组成部分
@@ -107,6 +109,9 @@ class GenerationRunExecutor:
         #: 改进工单 13：回答完成后的有界摘要后台准备（与画像提取同一执行器
         #: 的独立循环；失败只留缺口，不影响生成运行）。
         self._summary_service = summary_service
+        #: Issue 05：作答后的独立诊断（与画像提取同一 tick 的顺风车；
+        #: 模型调用在回复事务之外，失败按队列有界重试）。
+        self._diagnosis = diagnosis_service
         #: 生成终态 module（Issue 01/02）：执行器只提供标识与兜底结果，
         #: 跨对象提交顺序、判重与重放都在 module 内部。实例由服务持有，
         #: 图边界提前终止、排队期停止与停止接口兜底共用同一实例。
@@ -164,24 +169,37 @@ class GenerationRunExecutor:
                 self._last_summary = f"generation: 收尸 {reaped} 个失联运行。"
             else:
                 self._last_summary = "generation: 无待处理运行。"
-            if self._profile_extraction is not None:
-                try:
-                    profile_summary = self._profile_extraction.run_retry_tick()
-                except Exception as exc:  # noqa: BLE001 - 后台重试不应终止生成 worker
-                    profile_summary = f"profile-extraction: 本轮处理出错：{exc}"
-                self._last_summary = f"{self._last_summary}；{profile_summary}"
+            background = self._background_tick_summary()
+            if background:
+                self._last_summary = f"{self._last_summary}；{background}"
             return self._last_summary
         try:
             self._execute(claim)
         except Exception as exc:  # noqa: BLE001 - 单轮失败记录但不退出循环
             self._last_summary = f"generation: 本轮运行处理出错：{exc}"
+        background = self._background_tick_summary()
+        if background:
+            self._last_summary = f"{self._last_summary}；{background}"
+        return self._last_summary
+
+    def _background_tick_summary(self) -> str:
+        """生成 tick 的顺风车后台任务：画像提取重试与学习诊断。
+
+        两类任务都持有自己的业务状态与队列行；单个失败只记录不终止
+        生成执行器，下一 tick 按各自租约/退避继续。
+        """
+        parts: list[str] = []
         if self._profile_extraction is not None:
             try:
-                profile_summary = self._profile_extraction.run_retry_tick()
+                parts.append(self._profile_extraction.run_retry_tick())
             except Exception as exc:  # noqa: BLE001 - 后台重试不应终止生成 worker
-                profile_summary = f"profile-extraction: 本轮处理出错：{exc}"
-            self._last_summary = f"{self._last_summary}；{profile_summary}"
-        return self._last_summary
+                parts.append(f"profile-extraction: 本轮处理出错：{exc}")
+        if self._diagnosis is not None:
+            try:
+                parts.append(self._diagnosis.run_tick())
+            except Exception as exc:  # noqa: BLE001 - 诊断失败不应终止生成 worker
+                parts.append(f"study-diagnosis: 本轮处理出错：{exc}")
+        return "；".join(parts)
 
     def run_loop(
         self,
