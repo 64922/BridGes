@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 73
+SCHEMA_VERSION = 75
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3311,12 +3311,191 @@ MIGRATIONS: dict[int, list[str]] = {
         )
         """,
     ],
+    # Issue 04：用户学习控制、暂停与阶段小结。控制记录与来源消息/进展
+    # 版本绑定（同轮重试唯一不重复）；暂停保留可恢复位置与暂停时的问题
+    # 处置；小结保存规范原文、依据引用与生成时进展，后续学习不覆盖历史。
+    # 全部随会话级联删除，无旧数据回填。
+    73: [
+        """
+        CREATE TABLE study_session_controls (
+            control_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            source_message_id TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN
+                ('full_explanation', 'skip', 'pause', 'resume', 'summary_request')),
+            bound_check_id TEXT NOT NULL DEFAULT '',
+            bound_check_version INTEGER NOT NULL DEFAULT 0,
+            bound_question TEXT NOT NULL DEFAULT '',
+            released INTEGER NOT NULL CHECK (released IN (0, 1)),
+            progress_version INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE,
+            UNIQUE (account_id, source_message_id, kind)
+        )
+        """,
+        """
+        CREATE TABLE study_session_pauses (
+            pause_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            source_message_id TEXT NOT NULL,
+            topic TEXT NOT NULL DEFAULT '',
+            position TEXT NOT NULL DEFAULT '',
+            pending_check_id TEXT NOT NULL DEFAULT '',
+            pending_question TEXT NOT NULL DEFAULT '',
+            progress_version INTEGER NOT NULL DEFAULT 0,
+            paused_at TEXT NOT NULL,
+            resumed_at TEXT,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE,
+            UNIQUE (account_id, source_message_id)
+        )
+        """,
+        """
+        CREATE TABLE study_session_summaries (
+            summary_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            source_message_id TEXT NOT NULL,
+            assistant_message_id TEXT NOT NULL DEFAULT '',
+            trigger TEXT NOT NULL CHECK (trigger IN
+                ('explicit_request', 'natural_completion', 'pause')),
+            status TEXT NOT NULL CHECK (status IN ('complete', 'partial')),
+            content TEXT NOT NULL,
+            basis_json TEXT NOT NULL DEFAULT '{}',
+            progress_version INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE,
+            UNIQUE (account_id, source_message_id)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_study_session_summaries_conversation
+            ON study_session_summaries (account_id, conversation_id, created_at)
+        """,
+    ],
+    # Issue 05：后台独立诊断与账户级学习档案。任务行持有业务状态
+    # （待处理/运行中/成功/失败/失效）；结果行按任务版本追加；档案行按
+    # 知识点身份（学科+标题+用途上下文）唯一，证据按发生顺序归并。
+    # 队列领取状态只存系统级 task_claims，不算正式学情。无旧数据回填。
+    74: [
+        """
+        CREATE TABLE study_diagnosis_tasks (
+            task_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            evidence_id TEXT NOT NULL,
+            answer_message_id TEXT NOT NULL DEFAULT '',
+            question TEXT NOT NULL DEFAULT '',
+            knowledge_context TEXT NOT NULL DEFAULT '',
+            input_version TEXT NOT NULL,
+            protocol_version TEXT NOT NULL,
+            basis_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL CHECK (status IN
+                ('pending', 'running', 'succeeded', 'failed', 'invalidated')),
+            attempt INTEGER NOT NULL DEFAULT 0 CHECK (attempt >= 0),
+            generation INTEGER NOT NULL DEFAULT 0 CHECK (generation >= 0),
+            failure_reason TEXT NOT NULL DEFAULT '',
+            result_id TEXT,
+            result_version INTEGER NOT NULL DEFAULT 0
+                CHECK (result_version >= 0),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_study_diagnosis_tasks_conversation
+            ON study_diagnosis_tasks (account_id, conversation_id, created_at)
+        """,
+        """
+        CREATE TABLE study_diagnosis_results (
+            result_id TEXT NOT NULL PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            evidence_id TEXT NOT NULL,
+            record_id TEXT NOT NULL,
+            protocol_version TEXT NOT NULL,
+            input_version TEXT NOT NULL,
+            result_version INTEGER NOT NULL CHECK (result_version >= 1),
+            verdict TEXT NOT NULL CHECK (verdict IN
+                ('independent_completion', 'hinted_completion', 'misconception',
+                 'unverified', 'undetermined')),
+            subject TEXT NOT NULL DEFAULT '',
+            knowledge_title TEXT NOT NULL DEFAULT '',
+            usage_context TEXT NOT NULL DEFAULT '',
+            performance TEXT NOT NULL DEFAULT '',
+            supporting_json TEXT NOT NULL DEFAULT '[]',
+            refuting_json TEXT NOT NULL DEFAULT '[]',
+            uncertainty TEXT NOT NULL DEFAULT '',
+            next_validation TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            UNIQUE (task_id, result_version),
+            FOREIGN KEY (task_id) REFERENCES study_diagnosis_tasks(task_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_study_diagnosis_results_conversation
+            ON study_diagnosis_results (account_id, conversation_id)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_study_diagnosis_results_evidence
+            ON study_diagnosis_results (account_id, evidence_id)
+        """,
+        """
+        CREATE TABLE study_learning_records (
+            record_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            knowledge_key TEXT NOT NULL,
+            subject TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            usage_context TEXT NOT NULL DEFAULT '',
+            verdict TEXT NOT NULL CHECK (verdict IN
+                ('independent_completion', 'hinted_completion', 'misconception',
+                 'unverified', 'undetermined')),
+            performance TEXT NOT NULL DEFAULT '',
+            supporting_json TEXT NOT NULL DEFAULT '[]',
+            refuting_json TEXT NOT NULL DEFAULT '[]',
+            uncertainty TEXT NOT NULL DEFAULT '',
+            next_validation TEXT NOT NULL DEFAULT '',
+            pending_confirmation INTEGER NOT NULL DEFAULT 0
+                CHECK (pending_confirmation IN (0, 1)),
+            latest_evidence_id TEXT NOT NULL,
+            latest_result_id TEXT NOT NULL,
+            latest_evidence_at TEXT NOT NULL,
+            evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+            record_version INTEGER NOT NULL DEFAULT 1 CHECK (record_version >= 1),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id, knowledge_key),
+            FOREIGN KEY (account_id) REFERENCES accounts(account_id)
+                ON DELETE CASCADE
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_study_learning_records_updated
+            ON study_learning_records (account_id, updated_at)
+        """,
+    ],
     # Issue 11：按需公开查证的产物记录。只在具体需要（论文、时效、精确
     # 外部数据、争议结论或明确核实要求）时写入；冻结目的、脱敏查询概述、
     # 实际来源及读取范围（全文/结构化/仅摘要）、采用关系、结果状态与
     # 版本。记录只追加不重写——来源失效只停止后续采用，历史引用保持
     # 原读取含义；未取得来源的限制/失败轮次如实保留缺口。
-    73: [
+    75: [
         """
         CREATE TABLE study_source_verifications (
             verification_id TEXT NOT NULL PRIMARY KEY,
@@ -3361,14 +3540,24 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     # 迁移半执行时须在启动阶段失败关闭，而不是让学习对话持续报错。
     "study_pending_checks",
     "study_evidence",
-    # Issue 11：学习消息投影会按助手消息读取公开查证记录，迁移半执行时
-    # 须在启动阶段失败关闭，而不是让学习对话投影静默缺查证来源。
+    # Issue 11：学习导师终态事务会写入按需公开查证记录，迁移半执行时
+    # 须在启动阶段失败关闭，而不是让成功轮次在提交时静默降级。
     "study_source_verifications",
     # Issue 07：学习目标与路线投影随对话详情无条件读取，迁移半执行时须在
     # 启动阶段失败关闭，而不是让学习详情静默缺目标。
     "study_goals",
     "study_goal_routes",
     "study_conversation_goals",
+    # Issue 04：学习控制、暂停与阶段小结随对话详情无条件读取，迁移半执行
+    # 时须在启动阶段失败关闭，而不是让学习详情静默缺状态。
+    "study_session_controls",
+    "study_session_pauses",
+    "study_session_summaries",
+    # Issue 05：学习详情无条件读取诊断任务与档案，后台执行器也按批次
+    # 查询任务表；迁移半执行时须在启动阶段失败关闭。
+    "study_diagnosis_tasks",
+    "study_diagnosis_results",
+    "study_learning_records",
     "learning_project_migration_conversations",
     "schema_meta",
     # 工单 01：画像页面与启动装配会无条件查询这三张表。历史上它们因迁移编号
@@ -3414,6 +3603,11 @@ REQUIRED_INDEXES: frozenset[str] = frozenset({
     "idx_profile_item_feedback_item",
     "idx_study_evidence_conversation",
     "idx_study_source_verifications_conversation",
+    "idx_study_session_summaries_conversation",
+    "idx_study_diagnosis_tasks_conversation",
+    "idx_study_diagnosis_results_conversation",
+    "idx_study_diagnosis_results_evidence",
+    "idx_study_learning_records_updated",
 })
 
 #: 需要在「存在性」之上再核对必需列的核心对象。
@@ -3478,6 +3672,49 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "contract_version",
         "created_at",
     }),
+    "study_session_controls": frozenset({
+        "control_id",
+        "account_id",
+        "conversation_id",
+        "run_id",
+        "source_message_id",
+        "kind",
+        "bound_check_id",
+        "bound_check_version",
+        "bound_question",
+        "released",
+        "progress_version",
+        "created_at",
+    }),
+    "study_session_pauses": frozenset({
+        "pause_id",
+        "account_id",
+        "conversation_id",
+        "run_id",
+        "source_message_id",
+        "topic",
+        "position",
+        "pending_check_id",
+        "pending_question",
+        "progress_version",
+        "paused_at",
+        "resumed_at",
+    }),
+    "study_session_summaries": frozenset({
+        "summary_id",
+        "account_id",
+        "conversation_id",
+        "run_id",
+        "source_message_id",
+        "assistant_message_id",
+        "trigger",
+        "status",
+        "content",
+        "basis_json",
+        "progress_version",
+        "created_at",
+        "updated_at",
+    }),
     "study_pending_checks": frozenset({
         "account_id",
         "conversation_id",
@@ -3517,6 +3754,70 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "answer_message_id",
         "feedback_message_id",
         "created_at",
+    }),
+    "study_diagnosis_tasks": frozenset({
+        "task_id",
+        "account_id",
+        "conversation_id",
+        "evidence_id",
+        "answer_message_id",
+        "question",
+        "knowledge_context",
+        "input_version",
+        "protocol_version",
+        "basis_json",
+        "status",
+        "attempt",
+        "generation",
+        "failure_reason",
+        "result_id",
+        "result_version",
+        "created_at",
+        "updated_at",
+        "completed_at",
+    }),
+    "study_diagnosis_results": frozenset({
+        "result_id",
+        "task_id",
+        "account_id",
+        "conversation_id",
+        "evidence_id",
+        "record_id",
+        "protocol_version",
+        "input_version",
+        "result_version",
+        "verdict",
+        "subject",
+        "knowledge_title",
+        "usage_context",
+        "performance",
+        "supporting_json",
+        "refuting_json",
+        "uncertainty",
+        "next_validation",
+        "created_at",
+    }),
+    "study_learning_records": frozenset({
+        "record_id",
+        "account_id",
+        "knowledge_key",
+        "subject",
+        "title",
+        "usage_context",
+        "verdict",
+        "performance",
+        "supporting_json",
+        "refuting_json",
+        "uncertainty",
+        "next_validation",
+        "pending_confirmation",
+        "latest_evidence_id",
+        "latest_result_id",
+        "latest_evidence_at",
+        "evidence_ids_json",
+        "record_version",
+        "created_at",
+        "updated_at",
     }),
     "profile_items": frozenset({
         "profile_item_id",

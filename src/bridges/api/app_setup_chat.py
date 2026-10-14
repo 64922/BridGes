@@ -11,6 +11,7 @@ from bridges.chat import ChatService, ConversationRepository
 from bridges.chat.summary import ChatSummaryService, GatewaySummaryExtractor
 from bridges.commute.service import CommuteService
 from bridges.commute.sources import AmapRouteClient
+from bridges.study.diagnosis import StudyDiagnosisService
 from bridges.tasks.repository import TaskRepository
 from bridges.tasks.service import TaskService
 
@@ -60,6 +61,12 @@ def configure_chat_services(app: FastAPI) -> None:
     app.state.atomic_profile_service.set_revocation_listener(
         app.state.chat_summary_service
     )
+    # Issue 05：后台独立诊断与账户级学习档案。诊断任务由本票领域表持有
+    # 业务状态，共享队列只做领取/租约/重试；模型调用由生成执行器每轮
+    # 在回复事务之外驱动，不占用前台等待。缺凭据时网关拒绝并如实失败。
+    app.state.study_diagnosis_service = StudyDiagnosisService(
+        bridges_database, model_gateway
+    )
     app.state.chat_service = ChatService(
         repository=ConversationRepository(bridges_database),
         gateway=model_gateway,
@@ -88,6 +95,7 @@ def configure_chat_services(app: FastAPI) -> None:
         atomic_profile_service=getattr(app.state, "atomic_profile_service", None),
         task_service=app.state.task_service,
         summary_service=app.state.chat_summary_service,
+        study_diagnosis_service=app.state.study_diagnosis_service,
     )
     # Issue 02：持久化生成运行的后台执行器（ADR-0013）。API 进程内
     # 受监督线程按租约领取生成运行并执行——HTTP/SSE 只创建与订阅。

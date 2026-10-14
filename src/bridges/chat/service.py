@@ -64,6 +64,7 @@ from bridges.tieba.service import TiebaResearchService
 from bridges.web_search.service import WebSearchService
 
 if TYPE_CHECKING:
+    from bridges.study.diagnosis import StudyDiagnosisService
     from bridges.tasks.service import TaskService
 
 
@@ -112,6 +113,7 @@ class ChatService(
         github_projects_service: GithubProjectsService | None = None,
         task_service: TaskService | None = None,
         summary_service: ChatSummaryService | None = None,
+        study_diagnosis_service: StudyDiagnosisService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -167,6 +169,9 @@ class ChatService(
         self._profiles = profile_service
         #: Issue 15：默认自动抽取；启用后不再走旧的画像写入通知路径。
         self._automatic_profiles = automatic_profile_service
+        #: Issue 05：后台独立诊断与学习档案；未挂载时作答只写证据，
+        #: 不登记诊断任务（测试内存环境与旧装配路径保持可用）。
+        self._study_diagnosis = study_diagnosis_service
         self._four_dimension_profiles = four_dimension_profile_service
         #: V2 Issue 08：用户可见的无类别原子画像列表。
         self._atomic_profiles = atomic_profile_service

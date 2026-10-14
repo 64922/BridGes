@@ -37,9 +37,10 @@ _COLUMNS = (
 def test_study_source_verification_migration_export_delete_and_recovery(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
-    # Issue 11 引入 v73 结构；后续版本在其上追加时本测试放宽为 >= 73。
-    assert SCHEMA_VERSION == 73
-    assert 73 in MIGRATIONS
+    # Issue 11 引入 v75 结构（与 04/05 并行交付后重编号对齐）；后续版
+    # 本在其上追加时本测试放宽为 >= 75。
+    assert SCHEMA_VERSION == 75
+    assert 75 in MIGRATIONS
     assert "study_source_verifications" in REQUIRED_TABLES
     assert "idx_study_source_verifications_conversation" in REQUIRED_INDEXES
     monkeypatch.setenv("BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'bridges.db'}")

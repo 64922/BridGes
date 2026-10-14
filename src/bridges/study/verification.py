@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import secrets
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -27,6 +27,7 @@ from bridges.chat.repository import (
     GenerationRunRecord,
     MessageRecord,
 )
+from bridges.contracts.study_controls import StudySessionPauseProjection
 from bridges.contracts.study_source_verification import StudyVerificationSourceRef
 from bridges.contracts.study_verification import (
     VERIFICATION_CONTRACT_VERSION,
@@ -43,7 +44,16 @@ from bridges.contracts.study_verification import (
 )
 from bridges.storage.database import BridgesDatabase
 from bridges.study.demand_verification import snapshot_incomplete, snapshot_source_refs
+from bridges.study.diagnosis_repository import (
+    StudyDiagnosisCandidate,
+    evidence_input_version,
+)
 from bridges.study.local_progress import StudyLocalProgressRepository
+from bridges.study.session_summary import (
+    SummaryEvidenceItem,
+    build_summary_basis,
+    render_summary_content,
+)
 from bridges.study.tutor_prompt import (
     STUDY_VERIFICATION_PLAN_JSON_SCHEMA,
     STUDY_VERIFICATION_PLANNER_SYSTEM_PROMPT,
@@ -72,6 +82,33 @@ _OUTCOMES = frozenset(
 )
 _INTENTS = frozenset(item.value for item in StudyUserIntent)
 _KINDS = frozenset(item.value for item in StudyCheckKind)
+#: 明确跳过/直接讲解：解除绑定问题的等待并记录未验证（Issue 04）。
+_RELEASING_INTENTS = frozenset(
+    {StudyUserIntent.SKIP, StudyUserIntent.FULL_EXPLANATION}
+)
+_RELEASING_INTENT_VALUES = frozenset(item.value for item in _RELEASING_INTENTS)
+#: 控制意图：不是作答；其中三项不得在同一轮提出新问题。
+_CONTROL_INTENTS = frozenset(
+    {
+        StudyUserIntent.SKIP,
+        StudyUserIntent.FULL_EXPLANATION,
+        StudyUserIntent.PAUSE,
+        StudyUserIntent.RESUME,
+        StudyUserIntent.SUMMARY_REQUEST,
+    }
+)
+_NO_POSE_INTENTS = frozenset(
+    {
+        StudyUserIntent.FULL_EXPLANATION,
+        StudyUserIntent.PAUSE,
+        StudyUserIntent.SUMMARY_REQUEST,
+    }
+)
+#: 控制意图 → 小结触发来源（暂停与主动要求各自收尾）。
+_SUMMARY_TRIGGERS = {
+    StudyUserIntent.SUMMARY_REQUEST: "explicit_request",
+    StudyUserIntent.PAUSE: "pause",
+}
 
 
 @dataclass(frozen=True)
@@ -167,6 +204,7 @@ class _PlannerOutput(BaseModel):
     assumptions: list[str] = Field(default_factory=list)
     expected_answer: str = ""
     teaching_direction: str = ""
+    wrap_up: bool = False
 
 
 @dataclass(frozen=True)
@@ -177,6 +215,9 @@ class _NormalizedPlan:
     posed_check: StudyCheckDraft | None
     posed_check_id: str | None
     teaching_direction: str
+    wrap_up: bool = False
+    summary_block: str | None = None
+    summary_trigger: str | None = None
 
 
 class StudyVerificationRepository:
@@ -254,6 +295,21 @@ class StudyVerificationRepository:
         ).fetchall()
         return _evidence_records(rows)
 
+    def get_evidence(
+        self, account_id: str, evidence_id: str
+    ) -> StudyEvidenceRecord | None:
+        """按证据身份读取单条证据；供后台诊断独立核验。"""
+
+        row = self._database.scoped(account_id).execute(
+            "SELECT * FROM study_evidence"
+            " WHERE account_id = ? AND evidence_id = ?",
+            (account_id, evidence_id),
+        ).fetchone()
+        if row is None:
+            return None
+        records = _evidence_records([row])
+        return records[0] if records else None
+
     # ------------------------------------------------------------------
     # 终态提交（在消息 streaming→done 的同一事务内调用）
     # ------------------------------------------------------------------
@@ -267,18 +323,21 @@ class StudyVerificationRepository:
         content: str,
         *,
         now: datetime | None = None,
-    ) -> None:
+    ) -> StudyDiagnosisCandidate | None:
         """按规划快照提交本轮：评价证据、提示记录与新待答问题激活。
 
         快照来自运行配置（规划时写入，重试沿用）；缺少或损坏时不做
         任何验证写入，不伪造评价。停止/失败轮次不会进入本方法。
+
+        真正写入一条可诊断证据时返回诊断候选，供调用方在同一事务内
+        登记后台诊断任务；重复作答（防重复记账命中）与非作答返回 None。
         """
 
         latest = repository.get_generation_run(run.account_id, run.run_id)
         config = (latest.config if latest is not None else run.config) or {}
         snapshot = config.get("study_verification")
         if not isinstance(snapshot, dict):
-            return
+            return None
         # Issue 11：同一轮公开查证快照。查证未完成（空命中、不可达、
         # 冲突、仅摘要、用户限制或预算耗尽）时不再冻结依赖外部证据的
         # 标准答案与误解判定；实际采用的来源版本随评价依据一起冻结。
@@ -289,11 +348,16 @@ class StudyVerificationRepository:
         action = str(snapshot.get("action") or "")
         intent = str(snapshot.get("intent") or "")
         bound = snapshot.get("bound_check")
-        if intent == StudyUserIntent.SKIP.value and isinstance(bound, dict):
-            # 学生明确跳过或转向：解除等待，如实记录「未验证」允许继续。
+        candidate: StudyDiagnosisCandidate | None = None
+        # 明确跳过或要求直接完整讲解：解除绑定问题的等待，如实记录
+        # 「未验证」允许继续；旧控制重试只作用于其绑定的问题（Issue 04）。
+        if (
+            intent in _RELEASING_INTENT_VALUES
+            and isinstance(bound, dict)
+        ):
             self._release_skipped_check(run, user_message, bound, timestamp)
         if action == "evaluate" and isinstance(bound, dict):
-            self._write_answer_evidence(
+            candidate = self._write_answer_evidence(
                 run,
                 user_message,
                 assistant_message_id,
@@ -319,6 +383,7 @@ class StudyVerificationRepository:
                 source_refs=source_refs,
                 verification_incomplete=verification_incomplete,
             )
+        return candidate
 
     # ------------------------------------------------------------------
     # 内部写入
@@ -334,17 +399,17 @@ class StudyVerificationRepository:
         now: datetime,
         *,
         verification_incomplete: bool = False,
-    ) -> None:
+    ) -> StudyDiagnosisCandidate | None:
         evaluation = snapshot.get("evaluation")
         if not isinstance(evaluation, dict):
-            return
+            return None
         try:
             kind = StudyCheckKind(str(bound.get("kind") or ""))
             outcome = StudyEvidenceOutcome(str(evaluation.get("outcome") or ""))
         except ValueError:
-            return
+            return None
         if outcome == StudyEvidenceOutcome.NO_ANSWER:
-            return
+            return None
         if outcome == StudyEvidenceOutcome.MISCONCEPTION and verification_incomplete:
             # Issue 11：本轮公开查证未完成——学生是否确实答错外部事实
             # 无从核实，如实记录待确认，不把学生判成错。
@@ -366,7 +431,10 @@ class StudyVerificationRepository:
             assistance = StudyEvidenceAssistance.INDEPENDENT
         semantics = _semantics_for(kind, outcome, assistance)
         evidence = StudyEvidenceRecord(
-            evidence_id=secrets.token_urlsafe(16),
+            # Issue 04：证据标识在规划时冻结（小结依据引用同一标识），
+            # 重试沿用；缺失时为兼容旧快照现场生成。
+            evidence_id=str(snapshot.get("evidence_id") or "")
+            or secrets.token_urlsafe(16),
             account_id=run.account_id,
             conversation_id=run.conversation_id,
             run_id=run.run_id,
@@ -403,9 +471,33 @@ class StudyVerificationRepository:
             feedback_message_id=assistant_message_id,
             created_at=now,
         )
-        self._insert_evidence(evidence)
+        inserted = self._insert_evidence(evidence)
+        # 诊断候选携带展示前冻结的私有评价依据：取自已绑定待答问题的
+        # 冻结行（当前回合快照的 posed_check 属于下一题，不能混用）。
+        pending = self.get_pending(run.account_id, run.conversation_id)
+        frozen_basis = (
+            pending.basis.model_dump(mode="json")
+            if pending is not None and pending.check_id == evidence.check_id
+            else _basis_payload(snapshot)
+        )
         self._close_pending_if_current(
             run.account_id, run.conversation_id, evidence.check_id
+        )
+        if not inserted or evidence.semantics == StudyEvidenceSemantics.UNVERIFIED:
+            # 重复作答（防重复记账命中）或未验证语义：不重复登记诊断。
+            return None
+        return StudyDiagnosisCandidate(
+            account_id=evidence.account_id,
+            conversation_id=evidence.conversation_id,
+            evidence_id=evidence.evidence_id,
+            question=evidence.question,
+            knowledge_context=evidence.knowledge_context,
+            input_version=evidence_input_version(evidence),
+            basis=frozen_basis,
+            assistance=evidence.assistance.value,
+            answer_message_id=user_message.message_id,
+            check_kind=evidence.check_kind.value,
+            source_refs=list(evidence.source_refs),
         )
 
     def _basis_incomplete(self, run: GenerationRunRecord, check_id: str) -> bool:
@@ -480,14 +572,25 @@ class StudyVerificationRepository:
         if not question or not _question_displayed(question, content):
             # 未实际展示（失配、截断或改写）：不激活未展示的问题。
             return
+        # Issue 11：本轮查证未完成时不得冻结依赖外部证据的标准答案；
+        # 正式练习降级为开放探查（不判分、不设唯一答案）。
         expected_answer = _short_text(str(posed.get("expected_answer") or ""), 300)
         if verification_incomplete and kind == StudyCheckKind.FORMAL_CHECK:
-            # Issue 11：本轮查证未完成时不得冻结依赖外部证据的标准答案；
-            # 正式练习降级为开放探查（不判分、不设唯一答案）。
             kind = StudyCheckKind.OPEN_PROBE
             expected_answer = ""
+        posed_check_id = str(posed.get("check_id") or "")
         current = self.get_pending(run.account_id, run.conversation_id)
-        if current is not None and current.check_id != str(posed.get("check_id") or ""):
+        if current is not None and current.check_id == posed_check_id:
+            # Issue 04：该问题已经在展示轮激活且未被推进——重试重放不
+            # 升级版本、不重复记账。
+            return
+        if posed_check_id and self._check_has_evidence(
+            run.account_id, run.conversation_id, posed_check_id
+        ):
+            # 该问题已经被作答/跳过/替换过：旧重试不能复活它，也不影响
+            # 后来生成的新待答问题。
+            return
+        if current is not None and current.check_id != posed_check_id:
             self._write_unverified_evidence(run, current, now)
         version = self._next_version(run.account_id, run.conversation_id, current)
         basis = StudyEvaluationBasis(
@@ -559,8 +662,20 @@ class StudyVerificationRepository:
         *,
         extra_source_ids: list[str] | None = None,
     ) -> None:
-        """问题被替换或跳过且没有作答：如实记录「未验证」。"""
+        """问题被替换或跳过且没有作答：如实记录「未验证」。
 
+        Issue 04：同一问题最多一条未验证证据——重试重放、跳过与替换都
+        不会重复记账或在小结里出现两次。
+        """
+
+        existing = self._database.scoped(run.account_id).execute(
+            "SELECT 1 AS present FROM study_evidence"
+            " WHERE account_id = ? AND conversation_id = ? AND check_id = ?"
+            " LIMIT 1",
+            (run.account_id, run.conversation_id, check.check_id),
+        ).fetchone()
+        if existing is not None:
+            return
         evidence = StudyEvidenceRecord(
             evidence_id=secrets.token_urlsafe(16),
             account_id=run.account_id,
@@ -586,9 +701,11 @@ class StudyVerificationRepository:
         )
         self._insert_evidence(evidence)
 
-    def _insert_evidence(self, evidence: StudyEvidenceRecord) -> None:
+    def _insert_evidence(self, evidence: StudyEvidenceRecord) -> bool:
+        """写入证据；重复作答（同账户同回答消息）命中时不重复记账。"""
+
         payload = evidence.model_dump(mode="json")
-        self._database.scoped(evidence.account_id).execute(
+        cursor = self._database.scoped(evidence.account_id).execute(
             "INSERT INTO study_evidence"
             " (evidence_id, account_id, conversation_id, run_id, check_id,"
             " check_kind, check_version, question, knowledge_context,"
@@ -626,6 +743,7 @@ class StudyVerificationRepository:
                 payload["created_at"],
             ),
         )
+        return cursor.rowcount > 0
 
     def _close_pending_if_current(
         self, account_id: str, conversation_id: str, check_id: str
@@ -635,6 +753,19 @@ class StudyVerificationRepository:
             " WHERE account_id = ? AND conversation_id = ? AND check_id = ?",
             (account_id, conversation_id, check_id),
         )
+
+    def _check_has_evidence(
+        self, account_id: str, conversation_id: str, check_id: str
+    ) -> bool:
+        """该问题是否已经产生过证据（作答或未验证）：旧重试不复活它。"""
+
+        row = self._database.scoped(account_id).execute(
+            "SELECT 1 AS present FROM study_evidence"
+            " WHERE account_id = ? AND conversation_id = ? AND check_id = ?"
+            " LIMIT 1",
+            (account_id, conversation_id, check_id),
+        ).fetchone()
+        return row is not None
 
     def _next_version(
         self,
@@ -704,6 +835,7 @@ class StudyVerificationPlanner:
         pending = self._verification.get_pending(account_id, conversation_id)
         recent = self._verification.list_recent_evidence(account_id, conversation_id)
         stuck = _stuck_state(recent, pending)
+        pause = self._active_pause(account_id, conversation_id)
         request = self._planner_request(
             account_id,
             conversation_id,
@@ -712,6 +844,7 @@ class StudyVerificationPlanner:
             history,
             user_message,
             stuck,
+            pause,
         )
         output = self._invoke(request, run_context, gateway, model_override, model_quota, budget)
         if output is None:
@@ -727,6 +860,16 @@ class StudyVerificationPlanner:
             stuck,
             verification_incomplete=verification_incomplete,
         )
+        summary = None
+        if plan.summary_trigger is not None:
+            summary = self._build_summary(
+                account_id, conversation_id, plan, pending
+            )
+            if summary is None:
+                plan = _strip_summary(plan)
+            else:
+                # 规范小结原文随本轮导师回复交付（指令要求逐行原样包含）。
+                plan = replace(plan, summary_block=str(summary["content"]))
         snapshot = _build_snapshot(
             plan,
             pending,
@@ -734,6 +877,8 @@ class StudyVerificationPlanner:
             assistant_message_id,
             stuck,
             history,
+            pause=pause,
+            summary=summary,
         )
         self._persist_snapshot(account_id, run_context.run_id, snapshot)
         return _directive(
@@ -742,6 +887,94 @@ class StudyVerificationPlanner:
             has_hint=bool(pending.hint_history) if pending is not None else False,
             stuck=stuck,
         )
+
+    def _active_pause(
+        self, account_id: str, conversation_id: str
+    ) -> StudySessionPauseProjection | None:
+        from bridges.study.controls import StudyControlRepository
+
+        return StudyControlRepository(self._repository.database).active_pause(
+            account_id, conversation_id
+        )
+
+    def _build_summary(
+        self,
+        account_id: str,
+        conversation_id: str,
+        plan: _NormalizedPlan,
+        pending: StudyCheckRecord | None,
+    ) -> dict[str, Any] | None:
+        """规划时冻结小结依据与规范原文（终态事务按实际证据重建引用）。
+
+        小结只使用实际记录：既有证据 + 本轮规划的评价（其语义必然与终态
+        写入一致，因为两者都由同一冻结依据推导）；正式诊断尚未提供时
+        保持待确认。任何一步读不到依据都返回 None，本轮不做小结也不
+        伪造。
+        """
+
+        try:
+            evidence = self._verification.list_evidence(account_id, conversation_id)
+        except Exception:  # noqa: BLE001 - 辅助小结失败不阻断回答
+            return None
+        progress = self._local_progress.get(account_id, conversation_id)
+        items = [
+            SummaryEvidenceItem(
+                evidence_id=item.evidence_id,
+                question=item.question,
+                kind=item.check_kind.value,
+                semantics=item.semantics.value,
+            )
+            for item in evidence
+        ]
+        if plan.evaluation is not None and pending is not None:
+            assistance = (
+                StudyEvidenceAssistance.AFTER_HINT
+                if pending.hint_history
+                else StudyEvidenceAssistance.INDEPENDENT
+            )
+            items.append(
+                SummaryEvidenceItem(
+                    evidence_id="",
+                    question=pending.question,
+                    kind=pending.kind.value,
+                    semantics=_semantics_for(
+                        pending.kind, plan.evaluation.outcome, assistance
+                    ).value,
+                    source="current_turn",
+                )
+            )
+        pending_after = None
+        if (
+            pending is not None
+            and plan.evaluation is None
+            and plan.intent not in _RELEASING_INTENTS
+        ):
+            pending_after = {
+                "check_id": pending.check_id,
+                "question": pending.question,
+                "version": pending.version,
+            }
+        basis = build_summary_basis(
+            trigger=plan.summary_trigger or "",
+            items=items,
+            pending_after=pending_after,
+            progress=(
+                {
+                    "version": progress.version,
+                    "topic": progress.topic,
+                    "current_focus": progress.current_focus,
+                }
+                if progress is not None
+                else None
+            ),
+            generated_at=datetime.now(UTC).isoformat(),
+        )
+        return {
+            "summary_id": secrets.token_urlsafe(16),
+            "trigger": plan.summary_trigger,
+            "content": render_summary_content(basis),
+            "basis": basis,
+        }
 
     # ------------------------------------------------------------------
     # 模型调用
@@ -756,6 +989,7 @@ class StudyVerificationPlanner:
         history: list[dict[str, Any]],
         user_message: MessageRecord | None,
         stuck: bool,
+        pause: StudySessionPauseProjection | None,
     ) -> dict[str, Any]:
         progress = self._local_progress.get(account_id, conversation_id)
         knowledge_context = (
@@ -766,6 +1000,8 @@ class StudyVerificationPlanner:
         return {
             "protocol_version": VERIFICATION_CONTRACT_VERSION,
             "student_message": user_message.content if user_message else "",
+            "paused": pause is not None,
+            "pause_position": (pause.position or pause.topic) if pause is not None else "",
             "pending_check": (
                 {
                     "check_id": pending.check_id,
@@ -941,8 +1177,23 @@ def _normalize_plan(
         )
         if not allowed or posed.kind == StudyCheckKind.FORMAL_CHECK and stuck:
             posed = None
+        # Issue 04：直接讲解、暂停与要求小结不借本轮附加强制测验。
+        if intent in _NO_POSE_INTENTS:
+            posed = None
+    # Issue 04：自然收尾只在问题已完成（本轮评价）或当前没有待答问题时
+    # 成立；收尾轮不自动增加考试，同轮规划的新检查一律抑制。
+    wrap_up = (
+        bool(output.wrap_up)
+        and intent not in _CONTROL_INTENTS
+        and (evaluation is not None or pending is None)
+    )
+    if wrap_up:
+        posed = None
     if action == "pose_check" and posed is None:
         action = "none"
+    trigger = _SUMMARY_TRIGGERS.get(intent)
+    if trigger is None and wrap_up:
+        trigger = "natural_completion"
     return _NormalizedPlan(
         action=action,
         intent=intent,
@@ -950,6 +1201,24 @@ def _normalize_plan(
         posed_check=posed,
         posed_check_id=secrets.token_urlsafe(12) if posed is not None else None,
         teaching_direction=_short_text(output.teaching_direction, 300),
+        wrap_up=wrap_up,
+        summary_trigger=trigger,
+    )
+
+
+def _strip_summary(plan: _NormalizedPlan) -> _NormalizedPlan:
+    """小结依据构建失败：本轮不做小结，也不虚报已收尾。"""
+
+    return _NormalizedPlan(
+        action=plan.action,
+        intent=plan.intent,
+        evaluation=plan.evaluation,
+        posed_check=plan.posed_check,
+        posed_check_id=plan.posed_check_id,
+        teaching_direction=plan.teaching_direction,
+        wrap_up=False,
+        summary_block=None,
+        summary_trigger=None,
     )
 
 
@@ -960,6 +1229,9 @@ def _build_snapshot(
     assistant_message_id: str,
     stuck: bool,
     history: list[dict[str, Any]],
+    *,
+    pause: StudySessionPauseProjection | None = None,
+    summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     assistance: str | None = None
     if pending is not None and plan.evaluation is not None:
@@ -976,6 +1248,13 @@ def _build_snapshot(
         "stuck": stuck,
         "planned_at": datetime.now(UTC).isoformat(),
         "teaching_direction": plan.teaching_direction,
+        # Issue 04：作答证据标识在规划时冻结，重试沿用同一标识；小结依据
+        # 引用因此始终指向同一条真实证据。
+        "evidence_id": (
+            secrets.token_urlsafe(16) if plan.evaluation is not None else None
+        ),
+        "control": _control_snapshot(plan, pending, pause),
+        "summary": summary,
         "bound_check": (
             {
                 "check_id": pending.check_id,
@@ -1013,6 +1292,49 @@ def _build_snapshot(
     }
 
 
+def _control_snapshot(
+    plan: _NormalizedPlan,
+    pending: StudyCheckRecord | None,
+    pause: StudySessionPauseProjection | None,
+) -> dict[str, Any] | None:
+    """冻结本轮用户学习控制（Issue 04）：来源、作用问题与暂停绑定。"""
+
+    kind: str | None = None
+    if plan.intent == StudyUserIntent.FULL_EXPLANATION:
+        kind = "full_explanation"
+    elif plan.intent == StudyUserIntent.SKIP:
+        kind = "skip"
+    elif plan.intent == StudyUserIntent.PAUSE:
+        kind = "pause"
+    elif plan.intent == StudyUserIntent.RESUME:
+        kind = "resume"
+    elif plan.intent == StudyUserIntent.SUMMARY_REQUEST:
+        kind = "summary_request"
+    if kind is None:
+        return None
+    control: dict[str, Any] = {
+        "kind": kind,
+        "released": plan.intent in _RELEASING_INTENTS and pending is not None,
+        "bound_check": (
+            {
+                "check_id": pending.check_id,
+                "kind": pending.kind.value,
+                "question": pending.question,
+                "version": pending.version,
+            }
+            if pending is not None
+            else None
+        ),
+    }
+    if kind == "pause":
+        control["pause_id"] = secrets.token_urlsafe(16)
+    elif kind == "resume":
+        # 只恢复规划时确实在暂停中的那一条记录；旧控制重试不会解除
+        # 之后发生的新暂停。
+        control["pause_id"] = pause.pause_id if pause is not None else None
+    return control
+
+
 def _directive(
     plan: _NormalizedPlan,
     *,
@@ -1043,6 +1365,37 @@ def _directive(
             )
         else:
             parts.append("学生作答前没有提示：本次按独立作答反馈。")
+        if plan.wrap_up:
+            parts.append(
+                "本轮作答已评估完成，适合自然收尾：不要追加测验，"
+                "只陈述本次实际表现与仍待确认之处。"
+            )
+    elif plan.intent == StudyUserIntent.FULL_EXPLANATION:
+        parts.append(
+            "学生要求直接完整讲解、不想作答当前问题，这不是作答："
+            "给出完整、准确的说明，允许例子、推导或参考解法，"
+            "尊重学生对长度与方式的要求。"
+        )
+        if question:
+            parts.append(
+                f"当前问题「{question}」保持未验证：如实简要说明后按学生意愿继续，"
+                "不要判错、不要附加强制测验。"
+            )
+    elif plan.intent == StudyUserIntent.PAUSE:
+        parts.append(
+            "学生要求暂停学习：确认进展与可继续位置已经保存，"
+            "不提出新问题，不要求学生继续作答。"
+        )
+    elif plan.intent == StudyUserIntent.RESUME:
+        parts.append(
+            "学生要求继续学习：从暂停位置或当前内容自然接着进行；"
+            "未验证内容不阻塞继续，也不重新判定。"
+        )
+    elif plan.intent == StudyUserIntent.SUMMARY_REQUEST:
+        parts.append(
+            "学生要求阶段小结：只依据本轮提供的小结内容如实收尾，"
+            "不重新判定此前作答。"
+        )
     elif plan.action == "help":
         labels = {
             StudyUserIntent.HINT_REQUEST: (
@@ -1082,6 +1435,19 @@ def _directive(
             )
         elif plan.posed_check is None:
             parts.append("本轮不做验证，只讲解或回应。")
+    if plan.summary_block is not None:
+        parts.append("【本轮阶段小结（必须原样包含）】")
+        parts.append(
+            "必须在回复中原样包含以下小结全文（可以加一句自然的引导语；"
+            "逐行包含，不得改写、合并或省略）："
+        )
+        parts.append(plan.summary_block)
+        parts.append(
+            "不要追加新的测验或要求作答的问题；不要输出掌握百分比、正确率"
+            "或长期能力判断；不要重新判定此前作答。"
+        )
+    elif plan.wrap_up:
+        parts.append("本轮适合自然收尾：用简明小结结束本轮，不要再提出新的问题。")
     if plan.posed_check is not None:
         parts.append(
             "本轮在回复中必须原样包含以下需要学生作答的问题（可加引导语，不要改写）："
@@ -1155,6 +1521,10 @@ def _snapshot_plan(snapshot: dict[str, Any]) -> _NormalizedPlan | None:
                     expected_answer=str(raw_posed.get("expected_answer") or ""),
                 )
                 posed_id = str(raw_posed.get("check_id") or "") or secrets.token_urlsafe(12)
+        raw_summary = snapshot.get("summary")
+        summary = raw_summary if isinstance(raw_summary, dict) else {}
+        summary_block = str(summary.get("content") or "") or None
+        summary_trigger = str(summary.get("trigger") or "") or None
         return _NormalizedPlan(
             action=action,
             intent=intent,
@@ -1162,6 +1532,9 @@ def _snapshot_plan(snapshot: dict[str, Any]) -> _NormalizedPlan | None:
             posed_check=posed,
             posed_check_id=posed_id,
             teaching_direction=str(snapshot.get("teaching_direction") or ""),
+            wrap_up=summary_trigger == "natural_completion",
+            summary_block=summary_block,
+            summary_trigger=summary_trigger,
         )
     except (TypeError, ValueError, ValidationError):
         return None
@@ -1202,6 +1575,22 @@ def _semantics_for(
     if outcome == StudyEvidenceOutcome.MISCONCEPTION:
         return StudyEvidenceSemantics.MISCONCEPTION
     return StudyEvidenceSemantics.UNVERIFIED
+
+
+def _basis_payload(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """从冻结快照提取诊断用私有评价依据（与展示前依据同源）。"""
+
+    posed = snapshot.get("posed_check")
+    if not isinstance(posed, dict):
+        return StudyEvaluationBasis().model_dump(mode="json")
+    basis = StudyEvaluationBasis(
+        evaluation_points=_text_list(posed.get("evaluation_points")),
+        accepted_equivalents=_text_list(posed.get("accepted_equivalents")),
+        key_misconceptions=_text_list(posed.get("key_misconceptions")),
+        assumptions=_text_list(posed.get("assumptions")),
+        expected_answer=_short_text(str(posed.get("expected_answer") or ""), 300),
+    )
+    return basis.model_dump(mode="json")
 
 
 def _stuck_state(

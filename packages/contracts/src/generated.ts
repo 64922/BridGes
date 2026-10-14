@@ -1033,6 +1033,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat/conversations/{conversation_id}/study/diagnosis/{task_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Study Diagnosis
+         * @description 手动重试失败的诊断任务；同一任务与幂等单元，不重复记账。
+         *
+         *     仅失败状态可重试；成功后任务回到待处理，由后台执行器按租约领取。
+         */
+        post: operations["retry_study_diagnosis_chat_conversations__conversation_id__study_diagnosis__task_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chat/conversations/{conversation_id}/messages/{message_id}/retry": {
         parameters: {
             query?: never;
@@ -9642,6 +9664,22 @@ export interface components {
             study_goal?: components["schemas"]["StudyGoalProjection"] | null;
             /** @description 当前待答问题与帮助状态；只含已展示的问题，不含评价依据或未提出的问题。 */
             study_pending_check?: components["schemas"]["StudyPendingCheckProjection"] | null;
+            /** @description 最近一次用户学习控制（直接讲解、跳过、暂停、继续或要求小结）及作用的问题；未验证项如实标注，不当作错答或掌握。 */
+            study_last_control?: components["schemas"]["StudyControlProjection"] | null;
+            /** @description 当前暂停状态与可继续位置；已恢复或未暂停时为 null。 */
+            study_pause?: components["schemas"]["StudySessionPauseProjection"] | null;
+            /** @description 最近一次阶段小结的规范原文与真实交付状态；未核验项保持待确认，不输出掌握百分比。 */
+            study_summary?: components["schemas"]["StudySessionSummaryProjection"] | null;
+            /**
+             * Study Diagnosis Tasks
+             * @description 本对话的诊断任务真实业务状态；队列领取状态不是正式学情。
+             */
+            study_diagnosis_tasks?: components["schemas"]["StudyDiagnosisTaskProjection"][];
+            /**
+             * Study Learning Record
+             * @description 与本对话核验证据相关的账户级学习档案；单次完成不是长期掌握，同名不同上下文的知识点不合并。
+             */
+            study_learning_record?: components["schemas"]["StudyLearningRecordProjection"][];
             /** @description 旧版、未知版或不可解码学习状态的只读说明；不影响消息历史。 */
             study_history_status?: components["schemas"]["StudyHistoryStatusProjection"] | null;
             /**
@@ -24653,6 +24691,43 @@ export interface components {
             fragment_ids?: string[];
         };
         /**
+         * StudyControlKind
+         * @description 用户明确的学习控制；按完整语义识别，不是关键词匹配。
+         * @enum {string}
+         */
+        StudyControlKind: "full_explanation" | "skip" | "pause" | "resume" | "summary_request";
+        /**
+         * StudyControlProjection
+         * @description 最近一次学习控制的用户可见投影；含作用的问题与是否解除等待。
+         */
+        StudyControlProjection: {
+            /**
+             * Control Id
+             * @description 稳定控制记录标识。
+             */
+            control_id: string;
+            /** @description 控制类型。 */
+            kind: components["schemas"]["StudyControlKind"];
+            /**
+             * Question
+             * @description 本次控制作用的待答问题；没有关联时为空。
+             * @default
+             */
+            question: string;
+            /**
+             * Released
+             * @description 是否解除了该问题的作答等待。
+             * @default false
+             */
+            released: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 控制生效时间。
+             */
+            created_at: string;
+        };
+        /**
          * StudyCoverageEntry
          * @description 覆盖矩阵的一行：一个实质教学片段与知识点/排除理由的关系。
          */
@@ -24667,6 +24742,78 @@ export interface components {
              */
             exclusion_reason: string;
         };
+        /**
+         * StudyDiagnosisStatus
+         * @description 诊断任务的真实业务状态；队列领取状态不算正式学情。
+         * @enum {string}
+         */
+        StudyDiagnosisStatus: "pending" | "running" | "succeeded" | "failed" | "invalidated";
+        /**
+         * StudyDiagnosisTaskProjection
+         * @description 一条诊断任务的用户可见状态；不含评价依据或提示词。
+         */
+        StudyDiagnosisTaskProjection: {
+            /**
+             * Task Id
+             * @description 稳定诊断任务标识。
+             */
+            task_id: string;
+            /** @description 任务业务状态。 */
+            status: components["schemas"]["StudyDiagnosisStatus"];
+            /**
+             * Question
+             * @description 被核验的问题摘要。
+             * @default
+             */
+            question: string;
+            /**
+             * Knowledge Context
+             * @description 作答时固定的知识上下文摘要。
+             * @default
+             */
+            knowledge_context: string;
+            /**
+             * Evidence Message Id
+             * @description 作答消息标识（真实依据定位）。
+             */
+            evidence_message_id?: string | null;
+            /**
+             * Failure Reason
+             * @description 失败的真实中文说明；成功或待处理时为空。
+             * @default
+             */
+            failure_reason: string;
+            /**
+             * Attempts
+             * @description 已执行的诊断尝试次数。
+             * @default 0
+             */
+            attempts: number;
+            /**
+             * Retryable
+             * @description 失败后是否允许针对同一任务手动重试。
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 任务登记时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 任务最近状态变化时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * StudyDiagnosisVerdict
+         * @description 独立诊断对本次作答的结论；不是能力等级或掌握百分比。
+         * @enum {string}
+         */
+        StudyDiagnosisVerdict: "independent_completion" | "hinted_completion" | "misconception" | "unverified" | "undetermined";
         /**
          * StudyEvidenceAssessment
          * @description 问题级证据充分性评估与逐层补证记录（工单 32）。
@@ -24697,6 +24844,12 @@ export interface components {
             /** Conflicts */
             conflicts?: string[];
         };
+        /**
+         * StudyEvidenceAssistance
+         * @description 作答发生前的实际帮助程度（不采信模型自称独立）。
+         * @enum {string}
+         */
+        StudyEvidenceAssistance: "independent" | "after_hint" | "none";
         /**
          * StudyEvidenceGap
          * @description 问题级证据评估的一条缺口（工单 32）。
@@ -24912,6 +25065,97 @@ export interface components {
              * @description 面向用户的固定说明。
              */
             message: string;
+        };
+        /**
+         * StudyLearningRecordProjection
+         * @description 账户级档案中一条知识点判断的最小可用投影。
+         *
+         *     知识点身份包含学科与用途上下文；同名但上下文不同的概念是不同
+         *     档案条目。单次完成只是当前证据下的判断，不表示长期掌握。
+         */
+        StudyLearningRecordProjection: {
+            /**
+             * Record Id
+             * @description 稳定档案条目标识。
+             */
+            record_id: string;
+            /**
+             * Subject
+             * @description 知识点所属学科。
+             * @default
+             */
+            subject: string;
+            /**
+             * Title
+             * @description 知识点标题。
+             * @default
+             */
+            title: string;
+            /**
+             * Usage Context
+             * @description 知识点的用途上下文；同名概念据此区分。
+             * @default
+             */
+            usage_context: string;
+            /** @description 当前知识判断（证据语义）。 */
+            verdict: components["schemas"]["StudyDiagnosisVerdict"];
+            /**
+             * Performance
+             * @description 最近一次核验到的具体表现。
+             * @default
+             */
+            performance: string;
+            /**
+             * Supporting
+             * @description 支持当前判断的依据要点。
+             */
+            supporting?: string[];
+            /**
+             * Refuting
+             * @description 与当前判断相抵触的依据要点。
+             */
+            refuting?: string[];
+            /**
+             * Uncertainty
+             * @description 当前判断的不确定性说明。
+             * @default
+             */
+            uncertainty: string;
+            /**
+             * Next Validation
+             * @description 建议的后续验证方向。
+             * @default
+             */
+            next_validation: string;
+            /**
+             * Pending Confirmation
+             * @description 存在方向冲突的证据，当前判断待进一步验证。
+             * @default false
+             */
+            pending_confirmation: boolean;
+            /**
+             * Evidence Count
+             * @description 已归并的证据条数。
+             * @default 0
+             */
+            evidence_count: number;
+            /**
+             * Evidences
+             * @description 按证据发生顺序排列的核验定位（有界）。
+             */
+            evidences?: components["schemas"]["StudyRecordEvidenceProjection"][];
+            /**
+             * Created At
+             * Format: date-time
+             * @description 档案条目创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 档案条目最近更新时间。
+             */
+            updated_at: string;
         };
         /**
          * StudyLocalProgressProjection
@@ -25132,6 +25376,52 @@ export interface components {
              */
             calculation_checked: boolean;
         };
+        /**
+         * StudyRecordEvidenceProjection
+         * @description 档案中一条已核验证据的定位；不复制回答正文或私有依据。
+         */
+        StudyRecordEvidenceProjection: {
+            /**
+             * Evidence Id
+             * @description 证据标识。
+             */
+            evidence_id: string;
+            /**
+             * Question
+             * @description 当时的题目摘要。
+             * @default
+             */
+            question: string;
+            /**
+             * Knowledge Context
+             * @description 当时的知识上下文摘要。
+             * @default
+             */
+            knowledge_context: string;
+            /**
+             * @description 作答前的实际帮助程度。
+             * @default none
+             */
+            assistance: components["schemas"]["StudyEvidenceAssistance"];
+            /** @description 该证据的独立诊断结论。 */
+            verdict?: components["schemas"]["StudyDiagnosisVerdict"] | null;
+            /**
+             * Answer Message Id
+             * @description 实际回答消息标识。
+             */
+            answer_message_id?: string | null;
+            /**
+             * Feedback Message Id
+             * @description 当轮反馈消息标识。
+             */
+            feedback_message_id?: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             * @description 证据发生时间（归并顺序依据）。
+             */
+            occurred_at: string;
+        };
         /** StudyReview */
         StudyReview: {
             /** Questions */
@@ -25337,6 +25627,91 @@ export interface components {
              */
             legacy: boolean;
         };
+        /**
+         * StudySessionPauseProjection
+         * @description 当前暂停状态：可恢复位置与暂停时的问题处置。
+         */
+        StudySessionPauseProjection: {
+            /**
+             * Pause Id
+             * @description 稳定暂停记录标识。
+             */
+            pause_id: string;
+            /**
+             * Topic
+             * @description 暂停时的学习主题。
+             * @default
+             */
+            topic: string;
+            /**
+             * Position
+             * @description 可继续的位置（暂停时的当前关注内容）。
+             * @default
+             */
+            position: string;
+            /**
+             * Pending Question
+             * @description 暂停时保留的待答问题；已解除或没有时为空。
+             * @default
+             */
+            pending_question: string;
+            /**
+             * Progress Version
+             * @description 绑定的会话进展版本。
+             */
+            progress_version: number;
+            /**
+             * Source Message Id
+             * @description 声明暂停的用户消息标识。
+             */
+            source_message_id: string;
+            /**
+             * Paused At
+             * Format: date-time
+             * @description 暂停时间。
+             */
+            paused_at: string;
+        };
+        /**
+         * StudySessionSummaryProjection
+         * @description 最近一次阶段小结：规范原文与真实交付状态。
+         *
+         *     依据引用（证据、进展版本与生成时问题处置）保存在服务端，不在此
+         *     投影中重复输出；``content`` 是生成时确定的规范小结文字，不随后续
+         *     学习被覆盖。
+         */
+        StudySessionSummaryProjection: {
+            /**
+             * Summary Id
+             * @description 稳定小结标识。
+             */
+            summary_id: string;
+            /** @description 小结触发来源。 */
+            trigger: components["schemas"]["StudySummaryTrigger"];
+            /** @description complete：原文已完整随回复交付；partial：回复未完整包含原文。 */
+            status: components["schemas"]["StudySummaryStatus"];
+            /**
+             * Content
+             * @description 生成时确定的规范小结文字。
+             */
+            content: string;
+            /**
+             * Source Message Id
+             * @description 请求/触发该小结的用户消息标识。
+             */
+            source_message_id: string;
+            /**
+             * Assistant Message Id
+             * @description 承载该小结的助手消息标识。
+             */
+            assistant_message_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 小结生成时间。
+             */
+            created_at: string;
+        };
         /** StudySource */
         StudySource: {
             /** Source Id */
@@ -25449,6 +25824,18 @@ export interface components {
              */
             superseded_reason: string;
         };
+        /**
+         * StudySummaryStatus
+         * @description 小结的真实交付状态；失败或部分展示必须如实呈现。
+         * @enum {string}
+         */
+        StudySummaryStatus: "complete" | "partial";
+        /**
+         * StudySummaryTrigger
+         * @description 小结的触发来源：用户要求、完成后的自然收尾或暂停收尾。
+         * @enum {string}
+         */
+        StudySummaryTrigger: "explicit_request" | "natural_completion" | "pause";
         /**
          * StudySupplementAttempt
          * @description 一层补证的真实执行结果（用于审计“为何没查/没查到”）。
@@ -32243,6 +32630,76 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    retry_study_diagnosis_chat_conversations__conversation_id__study_diagnosis__task_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                task_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudyDiagnosisTaskProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

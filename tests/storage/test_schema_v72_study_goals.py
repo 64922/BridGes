@@ -67,6 +67,8 @@ def _route(version: int = 1) -> StudyRouteProjection:
 def test_study_goals_migration_export_delete_and_recovery(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
+    # Issue 07 引入 v72 结构；后续版本（Issue 04 起）在其上追加，本测试
+    # 只要求当前模式不早于 v72。
     assert SCHEMA_VERSION >= 72
     monkeypatch.setenv("BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'bridges.db'}")
     monkeypatch.setenv("BRIDGES_SECRET_KEY", "issue07-goals-secret")

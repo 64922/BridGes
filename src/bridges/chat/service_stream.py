@@ -33,6 +33,7 @@ from bridges.contracts.understanding import (
     understanding_from_snapshot,
 )
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.study.controls import StudyControlRepository
 from bridges.study.demand_verification import StudySourceVerificationRepository
 from bridges.study.goal_planning import StudyGoalPlanner
 from bridges.study.goal_turn import StudyGoalTurn, StudyGoalTurnService
@@ -105,20 +106,27 @@ class _ServiceStreamMixin:
                 source_verification_repository = StudySourceVerificationRepository(
                     self._repo.database
                 )
+                control_repository = StudyControlRepository(
+                    self._repo.database
+                )
 
                 def persist_study_progress(content: str) -> None:
                     # Issue 03：作答证据、提示记录与待答绑定先提交，再更新
                     # 局部进展；两者与消息 streaming→done 同事务，原子可见。
                     # 停止/失败路径不进入本回调，未展示的问题绝不激活。
-                    # Issue 11：公开查证记录在同一事务内提交（只在成功终态；
-                    # 停止/失败/被取代的轮次不写记录，重试不覆盖有效状态）。
-                    verification_repository.commit_turn_in_transaction(
+                    # Issue 05：真正写入作答证据时，在同一事务登记诊断任务
+                    # （回复终态、证据与任务入队原子一致，不丢任务）。
+                    candidate = verification_repository.commit_turn_in_transaction(
                         self._repo,
                         run,
                         user_message,
                         assistant_message_id,
                         content,
                     )
+                    if candidate is not None and self._study_diagnosis is not None:
+                        self._study_diagnosis.schedule_in_transaction(candidate)
+                    # Issue 11：公开查证记录在同一事务内提交（只在成功终态；
+                    # 停止/失败/被取代的轮次不写记录，重试不覆盖有效状态）。
                     source_verification_repository.commit_turn_in_transaction(
                         self._repo,
                         run,
@@ -126,6 +134,15 @@ class _ServiceStreamMixin:
                     )
                     progress_repository.save_completed_turn_in_transaction(
                         self._repo, run, user_message, content
+                    )
+                    # Issue 04：用户控制、暂停与阶段小结在同一终态事务内
+                    # 落库；进展版本以已保存的本轮进展为准。
+                    control_repository.commit_turn_in_transaction(
+                        self._repo,
+                        run,
+                        user_message,
+                        assistant_message_id,
+                        content,
                     )
                     if goal_turn is not None:
                         # 同一终态事务：目标/路线与消息 done、局部进展一起提交。

@@ -339,3 +339,249 @@ describe("系统性目标与学习路线", () => {
     expect(screen.getByText("当前关注：继续讲矩阵乘法")).toBeTruthy();
   });
 });
+
+describe("Issue 04 学习控制、暂停与阶段小结", () => {
+  const localProgress = {
+    topic: "互斥与独立",
+    knowledge_context: "两个事件不能同时发生。",
+    current_focus: "今天先到这里吧。",
+    source_message_ids: ["user-1", "assistant-1"],
+    version: 3,
+    runtime_run_id: "run-1",
+    updated_at: "2026-10-14T00:00:00Z",
+  };
+  const question = "如果 A、B 互斥，P(A∩B) 是多少？为什么？";
+
+  it("暂停状态如实展示可继续位置与保留问题，小结按需展开", () => {
+    render(
+      <StudyProgress
+        studyLocalProgress={localProgress}
+        studyPause={{
+          pause_id: "pause-1",
+          topic: "互斥与独立",
+          position: "今天先到这里吧。",
+          pending_question: question,
+          progress_version: 3,
+          source_message_id: "user-2",
+          paused_at: "2026-10-14T00:00:00Z",
+        }}
+        studySummary={{
+          summary_id: "summary-1",
+          trigger: "pause",
+          status: "complete",
+          content: "【本阶段小结】\n本次验证（即时反馈）：无。",
+          source_message_id: "user-2",
+          assistant_message_id: "assistant-2",
+          created_at: "2026-10-14T00:00:00Z",
+        }}
+      />,
+    );
+
+    const status = screen.getByLabelText("暂停状态");
+    expect(status.textContent).toContain("已暂停在「今天先到这里吧。」");
+    expect(status.textContent).toContain("进展已保存");
+    expect(status.textContent).toContain(`保留问题「${question}」保持未验证`);
+    expect(screen.getByText(/暂停时生成/)).toBeTruthy();
+    expect(screen.getByText(/已随回复完整交付/)).toBeTruthy();
+    expect(screen.getByText(/【本阶段小结】/)).toBeTruthy();
+  });
+
+  it("跳过与直接讲解标注保持未验证，解除等待时提示可以继续", () => {
+    const { rerender } = render(
+      <StudyProgress
+        studyLocalProgress={localProgress}
+        studyLastControl={{
+          control_id: "control-1",
+          kind: "full_explanation",
+          question,
+          released: true,
+          created_at: "2026-10-14T00:00:00Z",
+        }}
+      />,
+    );
+
+    let status = screen.getByLabelText("跳过状态");
+    expect(status.textContent).toContain("已直接讲解");
+    expect(status.textContent).toContain(`「${question}」保持未验证`);
+    expect(status.textContent).toContain("可以继续下一步");
+
+    rerender(
+      <StudyProgress
+        studyLocalProgress={localProgress}
+        studyLastControl={{
+          control_id: "control-2",
+          kind: "skip",
+          question,
+          released: false,
+          created_at: "2026-10-14T00:00:00Z",
+        }}
+      />,
+    );
+    status = screen.getByLabelText("跳过状态");
+    expect(status.textContent).toContain("已跳过");
+    expect(status.textContent).not.toContain("可以继续下一步");
+  });
+
+  it("小结未完整交付时如实标注 partial 并提示重试", () => {
+    render(
+      <StudyProgress
+        studyLocalProgress={localProgress}
+        studySummary={{
+          summary_id: "summary-2",
+          trigger: "explicit_request",
+          status: "partial",
+          content: "【本阶段小结】\n本次没有已完成验证的作答记录。",
+          source_message_id: "user-3",
+          assistant_message_id: "assistant-3",
+          created_at: "2026-10-14T00:00:00Z",
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/按你的要求生成/)).toBeTruthy();
+    expect(screen.getByText(/回复未完整包含原文，可重试该消息补全/)).toBeTruthy();
+    expect(screen.queryByLabelText("暂停状态")).toBeNull();
+    expect(screen.queryByLabelText("跳过状态")).toBeNull();
+  });
+
+  it("没有控制状态时不虚构暂停或小结", () => {
+    render(<StudyProgress studyLocalProgress={localProgress} />);
+
+    expect(screen.queryByLabelText("暂停状态")).toBeNull();
+    expect(screen.queryByLabelText("跳过状态")).toBeNull();
+    expect(screen.queryByText(/阶段小结/)).toBeNull();
+  });
+});
+
+describe("后台核验与学习档案", () => {
+  const pendingTask = {
+    task_id: "dx-1",
+    status: "pending" as const,
+    question: "A、B 互斥时 P(A∩B) 是多少？",
+    knowledge_context: "互斥与独立",
+    evidence_message_id: "assistant-2",
+    failure_reason: "",
+    attempts: 0,
+    retryable: false,
+    created_at: "2026-10-14T00:00:00Z",
+    updated_at: "2026-10-14T00:00:00Z",
+  };
+  const record = {
+    record_id: "lr-1",
+    subject: "概率论",
+    title: "互斥与独立",
+    usage_context: "理解事件关系",
+    verdict: "independent_completion" as const,
+    performance: "能说明互斥不等于独立。",
+    supporting: ["给出了正确的反例"],
+    refuting: [],
+    uncertainty: "只在单题上验证过。",
+    next_validation: "换一个条件概率题再验证。",
+    pending_confirmation: false,
+    evidence_count: 1,
+    evidences: [{
+      evidence_id: "ev-1",
+      question: "A、B 互斥时 P(A∩B) 是多少？",
+      knowledge_context: "互斥与独立",
+      assistance: "independent" as const,
+      verdict: "independent_completion" as const,
+      answer_message_id: "user-9",
+      feedback_message_id: "assistant-9",
+      occurred_at: "2026-10-14T00:00:00Z",
+    }],
+    created_at: "2026-10-14T00:00:00Z",
+    updated_at: "2026-10-14T00:00:00Z",
+  };
+
+  it("展示待核验真实状态与档案判断，不渲染百分比或能力标签", () => {
+    render(<StudyProgress
+      studyLocalProgress={{
+        topic: "互斥与独立",
+        knowledge_context: "两个事件不能同时发生。",
+        current_focus: "互斥是不是独立？",
+        source_message_ids: ["user-1", "assistant-1"],
+        version: 1,
+        runtime_run_id: "run-1",
+        updated_at: "2026-10-14T00:00:00Z",
+      }}
+      studyDiagnosisTasks={[pendingTask]}
+      studyLearningRecord={[record]}
+    />);
+
+    expect(screen.getByLabelText("学习档案")).toBeTruthy();
+    expect(screen.getByText("核验状态")).toBeTruthy();
+    expect(screen.getByText(/「A、B 互斥时 P\(A∩B\) 是多少？」：待后台核验/)).toBeTruthy();
+    expect(screen.getByText(/后台独立核验只针对当时的实际作答/)).toBeTruthy();
+    expect(screen.getByText(/（概率论 · 理解事件关系）：独立完成/)).toBeTruthy();
+    expect(screen.getByText(/表现：能说明互斥不等于独立/)).toBeTruthy();
+    expect(screen.getByText(/依据与证据（1 条）/)).toBeTruthy();
+    expect(screen.getByText("支持：给出了正确的反例")).toBeTruthy();
+    expect(screen.getByText("不确定性：只在单题上验证过。")).toBeTruthy();
+    expect(screen.getByText(/提示后作答|作答前无提示|无提示/)).toBeTruthy();
+    expect(screen.queryByText(/掌握度|百分比|能力等级|人格/)).toBeNull();
+  });
+
+  it("失败任务可手动重试，来源失效如实标注", async () => {
+    const onRetry = vi.fn(async () => {});
+    render(<StudyProgress
+      studyLocalProgress={{
+        topic: "互斥与独立",
+        knowledge_context: "两个事件不能同时发生。",
+        current_focus: "互斥是不是独立？",
+        source_message_ids: ["user-1", "assistant-1"],
+        version: 2,
+        runtime_run_id: "run-2",
+        updated_at: "2026-10-14T00:00:00Z",
+      }}
+      studyDiagnosisTasks={[
+        { ...pendingTask, task_id: "dx-failed", status: "failed" as const,
+          failure_reason: "诊断能力未配置或不可用。", attempts: 3, retryable: true },
+        { ...pendingTask, task_id: "dx-invalid", status: "invalidated" as const,
+          failure_reason: "来源证据已失效，未形成诊断。", retryable: false },
+      ]}
+      onRetryDiagnosis={onRetry}
+    />);
+
+    expect(screen.getByText(/核验失败 · 诊断能力未配置或不可用/)).toBeTruthy();
+    expect(screen.getByText(/来源已失效，未形成诊断/)).toBeTruthy();
+    const button = screen.getByRole("button", { name: "重试核验" });
+    fireEvent.click(button);
+    await waitFor(() => expect(onRetry).toHaveBeenCalledWith("dx-failed"));
+  });
+
+  it("冲突证据标注待进一步验证，不伪造成单一结论", () => {
+    render(<StudyProgress
+      studyLocalProgress={{
+        topic: "互斥与独立",
+        knowledge_context: "两个事件不能同时发生。",
+        current_focus: "互斥是不是独立？",
+        source_message_ids: ["user-1", "assistant-1"],
+        version: 3,
+        runtime_run_id: "run-3",
+        updated_at: "2026-10-14T00:00:00Z",
+      }}
+      studyLearningRecord={[{ ...record, verdict: "misconception" as const,
+        pending_confirmation: true }]}
+    />);
+
+    expect(screen.getByText(/存在具体误解，证据方向冲突，待进一步验证/)).toBeTruthy();
+  });
+
+  it("没有任务与档案时不渲染学习档案面板", () => {
+    render(<StudyProgress
+      studyLocalProgress={{
+        topic: "互斥与独立",
+        knowledge_context: "两个事件不能同时发生。",
+        current_focus: "互斥是不是独立？",
+        source_message_ids: ["user-1", "assistant-1"],
+        version: 4,
+        runtime_run_id: "run-4",
+        updated_at: "2026-10-14T00:00:00Z",
+      }}
+      studyDiagnosisTasks={[]}
+      studyLearningRecord={[]}
+    />);
+
+    expect(screen.queryByLabelText("学习档案")).toBeNull();
+  });
+});

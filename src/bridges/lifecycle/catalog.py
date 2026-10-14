@@ -69,12 +69,21 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "study_goal_routes",
     "study_goals",
     "study_local_progress",
+    # Issue 05：诊断结果外键指向诊断任务，先于任务删除；任务与档案先于
+    # accounts/conversations（外键 CASCADE，仍显式删除不依赖级联）。
+    "study_diagnosis_results",
+    "study_diagnosis_tasks",
+    "study_learning_records",
     # Issue 03：待答问题与学习证据。证据先于待答问题删除，二者都先于
     # conversations（外键 CASCADE，仍显式删除不依赖级联）。
     "study_evidence",
     "study_pending_checks",
     # Issue 11：按需公开查证的产物记录（按助手消息唯一，先于 conversations）。
     "study_source_verifications",
+    # Issue 04：学习控制、暂停与阶段小结（先于 conversations 删除）。
+    "study_session_summaries",
+    "study_session_pauses",
+    "study_session_controls",
     "study_states",
     "image_tasks",
     "image_versions",
@@ -209,6 +218,30 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
         "study_goals",
         "学习目标与路线",
         ("study_goals", "study_goal_routes", "study_conversation_goals"),
+        1024,
+    ),
+    # Issue 04：用户学习控制、暂停状态与阶段小结（规范原文、依据引用与
+    # 交付状态），随账户导出与删除。
+    ExportCategory(
+        "study_controls",
+        "学习控制与小结",
+        (
+            "study_session_controls",
+            "study_session_pauses",
+            "study_session_summaries",
+        ),
+        1024,
+    ),
+    # Issue 05：诊断任务（含私有评价依据）、结果版本与账户级学习档案；
+    # 整行导出即可读，保留结果版本与证据顺序。
+    ExportCategory(
+        "study_diagnosis",
+        "学习诊断与档案",
+        (
+            "study_diagnosis_results",
+            "study_diagnosis_tasks",
+            "study_learning_records",
+        ),
         1024,
     ),
     ExportCategory("mode_events", "模式切换事件", ("mode_events",), 128),
@@ -436,6 +469,12 @@ def logical_summary(
         "study_goals",
         "study_goal_routes",
         "study_conversation_goals",
+        "study_session_controls",
+        "study_session_pauses",
+        "study_session_summaries",
+        "study_diagnosis_tasks",
+        "study_diagnosis_results",
+        "study_learning_records",
         "image_tasks",
         "image_versions",
         "image_assets",
