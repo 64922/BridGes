@@ -33109,6 +33109,14 @@
             "title": "Study Learning Record",
             "description": "与本对话核验证据相关的账户级学习档案；单次完成不是长期掌握，同名不同上下文的知识点不合并。"
           },
+          "study_record_adoptions": {
+            "items": {
+              "$ref": "#/components/schemas/StudyAdoptionProjection"
+            },
+            "type": "array",
+            "title": "Study Record Adoptions",
+            "description": "本对话真实生效的学情采用记录（采用了哪些学情、按什么方向调整教学）；不含模型提示词或内部推理。"
+          },
           "study_history_status": {
             "anyOf": [
               {
@@ -66735,6 +66743,151 @@
         ],
         "title": "ArtifactTrustStatus",
         "description": "Lifecycle status of the scientific artifact produced by a run."
+      },
+      "StudyAdaptationAdjustment": {
+        "type": "string",
+        "enum": [
+          "prerequisite_review",
+          "independent_application",
+          "transfer_application",
+          "recheck",
+          "hint_granularity"
+        ],
+        "title": "StudyAdaptationAdjustment",
+        "description": "一条学情影响教学的具体调整方向（不是能力等级）。"
+      },
+      "StudyAdoptedRecord": {
+        "properties": {
+          "record_id": {
+            "type": "string",
+            "title": "Record Id",
+            "description": "档案条目标识。"
+          },
+          "record_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Record Version",
+            "description": "采用时的记录版本；变化即使快照失效。"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "知识点所属学科。",
+            "default": ""
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "知识点标题。",
+            "default": ""
+          },
+          "usage_context": {
+            "type": "string",
+            "title": "Usage Context",
+            "description": "知识点用途上下文（同名区分依据）。",
+            "default": ""
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/StudyDiagnosisVerdict",
+            "description": "已核验的当前知识判断。"
+          },
+          "performance": {
+            "type": "string",
+            "title": "Performance",
+            "description": "最近一次核验到的具体表现。",
+            "default": ""
+          },
+          "adjustments": {
+            "items": {
+              "$ref": "#/components/schemas/StudyAdaptationAdjustment"
+            },
+            "type": "array",
+            "title": "Adjustments",
+            "description": "本条学情对本轮教学的具体调整方向。"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "简短的调整原因（可展示给用户）。",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "record_id",
+          "record_version",
+          "verdict"
+        ],
+        "title": "StudyAdoptedRecord",
+        "description": "采用快照中的一条已核验学情（身份、版本与调整方向）。"
+      },
+      "StudyAdoptionProjection": {
+        "properties": {
+          "adoption_id": {
+            "type": "string",
+            "title": "Adoption Id",
+            "description": "采用记录标识。"
+          },
+          "goal_id": {
+            "type": "string",
+            "title": "Goal Id",
+            "description": "采用时的学习目标。",
+            "default": ""
+          },
+          "goal_version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Goal Version",
+            "description": "采用时的目标版本。",
+            "default": 0
+          },
+          "route_version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Route Version",
+            "description": "采用时的路线版本。",
+            "default": 0
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "采用状态：applied / invalidated。"
+          },
+          "invalid_reason": {
+            "type": "string",
+            "title": "Invalid Reason",
+            "description": "失效的真实原因；正常生效时为空。",
+            "default": ""
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/StudyAdoptedRecord"
+            },
+            "type": "array",
+            "title": "Entries",
+            "description": "正式采用的已核验学情与调整方向。"
+          },
+          "uncertainty_note": {
+            "type": "string",
+            "title": "Uncertainty Note",
+            "description": "相关但待进一步验证的学情说明。",
+            "default": ""
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "采用发生时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "adoption_id",
+          "status",
+          "created_at"
+        ],
+        "title": "StudyAdoptionProjection",
+        "description": "用户可见的一次采用记录：采用了哪些学情、按什么方向调整。"
       }
     }
   }

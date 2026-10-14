@@ -917,6 +917,7 @@ export default function ChatConversationPage() {
                   historyStatus={conversation.study_history_status}
             studyDiagnosisTasks={conversation.study_diagnosis_tasks}
             studyLearningRecord={conversation.study_learning_record}
+            studyRecordAdoptions={conversation.study_record_adoptions}
             busy={generating} onAction={sendMessage}
             onRetryDiagnosis={retryDiagnosis}
             onCorrectRecord={correctRecord}

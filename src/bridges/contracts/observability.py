@@ -120,6 +120,9 @@ class AuditAction(str, Enum):
     TEACHING_EVIDENCE_ADJUDICATION = "teaching_evidence_adjudication"
     # Issue 02：学习模式不变量告警（降级轮出现网络来源引用等）。
     LEARNING_INVARIANT = "learning_invariant"
+    # Issue 09：教学采用有效学情（记录标识/版本/调整方向）与调用前撤回。
+    # details 只含采用标识、目标/路线版本与记录引用，不含学情正文或提示词。
+    STUDY_ADAPTATION_APPLIED = "study_adaptation_applied"
     # V2 Issue 05：事实片段无法安全精确绑定（缺失片段/清单外引用）时的降级
     # 记录。details 只含意图与不一致类别计数，不含正文或片段原文。
     FACT_PROTECTION = "fact_protection"
