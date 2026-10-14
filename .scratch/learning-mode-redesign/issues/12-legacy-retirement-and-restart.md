@@ -84,3 +84,10 @@
 - main 既有红测（非本票造成，未修，仅记录）：`test_improvement12_hybrid_entry.py`（9）、`test_improvement12_task_relations.py`（2）、`test_issue42_scenario_gaps.py` A09/R07（2）、`test_issue42_ambiguous_resources.py`（4）、`test_issue39_*` 外 runner_reproducibility（4）、release_adjudication（2）、mail_verification（3）、authenticity_gate（1）、capability_manifest（1）、user_extensions retirement（11）等 2026-10-13 日常模块收敛遗留；`.scratch/daily-module-retirement.md` 明示「592 通过/71 失败，后续整理全量基线」，本票不代偿修复。R07 韧性锚点仍引用其中两条红测，随该债务处理。
 - 顺带发现（超范围未修）：论文模块轮在助手消息上残留 `arxiv_search: loading` 初始投影（消歧后不清理，main 既有）。
 - 验证证据：聚焦批次 18/4/5/1/3/29/36/14 passed；合并后验证 34 passed；全量分类对比 branch 失败数 ≤ main 且无 branch 独有失败；前端 `vitest` 286 passed、`tsc --noEmit` 0 错、`next lint` 无新告警、`next build` 成功。
+
+2026-10-14（合并与推送记录）：
+- 合并提交 `d6809f24`（`merge: issue 12 legacy study retirement and learner-initiated restart`）；功能分支提交：`8d2a78f8`（旧执行退役与续学后端）、`27376429`（先并入 main 前进的 issue 09）、`abe9ce70`（测试/门禁同步）、`723d9b71`（前端续学面板与契约重生成）、`6ce39b6d`（import 整理）。
+- 合并解析要点：迁移号顺延 **v79**（main 已占 v78）；`chat_attachments` 新增采用来源两列；`openapi.json`/`generated.ts` 重生成后 `test_openapi_sync` 通过。
+- 合并后验证（主工作区，conda `agent`）：`tests/contracts+lifecycle+storage+retirement+state_copy+closeout` 与 issue08/11 链路 **284 passed**；11 项失败全部为既有 `test_user_extensions_retirement.py` 债务（main 复现一致）。全量证据：chat/learning/kernel 94 失败与 main 完全一致（1274 passed）；storage/api/architecture/persistence/identity/integration/paper/projects/scope/expression 5 失败、ingestion 5 失败、ai..mcp 组 91 失败、media..workflows 组 94 失败均逐条在 main 复现；`tests/career_plan` 收集错误与 main 相同。前端 `vitest` 34 文件 286 项、`tsc --noEmit`、`next lint`、`next build` 全部通过。
+- 推送：本地 main 经代理 `http://127.0.0.1:7890` 推送 `origin/main`（`1d1e1b59..d6809f24`）；`git ls-remote origin refs/heads/main` 与本地 HEAD 一致（`d6809f24`）。
+- 清理：删除工作树 `.worktrees/12-legacy-retirement-and-restart` 与本地分支 `codex/issue-12-legacy-retirement-and-restart`；其他任务工作树（含 `worktree-12-frozen-holdout-release-acceptance`）保留。
