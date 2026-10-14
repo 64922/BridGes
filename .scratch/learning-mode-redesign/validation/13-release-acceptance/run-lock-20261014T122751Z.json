@@ -1,0 +1,51 @@
+{
+  "kind": "study-journey-run-lock",
+  "corpus_version": "study-journey-corpus-v1",
+  "corpus_sha256": "25f0825073862aceeab5e8d7509172769e56afb9daba7595b3588e40bc50f3b6",
+  "scenarios": [
+    "probability-mutually-exclusive",
+    "limit-removable-discontinuity",
+    "programming-mutable-default",
+    "goal-resume-linear-algebra",
+    "public-verification-fresh-fact"
+  ],
+  "git_commit": "a51f62a3ab8b4da2792b1fe5a52c90f30ece9684",
+  "git_dirty": false,
+  "source_snapshot_sha256": "6c136bf8138f941906e5ecac8a3c9459b74a49d058a5b2135bfa08044a55a439",
+  "evaluation_sha256": "819ec6211dcef9dbb2a13716683d1844f92898bd47129658d5fc4047f5f1ee8f",
+  "prompt_sha256": "d7ff9bffb900c4dc97e8779bf70a6ab568d9be99e143385070e4d77b30c2abc3",
+  "python_version": "3.11.15",
+  "model_config": {
+    "model_id": "qwen3.7-plus-2026-05-26",
+    "capabilities": {
+      "text": true,
+      "image": true,
+      "tool_calling": true,
+      "structured_output": true
+    },
+    "context_window": 1000000,
+    "max_input_tokens": 999000,
+    "metadata_version": "bailian-model-list-v1",
+    "validated_at": null,
+    "revision": 0,
+    "source": "factory"
+  },
+  "injected_models_overridden": false,
+  "contract_versions": {
+    "diagnosis": "study-diagnosis-v1",
+    "adaptation": "study-adaptation-v1",
+    "source_verification": "study-source-verification-v1",
+    "graph_version": "study-local-tutor-v1",
+    "legacy_graph_version": "study-tutoring-review-v6"
+  },
+  "budget_constants": {
+    "turn_timeout_seconds": 900.0
+  },
+  "credentials": {
+    "qwen_configured": true,
+    "qwen_source": "credential_store",
+    "tavily_configured": true,
+    "tavily_source": "credential_store"
+  },
+  "started_at": "2026-10-14T12:32:23+00:00"
+}

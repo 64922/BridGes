@@ -87,3 +87,11 @@
 - **剩余限制与后续：** 正式诊断由 05 消费证据（小结中如实标注待确认）；跨会话继续与目标切换由 08 完成；真实教学效果由 13 独立验收；规划器依赖已注册的 `qwen_structured_output`，缺失或失败时小结不生成、控制不生效但回答照常（不伪造）。
 
 2026-10-14（交付记录）：本票提交 `e81b90de`（20 文件），以 `--no-ff` 无冲突合入 main，合并提交 `7fffab9a`（合并树 `8bea279c` 与本票分支树一致）；合并前经代理 `http://127.0.0.1:7890` fetch 确认远端 main 与本票基点同为 `bb5d8015`。合并后在 main 复跑本票行为 10 项、v73 迁移 2 项与 issue03 回归 13 项通过；05 票合并完成、main 推进到 `daf77a5f` 后，追加 v72 迁移与 openapi 同步复跑，本票相关 29 项全部通过。推送：`git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 push origin main`（`bb5d8015..7fffab9a`），`git ls-remote origin refs/heads/main` 确认远端一致；随后 05 票的合并与交付推送把 main 推进到 `daf77a5f`，本票提交仍在其历史中。交付期间另一会话并发实施并合并 05 票，双方未互相改写提交内容；本条记录按约定在 05 合并完成、main 工作树恢复干净后补写。随后删除本票 worktree（`.worktrees/04-learner-control-and-summary`）与本地分支 `codex/issue-04-learner-control-and-summary`（曾为 `e81b90de`），`git worktree prune` 后主工作树与 05/10/11 票的 worktree 保持不变；其他任务的分支与目录未触碰。
+
+### 2026-10-14 工单 13 回交缺陷：F3 完整讲解被输出上限截断
+
+- **现象：** 固定语料 `study-journey-corpus-v1`（`25f082…`）下，极限情境 `l4-skip`（学员：「跳过引导，直接讲讲这道题的完整过程」）在 commit `a51f62a3` 的 3 次独立真实模型运行（`123822`/`123300`/`122751`）中**全部**以 `assistant_error_code=output_budget_exceeded` 结束，首段耗时 37.1–38.6 s、输出 2203–2253 token、2 次模型调用；正文为截断的部分内容（结尾语句中途断开）。
+- **机制定位：** 聊天轮默认输出上限 `DEFAULT_OUTPUT_TOKENS = 1024`（`src/bridges/chat/lightweight_policy.py:105`，经 `chat/turn.py::_payload_dict` 传入）；流式适配器在 `finish_reason == "length"` 时产生 `output_budget_exceeded` 错误块（`src/bridges/ai/qwen_adapters.py` 流式分支）。该题完整讲解约需 2200+ token，单次调用上限不足。
+- **影响：** AC04「直接完整讲解得到完整说明」与 D13 的真实模型路径不成立（错误结束且无自动分段续讲）。本票更早两次运行该轮曾正常完成，说明与回复长度相关、固定语料下 3/3 复现。
+- **证据：** `validation/13-release-acceptance/failure-cases.md`（F3）、`journeys-20261014T123822Z.*` 等三次运行与 `release-report.md`。复验建议：修复后复跑本票 `scripts/run_issue13_learning_journeys.py` 的极限情境即可（评估资产可复用）。
+- **建议方向（供本票评估，非强制）：** 提高讲解类回合的输出预算、支持超限时跨调用续写，或在截断时如实降级为分段交付而不是整轮报错。
