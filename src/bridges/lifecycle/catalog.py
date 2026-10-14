@@ -65,6 +65,8 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "retrieval_decisions",
     # Issue 07：学习目标与路线。会话引用与路线版本先于目标删除（外键
     # 无 CASCADE 时也保持显式顺序安全）。
+    # Issue 08：目标关联/切换/冲突事件日志（目标身份切换的唯一权威记录）。
+    "study_goal_events",
     "study_conversation_goals",
     "study_goal_routes",
     "study_goals",
@@ -203,11 +205,17 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
         1024,
     ),
     # Issue 07：账户级学习目标、路线修订历史与会话引用；整行导出即可读，
-    # 保留修订前的历史版本。
+    # 保留修订前的历史版本。Issue 08：目标事件日志（关联/切换/冲突/澄清）
+    # 随目标导出，用户可复核目标身份变化。
     ExportCategory(
         "study_goals",
         "学习目标与路线",
-        ("study_goals", "study_goal_routes", "study_conversation_goals"),
+        (
+            "study_goals",
+            "study_goal_routes",
+            "study_conversation_goals",
+            "study_goal_events",
+        ),
         1024,
     ),
     # Issue 04：用户学习控制、暂停状态与阶段小结（规范原文、依据引用与
@@ -458,6 +466,7 @@ def logical_summary(
         "study_goals",
         "study_goal_routes",
         "study_conversation_goals",
+        "study_goal_events",
         "study_session_controls",
         "study_session_pauses",
         "study_session_summaries",

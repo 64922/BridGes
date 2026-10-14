@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 74
+SCHEMA_VERSION = 75
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3490,6 +3490,43 @@ MIGRATIONS: dict[int, list[str]] = {
             ON study_learning_records (account_id, updated_at)
         """,
     ],
+    # Issue 08：跨会话续学与目标切换。目标关联/切换/冲突/澄清事件独立成行，
+    # 保留原目标暂停时的待答处置与进展版本；待答问题、学习证据与诊断任务
+    # 各自携带回答时所属的目标标识，切换后的新回答不能填旧题，旧结果不能
+    # 覆盖新目标。无旧数据回填（历史行 goal_id 为空字符串）。
+    75: [
+        """
+        CREATE TABLE study_goal_events (
+            event_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            goal_id TEXT NOT NULL DEFAULT '',
+            goal_statement TEXT NOT NULL DEFAULT '',
+            previous_goal_id TEXT NOT NULL DEFAULT '',
+            previous_goal_statement TEXT NOT NULL DEFAULT '',
+            kind TEXT NOT NULL CHECK (kind IN
+                ('link', 'switch_out', 'conflict', 'clarification',
+                 'clarification_lapsed')),
+            detail TEXT NOT NULL DEFAULT '',
+            goal_version INTEGER NOT NULL DEFAULT 0,
+            progress_version INTEGER NOT NULL DEFAULT 0,
+            pending_check_id TEXT NOT NULL DEFAULT '',
+            pending_question TEXT NOT NULL DEFAULT '',
+            candidate_goal_ids_json TEXT NOT NULL DEFAULT '[]',
+            source_message_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(conversation_id)
+                ON DELETE CASCADE
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_study_goal_events_conversation
+            ON study_goal_events (account_id, conversation_id, created_at)
+        """,
+        "ALTER TABLE study_pending_checks ADD COLUMN goal_id TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE study_evidence ADD COLUMN goal_id TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE study_diagnosis_tasks ADD COLUMN goal_id TEXT NOT NULL DEFAULT ''",
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3519,6 +3556,9 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "study_diagnosis_tasks",
     "study_diagnosis_results",
     "study_learning_records",
+    # Issue 08：目标关联/切换事件在对话详情中无条件读取（恢复/切换/冲突
+    # 反馈），迁移半执行时须在启动阶段失败关闭。
+    "study_goal_events",
     "learning_project_migration_conversations",
     "schema_meta",
     # 工单 01：画像页面与启动装配会无条件查询这三张表。历史上它们因迁移编号
@@ -3568,6 +3608,7 @@ REQUIRED_INDEXES: frozenset[str] = frozenset({
     "idx_study_diagnosis_results_conversation",
     "idx_study_diagnosis_results_evidence",
     "idx_study_learning_records_updated",
+    "idx_study_goal_events_conversation",
 })
 
 #: 需要在「存在性」之上再核对必需列的核心对象。
@@ -3614,6 +3655,24 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "goal_id",
         "created_at",
         "updated_at",
+    }),
+    "study_goal_events": frozenset({
+        "event_id",
+        "account_id",
+        "conversation_id",
+        "goal_id",
+        "goal_statement",
+        "previous_goal_id",
+        "previous_goal_statement",
+        "kind",
+        "detail",
+        "goal_version",
+        "progress_version",
+        "pending_check_id",
+        "pending_question",
+        "candidate_goal_ids_json",
+        "source_message_id",
+        "created_at",
     }),
     "study_session_controls": frozenset({
         "control_id",
@@ -3671,6 +3730,7 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "version",
         "created_at",
         "updated_at",
+        "goal_id",
     }),
     "study_evidence": frozenset({
         "evidence_id",
@@ -3697,6 +3757,7 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "answer_message_id",
         "feedback_message_id",
         "created_at",
+        "goal_id",
     }),
     "study_diagnosis_tasks": frozenset({
         "task_id",
@@ -3718,6 +3779,7 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "created_at",
         "updated_at",
         "completed_at",
+        "goal_id",
     }),
     "study_diagnosis_results": frozenset({
         "result_id",
@@ -3851,6 +3913,10 @@ MIGRATION_ADDED_COLUMNS: dict[str, frozenset[str]] = {
         "goal_state",
     }),
     "profile_item_migrations": frozenset({"identity_backfilled"}),
+    # Issue 08（v75）：既有学习表补加目标归属列。
+    "study_pending_checks": frozenset({"goal_id"}),
+    "study_evidence": frozenset({"goal_id"}),
+    "study_diagnosis_tasks": frozenset({"goal_id"}),
 }
 
 #: schema 完整性失败时写入错误消息的稳定错误码。

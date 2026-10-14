@@ -147,10 +147,12 @@ def test_study_goals_migration_export_delete_and_recovery(
             category = next(
                 item for item in EXPORT_CATEGORIES if item.key == "study_goals"
             )
+            # v75（Issue 08）为该类别补加目标事件日志表。
             assert category.tables == (
                 "study_goals",
                 "study_goal_routes",
                 "study_conversation_goals",
+                "study_goal_events",
             )
             # 1 目标 + 2 路线版本 + 1 会话引用。
             assert len(export_rows(database, owner["id"], "study_goals")) == 1

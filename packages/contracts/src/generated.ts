@@ -4,6 +4,91 @@
  */
 
 export interface paths {
+    "/health/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health Live
+         * @description Liveness probe: process event loop can respond.
+         */
+        get: operations["health_live_health_live_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health Ready
+         * @description Readiness probe: required dependencies are healthy.
+         *
+         *     Issue 06：未就绪（含数据库 schema 未达当前版本或核心对象缺失）时
+         *     返回 HTTP 503 而非 200——Playwright 的 webServer URL 轮询只认状态码，
+         *     只有 schema-ready 后才放行用户测试；初始化失败时启动明确失败而不是
+         *     在首个会话请求中报 500。响应体始终是同一份 HealthProjection。
+         */
+        get: operations["health_ready_health_ready_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/degraded": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health Degraded
+         * @description Degraded probe: optional dependencies and degradation capability.
+         */
+        get: operations["health_degraded_health_degraded_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health Summary
+         * @description Combined health summary.
+         */
+        get: operations["health_summary_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/register": {
         parameters: {
             query?: never;
@@ -1158,6 +1243,26 @@ export interface paths {
          * @description 恢复当前账户在该对话内的幂等计划调整记录。
          */
         get: operations["list_learning_plan_adjustments_chat_conversations__conversation_id__learning_plan_adjustments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/study/goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Study Goals
+         * @description 列出本人学习目标（活动/暂停，最近在前），供续学选择。
+         */
+        get: operations["list_study_goals_chat_study_goals_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6290,91 +6395,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/health/live": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Health Live
-         * @description Liveness probe: process event loop can respond.
-         */
-        get: operations["health_live_health_live_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/health/ready": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Health Ready
-         * @description Readiness probe: required dependencies are healthy.
-         *
-         *     Issue 06：未就绪（含数据库 schema 未达当前版本或核心对象缺失）时
-         *     返回 HTTP 503 而非 200——Playwright 的 webServer URL 轮询只认状态码，
-         *     只有 schema-ready 后才放行用户测试；初始化失败时启动明确失败而不是
-         *     在首个会话请求中报 500。响应体始终是同一份 HealthProjection。
-         */
-        get: operations["health_ready_health_ready_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/health/degraded": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Health Degraded
-         * @description Degraded probe: optional dependencies and degradation capability.
-         */
-        get: operations["health_degraded_health_degraded_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Health Summary
-         * @description Combined health summary.
-         */
-        get: operations["health_summary_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/me": {
         parameters: {
             query?: never;
@@ -9662,6 +9682,8 @@ export interface components {
             study_local_progress?: components["schemas"]["StudyLocalProgressProjection"] | null;
             /** @description 本对话当前关联的账户级学习目标与路线；局部问题对话为 null。 */
             study_goal?: components["schemas"]["StudyGoalProjection"] | null;
+            /** @description 会话目标通知（已恢复/已切换/冲突/待确认）；由目标关联与切换的权威事件派生，不由客户端自行切换状态。 */
+            study_goal_notice?: components["schemas"]["StudyGoalNoticeProjection"] | null;
             /** @description 当前待答问题与帮助状态；只含已展示的问题，不含评价依据或未提出的问题。 */
             study_pending_check?: components["schemas"]["StudyPendingCheckProjection"] | null;
             /** @description 最近一次用户学习控制（直接讲解、跳过、暂停、继续或要求小结）及作用的问题；未验证项如实标注，不当作错答或掌握。 */
@@ -24952,6 +24974,43 @@ export interface components {
             interpretation: string;
         };
         /**
+         * StudyGoalListProjection
+         * @description 本人目标列表：无目标时为空列表，加载失败由接口层如实报错。
+         */
+        StudyGoalListProjection: {
+            /** Goals */
+            goals?: components["schemas"]["StudyGoalSummaryProjection"][];
+        };
+        /**
+         * StudyGoalNoticeProjection
+         * @description 会话目标通知：恢复/切换/冲突/待确认由权威事件派生。
+         */
+        StudyGoalNoticeProjection: {
+            /**
+             * Kind
+             * @description 通知语义。
+             * @enum {string}
+             */
+            kind: "restored" | "switched" | "conflict" | "clarification";
+            /**
+             * Message
+             * @description 固定中文状态文案。
+             */
+            message: string;
+            /**
+             * Goal Statement
+             * @description 相关目标原话；无则空。
+             * @default
+             */
+            goal_statement: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 事件发生时间。
+             */
+            created_at: string;
+        };
+        /**
          * StudyGoalProjection
          * @description 账户级长期学习目标；身份独立于会话，会话通过引用关联。
          */
@@ -25015,6 +25074,46 @@ export interface components {
             updated_at: string;
             /** @description 当前生效的学习路线；尚未形成时为 null。 */
             route?: components["schemas"]["StudyRouteProjection"] | null;
+        };
+        /**
+         * StudyGoalSummaryProjection
+         * @description 账户内本人目标的选择/续学条目；不含他人目标与无权来源。
+         */
+        StudyGoalSummaryProjection: {
+            /**
+             * Goal Id
+             * @description 稳定目标标识。
+             */
+            goal_id: string;
+            /**
+             * Statement
+             * @description 用户目标原话。
+             */
+            statement: string;
+            /**
+             * Status
+             * @description 目标活动状态。
+             * @enum {string}
+             */
+            status: "active" | "paused" | "completed";
+            /**
+             * Current Node Title
+             * @description 当前路线节点的名称；未形成路线时为空。
+             * @default
+             */
+            current_node_title: string;
+            /**
+             * Route Version
+             * @description 当前路线版本；未形成时为 0。
+             * @default 0
+             */
+            route_version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新时间。
+             */
+            updated_at: string;
         };
         /**
          * StudyGradeRecord
@@ -29845,6 +29944,86 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    health_live_health_live_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthProjection"];
+                };
+            };
+        };
+    };
+    health_ready_health_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthProjection"];
+                };
+            };
+        };
+    };
+    health_degraded_health_degraded_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthProjection"];
+                };
+            };
+        };
+    };
+    health_summary_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthProjection"];
+                };
+            };
+        };
+    };
     register_auth_register_post: {
         parameters: {
             query?: never;
@@ -32952,6 +33131,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanAdjustment"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_study_goals_chat_study_goals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudyGoalListProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
                 };
             };
             /** @description Validation Error */
@@ -47333,86 +47552,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    health_live_health_live_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthProjection"];
-                };
-            };
-        };
-    };
-    health_ready_health_ready_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthProjection"];
-                };
-            };
-        };
-    };
-    health_degraded_health_degraded_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthProjection"];
-                };
-            };
-        };
-    };
-    health_summary_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthProjection"];
                 };
             };
         };

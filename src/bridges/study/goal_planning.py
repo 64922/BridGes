@@ -7,6 +7,7 @@ C01：本模块的提示词与合同按 BridGes 需求自主设计，只输出�
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
@@ -24,19 +25,23 @@ if TYPE_CHECKING:
 #: 路线必须简短：超过该数量的节点属于完整课程，不是本票的导师方案。
 MAX_ROUTE_NODES = 8
 
+#: 规划模式；resume/switch 是 Issue 08 的续学与明确改学判定。
+StudyGoalPlanMode = Literal["create", "build_route", "revision", "resume", "switch"]
+
 _PLANNER_SYSTEM_PROMPT = (
-    "你是 BridGes 的学习规划导师。你的职责是判断用户最新消息属于系统性学习目标还是"
-    "局部具体问题，并为系统性目标形成「简短、可调整」的导师路线。"
+    "你是 BridGes 的学习规划导师。你的职责是判断用户最新消息属于系统性学习目标、"
+    "局部具体问题、续学既有目标还是明确改学，并为系统性目标形成「简短、可调整」的导师路线。"
     "用户的学习目的与明确限制是权威事实：只能原样引用，绝不改写、扩写或替换。\n"
     "\n"
     "只输出一个 JSON 对象，字段如下：\n"
     "{\n"
-    '  "kind": "systematic_goal" 或 "local_question",\n'
+    '  "kind": "systematic_goal"、"local_question"、"resume" 或 "switch",\n'
+    '  "target_goal_id": "resume/switch 选中的既有目标标识；新建或无法确定时为空字符串",\n'
     '  "observable_result": "用户明确说出的可观察结果；未说出时为空字符串",\n'
     '  "scope": "用户明确说出的适用范围；未说出时为空字符串",\n'
     '  "constraints": "用户明确说出的限制条件；未说出时为空字符串",\n'
-    '  "clarification_question": "缺少真正决定教法的信息时，只问一个必要问题；'
-    '否则为空字符串",\n'
+    '  "clarification_question": "缺少真正决定教法的信息、或续学目标确有歧义时，'
+    '只问一个必要问题；否则为空字符串",\n'
     '  "route": {"nodes": [{"node_id": "n1", "title": "知识点名称",'
     ' "prerequisites": [], "depth": ""}], "current_node_id": "n1",'
     ' "revision_reason": "形成或修订本路线的依据"} 或 null,\n'
@@ -48,6 +53,15 @@ _PLANNER_SYSTEM_PROMPT = (
     "kind 必须为 local_question，不建立长期目标或完整课程。\n"
     "- 用户明确表达宽泛领域的学习意图（如「带我学线性代数」「我想系统学概率论」）时，"
     "kind 为 systematic_goal。\n"
+    "- 用户明确要求继续之前的学习（上下文给出候选目标列表）时，kind 为 resume："
+    "只有当前消息提到的主题与某个候选目标原话明显对应时才填 target_goal_id；"
+    "多个候选都可能或无法确定时 target_goal_id 留空，并在 clarification_question "
+    "中只问一个让用户选择的问题；消息与任何候选都无关时 kind 为 local_question。"
+    "绝不能选择候选列表之外的目标，也不要默认选择最近更新的目标。\n"
+    "- 用户明确要求换一个学习目标、不再学当前目标时，kind 为 switch："
+    "目标在候选列表中时填 target_goal_id；是全新目标时 target_goal_id 留空并按"
+    "系统性目标给出路线与相关字段。只是顺带问一句、临时岔题或没有改变当前目标的"
+    "意图时，kind 为 local_question。不确定是否真的要改学时按 local_question 处理。\n"
     "- 不要统一先做入门考试，不要假定用户已有基础；只有缺少真正决定教法的信息时，"
     "才在 clarification_question 中问恰好一个问题，否则直接给出路线。\n"
     "- 路线必须简短：不超过 8 个知识点，按教学顺序排列；prerequisites 只引用本路线内的"
@@ -90,7 +104,10 @@ class StudyGoalPlan(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    kind: Literal["systematic_goal", "local_question"] = "systematic_goal"
+    kind: Literal["systematic_goal", "local_question", "resume", "switch"] = (
+        "systematic_goal"
+    )
+    target_goal_id: str = Field(default="", max_length=64)
     observable_result: str = Field(default="", max_length=500)
     scope: str = Field(default="", max_length=500)
     constraints: str = Field(default="", max_length=500)
@@ -108,7 +125,7 @@ class StudyGoalPlanner:
     def plan(
         self,
         *,
-        mode: Literal["create", "build_route", "revision"],
+        mode: StudyGoalPlanMode,
         run: GenerationRunRecord,
         user_content: str,
         goal: StudyGoalProjection | None,
@@ -116,9 +133,10 @@ class StudyGoalPlanner:
         messages: list[dict[str, str]] | None,
         model_quota: RunModelQuota | None,
         budget: RunBudget | None,
+        candidates: Sequence[StudyGoalProjection] = (),
     ) -> StudyGoalPlan | None:
         system_prompt = _PLANNER_SYSTEM_PROMPT + "\n" + _mode_context(
-            mode, goal=goal, route=route
+            mode, goal=goal, route=route, candidates=candidates
         )
         planning_messages = _planning_messages(messages, user_content, system_prompt)
         # 运行时导入：避免 bridges.chat 包初始化期间的反向依赖。
@@ -169,10 +187,11 @@ def route_projection_from_draft(
 
 
 def _mode_context(
-    mode: Literal["create", "build_route", "revision"],
+    mode: StudyGoalPlanMode,
     *,
     goal: StudyGoalProjection | None,
     route: StudyRouteProjection | None,
+    candidates: Sequence[StudyGoalProjection] = (),
 ) -> str:
     if mode == "revision" and goal is not None and route is not None:
         nodes = "、".join(node.title for node in route.nodes)
@@ -190,7 +209,56 @@ def _mode_context(
             f"目标原话：{goal.statement}\n"
             "若仍缺少真正决定教法的信息，只问一个问题。"
         )
+    if mode == "resume":
+        return (
+            "本轮判断用户最新消息是否要求继续某个既有学习目标，并从下列候选"
+            "（均为当前账户本人目标）中选择：\n"
+            + _candidate_lines(candidates)
+            + "\n选择规则：消息主题与候选目标原话明显对应才填 target_goal_id；"
+            "多个候选都可能或无法确定时 target_goal_id 留空并只问一个澄清问题；"
+            "与任何候选无关时 kind=local_question。绝不选择列表外的目标。"
+        )
+    if mode == "switch" and goal is not None:
+        route_text = ""
+        if route is not None:
+            route_text = (
+                f"当前路线（第 {route.version} 版）当前节点：{route.current_node_id}。"
+            )
+        return (
+            "本轮判断用户是否明确要求换一个学习目标、不再学当前目标。"
+            f"当前目标原话：{goal.statement}\n"
+            + route_text
+            + "\n可切换的既有候选目标（不含当前目标）：\n"
+            + _candidate_lines(candidates)
+            + "\n目标在候选列表中时填 target_goal_id；是全新目标时 target_goal_id "
+            "留空，并按系统性目标给出路线与 observable_result/scope/constraints；"
+            "只是顺带提问、临时岔题或意图不明确时 kind=local_question。"
+        )
     return "本轮判断用户最新消息是否为新的系统性学习目标，并据此形成简短路线。"
+
+
+def _candidate_lines(candidates: Sequence[StudyGoalProjection]) -> str:
+    if not candidates:
+        return "（当前没有可选的既有目标）"
+    lines: list[str] = []
+    for candidate in candidates:
+        route = candidate.route
+        node_title = ""
+        if route is not None:
+            node_title = next(
+                (
+                    node.title
+                    for node in route.nodes
+                    if node.node_id == route.current_node_id
+                ),
+                "",
+            )
+        lines.append(
+            f"- target_goal_id={candidate.goal_id}；目标原话：{candidate.statement}"
+            f"；状态：{candidate.status}"
+            + (f"；当前节点：{node_title}" if node_title else "")
+        )
+    return "\n".join(lines)
 
 
 def _planning_messages(

@@ -453,6 +453,80 @@ describe("Issue 04 学习控制、暂停与阶段小结", () => {
   });
 });
 
+describe("Issue 08 目标通知与暂停状态", () => {
+  const goal = {
+    goal_id: "goal-1",
+    statement: "我想系统学概率论，为了做数据分析",
+    observable_result: "",
+    scope: "",
+    constraints: "",
+    status: "active" as const,
+    version: 1,
+    source_message_id: "user-1",
+    created_at: "2026-10-14T00:00:00Z",
+    updated_at: "2026-10-14T00:00:00Z",
+    route: null,
+  };
+  const localProgress = {
+    topic: "概率论",
+    knowledge_context: "随机变量。",
+    current_focus: "继续讲随机变量",
+    source_message_ids: ["user-1", "assistant-1"],
+    version: 1,
+    runtime_run_id: "run-1",
+    updated_at: "2026-10-14T00:00:00Z",
+  };
+  const restoredNotice = {
+    kind: "restored" as const,
+    message: "已恢复学习目标「我想系统学概率论，为了做数据分析」，按已保存的进展与位置继续。",
+    goal_statement: "我想系统学概率论，为了做数据分析",
+    created_at: "2026-10-14T00:00:00Z",
+  };
+
+  it("恢复通知由权威事件派生，展示在目标顶部", () => {
+    render(<StudyProgress studyGoal={goal} studyGoalNotice={restoredNotice} />);
+
+    expect(screen.getByLabelText("目标通知").textContent).toContain("已恢复学习目标");
+    expect(screen.getByText(`目标：${goal.statement}`)).toBeTruthy();
+  });
+
+  it("目标被其他会话暂停时如实展示恢复方式，不虚构已恢复", () => {
+    render(
+      <StudyProgress
+        studyGoal={{ ...goal, status: "paused" as const }}
+      />,
+    );
+
+    const status = screen.getByLabelText("目标暂停状态");
+    expect(status.textContent).toContain("该目标已在其他会话被暂停");
+    expect(status.textContent).toContain("明确说「继续学」即可在此恢复");
+    expect(screen.queryByLabelText("目标通知")).toBeNull();
+  });
+
+  it("冲突通知在局部进展视图同样可见，与消息交付分开呈现", () => {
+    render(
+      <StudyProgress
+        studyLocalProgress={localProgress}
+        studyGoalNotice={{
+          kind: "conflict" as never,
+          message: "目标状态已被其他会话更新，本次恢复或切换未提交；请重试或重新选择目标。",
+          goal_statement: goal.statement,
+          created_at: "2026-10-14T00:00:00Z",
+        }}
+      />,
+    );
+
+    expect(screen.getByLabelText("目标通知").textContent).toContain("本次恢复或切换未提交");
+  });
+
+  it("没有通知时不渲染任何目标状态行", () => {
+    render(<StudyProgress studyLocalProgress={localProgress} />);
+
+    expect(screen.queryByLabelText("目标通知")).toBeNull();
+    expect(screen.queryByLabelText("目标暂停状态")).toBeNull();
+  });
+});
+
 describe("后台核验与学习档案", () => {
   const pendingTask = {
     task_id: "dx-1",

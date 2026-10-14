@@ -67,6 +67,8 @@ class StudyDiagnosisCandidate:
     answer_message_id: str
     check_kind: str
     source_refs: list[dict[str, Any]] = field(default_factory=list)
+    #: Issue 08：作答时所属目标；旧目标的结果不能更新新目标。
+    goal_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -183,8 +185,8 @@ class StudyDiagnosisRepository:
             " (task_id, account_id, conversation_id, evidence_id,"
             " answer_message_id, question, knowledge_context, input_version,"
             " protocol_version, basis_json, status, attempt, generation,"
-            " failure_reason, result_version, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, '', 0, ?, ?)"
+            " failure_reason, result_version, created_at, updated_at, goal_id)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, '', 0, ?, ?, ?)"
             " ON CONFLICT(task_id) DO NOTHING",
             (
                 task_id,
@@ -199,6 +201,7 @@ class StudyDiagnosisRepository:
                 json.dumps(candidate.basis, ensure_ascii=False),
                 timestamp,
                 timestamp,
+                candidate.goal_id,
             ),
         )
         return task_id
