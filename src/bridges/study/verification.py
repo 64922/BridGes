@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import secrets
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
@@ -27,6 +28,7 @@ from bridges.chat.repository import (
     MessageRecord,
 )
 from bridges.contracts.study_controls import StudySessionPauseProjection
+from bridges.contracts.study_source_verification import StudyVerificationSourceRef
 from bridges.contracts.study_verification import (
     VERIFICATION_CONTRACT_VERSION,
     StudyCheckAssistance,
@@ -38,9 +40,11 @@ from bridges.contracts.study_verification import (
     StudyEvidenceOutcome,
     StudyEvidenceSemantics,
     StudyPendingCheckProjection,
+    StudyPendingSourceStatus,
     StudyUserIntent,
 )
 from bridges.storage.database import BridgesDatabase
+from bridges.study.demand_verification import snapshot_incomplete, snapshot_source_refs
 from bridges.study.diagnosis_repository import (
     StudyDiagnosisCandidate,
     evidence_input_version,
@@ -67,6 +71,14 @@ _RECENT_MESSAGE_LIMIT = 6
 _STUCK_STREAK_LIMIT = 2
 _STUCK_HINT_LIMIT = 2
 _SOURCE_REF_LIMIT = 8
+#: Issue 10：一条证据可携带的资料引用上限（提问依据 + 本轮读取 + 检索）。
+_MATERIAL_REF_LIMIT = 12
+
+#: 题目作废的内部原因（资料失效 / 学生补拍更新）。
+_STALE_REASON = "本题所依据的资料已不可用或已更新，题目作废，未按过期依据评价。"
+_MATERIAL_UPDATE_REASON = (
+    "学生补拍或更新了资料，原题按旧资料版本作废，未按旧依据评价。"
+)
 
 _ACTIONS = frozenset({"evaluate", "help", "pose_check", "none"})
 _OUTCOMES = frozenset(
@@ -141,13 +153,20 @@ class StudyCheckRecord:
             else StudyCheckAssistance.NONE
         )
 
-    def projection(self) -> StudyPendingCheckProjection:
+    def projection(
+        self,
+        *,
+        source_status: StudyPendingSourceStatus = (
+            StudyPendingSourceStatus.NOT_APPLICABLE
+        ),
+    ) -> StudyPendingCheckProjection:
         return StudyPendingCheckProjection(
             check_id=self.check_id,
             kind=self.kind,
             question=self.question,
             knowledge_context=self.knowledge_context,
             assistance=self.assistance(),
+            source_status=source_status,
             version=self.version,
             source_message_id=self.source_message_id,
             created_at=self.created_at,
@@ -270,7 +289,80 @@ class StudyVerificationRepository:
         self, account_id: str, conversation_id: str
     ) -> StudyPendingCheckProjection | None:
         record = self.get_pending(account_id, conversation_id)
-        return record.projection() if record is not None else None
+        if record is None:
+            return None
+        return record.projection(
+            source_status=self.source_status(
+                account_id, conversation_id, record.basis.material_refs
+            )
+        )
+
+    # ------------------------------------------------------------------
+    # 资料依据的可访问性（Issue 10）
+    # ------------------------------------------------------------------
+
+    def source_status(
+        self,
+        account_id: str,
+        conversation_id: str,
+        source_refs: list[dict[str, Any]] | None,
+    ) -> StudyPendingSourceStatus:
+        """题目所依据资料当前是否仍可访问（读取时解析，不写回）。"""
+
+        refs = [ref for ref in (source_refs or []) if isinstance(ref, dict)]
+        if not refs:
+            return StudyPendingSourceStatus.NOT_APPLICABLE
+        if all(
+            self._ref_available(account_id, conversation_id, ref) for ref in refs
+        ):
+            return StudyPendingSourceStatus.AVAILABLE
+        return StudyPendingSourceStatus.UNAVAILABLE
+
+    def resolve_source_refs(
+        self,
+        account_id: str,
+        conversation_id: str,
+        source_refs: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        """为每条引用补齐 ``available`` 标记（证据冻结与失效判定共用）。"""
+
+        resolved: list[dict[str, Any]] = []
+        for ref in source_refs or []:
+            if not isinstance(ref, dict):
+                continue
+            item = dict(ref)
+            item["available"] = self._ref_available(
+                account_id, conversation_id, item
+            )
+            resolved.append(item)
+        return resolved
+
+    def _ref_available(
+        self, account_id: str, conversation_id: str, ref: dict[str, Any]
+    ) -> bool:
+        """引用的对象仍有效且（照片/附件引用）绑定行仍存在。"""
+
+        object_id = str(ref.get("object_id") or "")
+        if not object_id:
+            # 无对象标识的引用（旧格式）没有可核验的失效证据：不据此判失效。
+            return True
+        row = self._database.scoped(account_id).execute(
+            "SELECT status FROM objects WHERE account_id = ? AND object_id = ?",
+            (account_id, object_id),
+        ).fetchone()
+        if row is None or str(row["status"]) != "active":
+            return False
+        message_id = str(ref.get("message_id") or "")
+        if message_id:
+            bound = self._database.scoped(account_id).execute(
+                "SELECT 1 FROM chat_attachments"
+                " WHERE account_id = ? AND conversation_id = ?"
+                " AND object_id = ? AND message_id = ?",
+                (account_id, conversation_id, object_id, message_id),
+            ).fetchone()
+            if bound is None:
+                return False
+        return True
 
     def list_recent_evidence(
         self,
@@ -341,21 +433,53 @@ class StudyVerificationRepository:
         snapshot = config.get("study_verification")
         if not isinstance(snapshot, dict):
             return None
+        # Issue 11：同一轮公开查证快照。查证未完成（空命中、不可达、
+        # 冲突、仅摘要、用户限制或预算耗尽）时不再冻结依赖外部证据的
+        # 标准答案与误解判定；实际采用的来源版本随评价依据一起冻结。
+        source_snapshot = config.get("study_source_verification")
+        verification_incomplete = snapshot_incomplete(source_snapshot)
+        source_refs = _source_refs_from_snapshot(source_snapshot)
         timestamp = now or datetime.now(UTC)
         action = str(snapshot.get("action") or "")
         intent = str(snapshot.get("intent") or "")
         bound = snapshot.get("bound_check")
+        stale = snapshot.get("stale_check")
         candidate: StudyDiagnosisCandidate | None = None
-        # 明确跳过或要求直接完整讲解：解除绑定问题的等待，如实记录
-        # 「未验证」允许继续；旧控制重试只作用于其绑定的问题（Issue 04）。
-        if (
-            intent in _RELEASING_INTENT_VALUES
-            and isinstance(bound, dict)
+        if isinstance(bound, dict) and isinstance(stale, dict):
+            # Issue 10：所依据资料已不可用（删除/不可访问）——题目作废，
+            # 记未验证并解除等待，绝不按过期依据评价，也不改写历史判定。
+            self._release_void_check(
+                run,
+                user_message,
+                bound,
+                timestamp,
+                reason=str(stale.get("reason") or _STALE_REASON),
+            )
+        elif (
+            isinstance(bound, dict)
+            and intent == StudyUserIntent.MATERIAL_UPDATE.value
         ):
+            # Issue 10：学生补拍/更新资料，不是作答——原题按旧版本作废。
+            self._release_void_check(
+                run,
+                user_message,
+                bound,
+                timestamp,
+                reason=_MATERIAL_UPDATE_REASON,
+            )
+        elif intent in _RELEASING_INTENT_VALUES and isinstance(bound, dict):
+            # 明确跳过或要求直接完整讲解：解除绑定问题的等待，如实记录
+            # 「未验证」允许继续；旧控制重试只作用于其绑定的问题（Issue 04）。
             self._release_skipped_check(run, user_message, bound, timestamp)
         if action == "evaluate" and isinstance(bound, dict):
             candidate = self._write_answer_evidence(
-                run, user_message, assistant_message_id, bound, snapshot, timestamp
+                run,
+                user_message,
+                assistant_message_id,
+                bound,
+                snapshot,
+                timestamp,
+                verification_incomplete=verification_incomplete,
             )
         elif (
             action == "help"
@@ -366,7 +490,13 @@ class StudyVerificationRepository:
         posed = snapshot.get("posed_check")
         if isinstance(posed, dict):
             self._activate_posed_check(
-                run, assistant_message_id, posed, content, timestamp
+                run,
+                assistant_message_id,
+                posed,
+                content,
+                timestamp,
+                source_refs=source_refs,
+                verification_incomplete=verification_incomplete,
             )
         return candidate
 
@@ -382,6 +512,8 @@ class StudyVerificationRepository:
         bound: dict[str, Any],
         snapshot: dict[str, Any],
         now: datetime,
+        *,
+        verification_incomplete: bool = False,
     ) -> StudyDiagnosisCandidate | None:
         evaluation = snapshot.get("evaluation")
         if not isinstance(evaluation, dict):
@@ -393,6 +525,16 @@ class StudyVerificationRepository:
             return None
         if outcome == StudyEvidenceOutcome.NO_ANSWER:
             return None
+        if outcome == StudyEvidenceOutcome.MISCONCEPTION and verification_incomplete:
+            # Issue 11：本轮公开查证未完成——学生是否确实答错外部事实
+            # 无从核实，如实记录待确认，不把学生判成错。
+            outcome = StudyEvidenceOutcome.UNDETERMINED
+        elif outcome == StudyEvidenceOutcome.MISCONCEPTION and self._basis_incomplete(
+            run, str(bound.get("check_id") or "")
+        ):
+            # Issue 11：待答问题在冻结时公开查证未完成（依据标记为不完整）：
+            # 依据不可靠，评价不得据此判学生错。
+            outcome = StudyEvidenceOutcome.UNDETERMINED
         assistance_value = str(
             snapshot.get("assistance") or StudyEvidenceAssistance.INDEPENDENT.value
         )
@@ -438,7 +580,15 @@ class StudyVerificationRepository:
                     else []
                 ),
             ][:_SOURCE_MESSAGE_LIMIT],
-            source_refs=_ref_list(snapshot.get("source_refs")),
+            source_refs=self.resolve_source_refs(
+                run.account_id,
+                run.conversation_id,
+                _merge_refs(
+                    bound.get("material_refs"),
+                    snapshot.get("material_refs"),
+                    snapshot.get("source_refs"),
+                ),
+            ),
             evidence_contract_version=VERIFICATION_CONTRACT_VERSION,
             answer_message_id=user_message.message_id,
             feedback_message_id=assistant_message_id,
@@ -473,6 +623,18 @@ class StudyVerificationRepository:
             check_kind=evidence.check_kind.value,
             source_refs=list(evidence.source_refs),
             goal_id=evidence.goal_id,
+        )
+
+    def _basis_incomplete(self, run: GenerationRunRecord, check_id: str) -> bool:
+        """当前待答问题是否冻结于未完成的公开查证（依据不可判错）。"""
+
+        if not check_id:
+            return False
+        current = self.get_pending(run.account_id, run.conversation_id)
+        return (
+            current is not None
+            and current.check_id == check_id
+            and current.basis.evidence_incomplete
         )
 
     def _append_hint(
@@ -523,6 +685,9 @@ class StudyVerificationRepository:
         posed: dict[str, Any],
         content: str,
         now: datetime,
+        *,
+        source_refs: list[StudyVerificationSourceRef] | None = None,
+        verification_incomplete: bool = False,
     ) -> None:
         try:
             kind = StudyCheckKind(str(posed.get("kind") or ""))
@@ -537,6 +702,12 @@ class StudyVerificationRepository:
             # Issue 08：规划时的问题已不再属于当前关联目标（例如改学或
             # 其他会话切换后重试旧运行）：旧结果不能挂到新目标上。
             return
+        # Issue 11：本轮查证未完成时不得冻结依赖外部证据的标准答案；
+        # 正式练习降级为开放探查（不判分、不设唯一答案）。
+        expected_answer = _short_text(str(posed.get("expected_answer") or ""), 300)
+        if verification_incomplete and kind == StudyCheckKind.FORMAL_CHECK:
+            kind = StudyCheckKind.OPEN_PROBE
+            expected_answer = ""
         posed_check_id = str(posed.get("check_id") or "")
         current = self.get_pending(run.account_id, run.conversation_id)
         if current is not None and current.check_id == posed_check_id:
@@ -557,7 +728,10 @@ class StudyVerificationRepository:
             accepted_equivalents=_text_list(posed.get("accepted_equivalents")),
             key_misconceptions=_text_list(posed.get("key_misconceptions")),
             assumptions=_text_list(posed.get("assumptions")),
-            expected_answer=_short_text(str(posed.get("expected_answer") or ""), 300),
+            expected_answer=expected_answer,
+            source_refs=list(source_refs or []),
+            evidence_incomplete=verification_incomplete,
+            material_refs=_ref_list(posed.get("material_refs")),
         )
         self._database.scoped(run.account_id).execute(
             "INSERT INTO study_pending_checks"
@@ -674,6 +848,34 @@ class StudyVerificationRepository:
             run.account_id, run.conversation_id, current.check_id
         )
 
+    def _release_void_check(
+        self,
+        run: GenerationRunRecord,
+        user_message: MessageRecord,
+        bound: dict[str, Any],
+        now: datetime,
+        *,
+        reason: str,
+    ) -> None:
+        """资料更新/失效致题目作废：记录未验证并解除等待，不判对错。"""
+
+        current = self.get_pending(run.account_id, run.conversation_id)
+        if current is None or current.check_id != str(bound.get("check_id") or ""):
+            return
+        self._write_unverified_evidence(
+            run,
+            current,
+            now,
+            extra_source_ids=[user_message.message_id],
+            source_refs=self.resolve_source_refs(
+                run.account_id, run.conversation_id, current.basis.material_refs
+            ),
+            reasoning_note=reason,
+        )
+        self._close_pending_if_current(
+            run.account_id, run.conversation_id, current.check_id
+        )
+
     def _write_unverified_evidence(
         self,
         run: GenerationRunRecord,
@@ -681,8 +883,10 @@ class StudyVerificationRepository:
         now: datetime,
         *,
         extra_source_ids: list[str] | None = None,
+        source_refs: list[dict[str, Any]] | None = None,
+        reasoning_note: str = "",
     ) -> None:
-        """问题被替换或跳过且没有作答：如实记录「未验证」。
+        """问题被替换、跳过或作废且没有作答：如实记录「未验证」。
 
         Issue 04：同一问题最多一条未验证证据——重试重放、跳过与替换都
         不会重复记账或在小结里出现两次。
@@ -711,11 +915,13 @@ class StudyVerificationRepository:
             outcome=StudyEvidenceOutcome.NO_ANSWER,
             semantics=StudyEvidenceSemantics.UNVERIFIED,
             assistance=StudyEvidenceAssistance.NONE,
+            reasoning_note=_short_text(reasoning_note, 400),
             hint_message_ids=[event.message_id for event in check.hint_history],
             source_message_ids=[
                 check.source_message_id,
                 *(extra_source_ids or []),
             ][:_SOURCE_MESSAGE_LIMIT],
+            source_refs=list(source_refs or [])[:_MATERIAL_REF_LIMIT],
             evidence_contract_version=VERIFICATION_CONTRACT_VERSION,
             created_at=now,
             goal_id=check.goal_id,
@@ -839,6 +1045,9 @@ class StudyVerificationPlanner:
         model_quota: Any,
         budget: Any,
         retrieval_round: Any | None,
+        source_verification: Mapping[str, Any] | None = None,
+        material_refs: list[dict[str, Any]] | None = None,
+        has_new_material: bool = False,
     ) -> str | None:
         # 重试（或租约恢复重放）沿用本轮冻结的评价快照：旧作答始终绑定
         # 当时的待答问题与版本，不会被判到之后的新问题上，也不重复记账。
@@ -852,10 +1061,13 @@ class StudyVerificationPlanner:
                     question=question,
                     has_hint=has_hint,
                     stuck=bool(existing.get("stuck")),
+                    stale_reason=_snapshot_stale_reason(existing),
                 )
+        refs = _material_ref_list(material_refs)
         pending = self._verification.get_pending(account_id, conversation_id)
         recent = self._verification.list_recent_evidence(account_id, conversation_id)
         stuck = _stuck_state(recent, pending)
+        stale_reason = self._stale_reason(account_id, conversation_id, pending)
         pause = self._active_pause(account_id, conversation_id)
         request = self._planner_request(
             account_id,
@@ -865,12 +1077,26 @@ class StudyVerificationPlanner:
             history,
             user_message,
             stuck,
+            refs,
+            has_new_material,
             pause,
         )
         output = self._invoke(request, run_context, gateway, model_override, model_quota, budget)
         if output is None:
             return None
-        plan = _normalize_plan(output, pending, stuck)
+        # Issue 11：本轮查证未完成，或待答问题本身冻结于未完成的查证
+        # （依据标记不完整）时：不冻结伪标准答案，也不判学生错。
+        verification_incomplete = snapshot_incomplete(source_verification) or (
+            pending is not None and pending.basis.evidence_incomplete
+        )
+        plan = _normalize_plan(
+            output,
+            pending,
+            stuck,
+            verification_incomplete=verification_incomplete,
+            has_new_material=has_new_material,
+            stale_reason=stale_reason,
+        )
         summary = None
         if plan.summary_trigger is not None:
             summary = self._build_summary(
@@ -888,6 +1114,8 @@ class StudyVerificationPlanner:
             assistant_message_id,
             stuck,
             history,
+            material_refs=refs,
+            stale_reason=stale_reason,
             pause=pause,
             summary=summary,
             linked_goal_id=self._verification.linked_goal_id(
@@ -903,7 +1131,29 @@ class StudyVerificationPlanner:
             question=pending.question if pending is not None else None,
             has_hint=bool(pending.hint_history) if pending is not None else False,
             stuck=stuck,
+            stale_reason=stale_reason,
         )
+
+    def _stale_reason(
+        self,
+        account_id: str,
+        conversation_id: str,
+        pending: StudyCheckRecord | None,
+    ) -> str | None:
+        """待答问题的资料依据是否已失效（删除/不可访问）。
+
+        Issue 10：任何一条提问依据不再可访问时，整题按过期依据处理——
+        不能确定题目依赖哪一条，保守地不在旧依据上评价。
+        """
+
+        if pending is None or not pending.basis.material_refs:
+            return None
+        status = self._verification.source_status(
+            account_id, conversation_id, pending.basis.material_refs
+        )
+        if status == StudyPendingSourceStatus.UNAVAILABLE:
+            return _STALE_REASON
+        return None
 
     def _active_pause(
         self, account_id: str, conversation_id: str
@@ -1006,6 +1256,8 @@ class StudyVerificationPlanner:
         history: list[dict[str, Any]],
         user_message: MessageRecord | None,
         stuck: bool,
+        material_refs: list[dict[str, Any]],
+        has_new_material: bool,
         pause: StudySessionPauseProjection | None,
     ) -> dict[str, Any]:
         progress = self._local_progress.get(account_id, conversation_id)
@@ -1031,10 +1283,25 @@ class StudyVerificationPlanner:
                     "assumptions": pending.basis.assumptions,
                     "expected_answer": pending.basis.expected_answer,
                     "hint_count": len(pending.hint_history),
+                    "material_grounded": bool(pending.basis.material_refs),
                 }
                 if pending is not None
                 else None
             ),
+            "material_context": {
+                "student_sent_new_material": has_new_material,
+                "material_reads": [
+                    {
+                        "kind": ref.get("kind"),
+                        "filename": ref.get("filename"),
+                        "read_range": ref.get("read_range"),
+                        "source_version": _short_text(
+                            str(ref.get("source_version") or ""), 64
+                        ),
+                    }
+                    for ref in material_refs
+                ],
+            },
             "recent_evidence": [
                 {
                     "outcome": item.outcome.value,
@@ -1128,6 +1395,10 @@ def _normalize_plan(
     output: _PlannerOutput,
     pending: StudyCheckRecord | None,
     stuck: bool,
+    *,
+    verification_incomplete: bool = False,
+    has_new_material: bool = False,
+    stale_reason: str | None = None,
 ) -> _NormalizedPlan:
     action = output.action if output.action in _ACTIONS else "none"
     intent = (
@@ -1135,10 +1406,24 @@ def _normalize_plan(
         if output.intent in _INTENTS
         else StudyUserIntent.OTHER
     )
+    # Issue 10：material_update 只在学生确实携带新材料、且待答问题基于
+    # 资料时成立；否则按普通意图处理，避免误作废真实作答。
+    material_update = (
+        intent == StudyUserIntent.MATERIAL_UPDATE
+        and has_new_material
+        and pending is not None
+        and bool(pending.basis.material_refs)
+    )
+    if intent == StudyUserIntent.MATERIAL_UPDATE and not material_update:
+        intent = StudyUserIntent.OTHER
     evaluation: StudyCheckEvaluation | None = None
     if action == "evaluate":
-        if pending is None or intent != StudyUserIntent.ANSWER:
-            # 没有待答问题或消息不是作答：不评价、不判错。
+        if (
+            pending is None
+            or intent != StudyUserIntent.ANSWER
+            or stale_reason is not None
+        ):
+            # 没有待答问题、消息不是作答或题目依据已失效：不评价、不判错。
             action = "help" if pending is not None else "none"
         else:
             outcome = (
@@ -1146,6 +1431,13 @@ def _normalize_plan(
                 if output.outcome in _OUTCOMES
                 else StudyEvidenceOutcome.UNDETERMINED
             )
+            if (
+                outcome == StudyEvidenceOutcome.MISCONCEPTION
+                and verification_incomplete
+            ):
+                # Issue 11：本轮公开查证未完成，外部事实对错无从核实：
+                # 不判误解，保留待确认。
+                outcome = StudyEvidenceOutcome.UNDETERMINED
             evaluation = StudyCheckEvaluation(
                 outcome=outcome,
                 equivalent_accepted=bool(output.equivalent_accepted),
@@ -1156,8 +1448,15 @@ def _normalize_plan(
             )
     posed: StudyCheckDraft | None = None
     if output.check_kind in _KINDS and output.check_question.strip():
+        kind = StudyCheckKind(output.check_kind)
+        expected_answer = _short_text(output.expected_answer, 300)
+        if verification_incomplete and kind == StudyCheckKind.FORMAL_CHECK:
+            # Issue 11：查证未完成时不冻结伪标准答案；正式练习降级为
+            # 开放探查，由模型在回复中作为理解检查提出。
+            kind = StudyCheckKind.OPEN_PROBE
+            expected_answer = ""
         posed = StudyCheckDraft(
-            kind=StudyCheckKind(output.check_kind),
+            kind=kind,
             question=_short_text(output.check_question, _QUESTION_LIMIT),
             knowledge_context=_short_text(
                 output.check_knowledge_context, _KNOWLEDGE_CONTEXT_LIMIT
@@ -1166,15 +1465,17 @@ def _normalize_plan(
             accepted_equivalents=_text_list(output.accepted_equivalents),
             key_misconceptions=_text_list(output.key_misconceptions),
             assumptions=_text_list(output.assumptions),
-            expected_answer=_short_text(output.expected_answer, 300),
+            expected_answer=expected_answer,
         )
-        # 一次只推进一个检查：存在待答问题时，只有「评价并推进」或
-        # 「学生明确跳过/转向」才允许提出下一题；否则新题被抑制，
-        # 旧问题保持待答（回复中始终只有一个需要作答的问题）。
+        # 一次只推进一个检查：存在待答问题时，只有「评价并推进」「学生
+        # 明确跳过/转向」「学生补拍更新资料」或「旧依据已失效」才允许
+        # 提出下一题；否则新题被抑制，旧问题保持待答。
         allowed = (
             pending is None
             or evaluation is not None
             or intent == StudyUserIntent.SKIP
+            or material_update
+            or stale_reason is not None
         )
         if not allowed or posed.kind == StudyCheckKind.FORMAL_CHECK and stuck:
             posed = None
@@ -1231,6 +1532,8 @@ def _build_snapshot(
     stuck: bool,
     history: list[dict[str, Any]],
     *,
+    material_refs: list[dict[str, Any]] | None = None,
+    stale_reason: str | None = None,
     pause: StudySessionPauseProjection | None = None,
     summary: dict[str, Any] | None = None,
     linked_goal_id: str = "",
@@ -1243,6 +1546,11 @@ def _build_snapshot(
             if pending.hint_history
             else StudyEvidenceAssistance.INDEPENDENT.value
         )
+    bound_refs = _ref_list(pending.basis.material_refs) if pending is not None else []
+    turn_refs = _material_ref_list(material_refs)
+    # 新题的依据：优先本轮实际读取的资料；本轮没有新读取时沿用在答问题
+    # 的依据（同一份资料的后续追问不凭空失去来源）。
+    question_refs = _merge_refs(turn_refs, bound_refs if not turn_refs else [])
     return {
         "protocol_version": VERIFICATION_CONTRACT_VERSION,
         "action": plan.action,
@@ -1251,6 +1559,12 @@ def _build_snapshot(
         "stuck": stuck,
         "planned_at": datetime.now(UTC).isoformat(),
         "teaching_direction": plan.teaching_direction,
+        "material_refs": turn_refs,
+        "stale_check": (
+            {"reason": stale_reason, "material_refs": bound_refs}
+            if stale_reason is not None and pending is not None
+            else None
+        ),
         # Issue 04：作答证据标识在规划时冻结，重试沿用同一标识；小结依据
         # 引用因此始终指向同一条真实证据。
         "evidence_id": (
@@ -1267,6 +1581,7 @@ def _build_snapshot(
                 "basis_protocol_version": pending.basis.contract_version,
                 "version": pending.version,
                 "source_message_id": pending.source_message_id,
+                "material_refs": bound_refs,
                 # Issue 08：作答证据携带问题所属目标。
                 "goal_id": pending.goal_id,
             }
@@ -1287,6 +1602,7 @@ def _build_snapshot(
             {
                 **plan.posed_check.model_dump(mode="json"),
                 "check_id": plan.posed_check_id,
+                "material_refs": question_refs,
                 # Issue 08：问题归属目标与来源消息；终态激活在跨目标时跳过。
                 "goal_id": linked_goal_id,
                 "source_user_message_id": source_user_message_id,
@@ -1349,6 +1665,7 @@ def _directive(
     question: str | None,
     has_hint: bool,
     stuck: bool,
+    stale_reason: str | None = None,
 ) -> str:
     parts = ["【本轮验证合同（内部依据，不得原样展示给用户）】"]
     if plan.action == "evaluate" and question and plan.evaluation is not None:
@@ -1482,6 +1799,16 @@ def _directive(
         parts.append(
             "学生明确跳过当前问题：不要判错，简要说明该问题保持未验证，"
             "再按学生意愿继续。"
+        )
+    if plan.intent == StudyUserIntent.MATERIAL_UPDATE:
+        parts.append(
+            "学生补拍或更新了资料：以本轮实际读取到的新版本为准讲解与出题；"
+            "上一题按旧资料版本作废，不要用旧结论评价学生。"
+        )
+    if stale_reason:
+        parts.append(
+            f"上一个问题的资料依据已失效（{stale_reason}）："
+            "不要按过期依据评价，简要说明该问题保持未验证。"
         )
     if stuck:
         parts.append(
@@ -1622,6 +1949,9 @@ def _source_refs(retrieval_round: Any | None) -> list[dict[str, Any]]:
     index_version = getattr(retrieval_round, "index_version_id", None)
     return [
         {
+            "kind": "knowledge",
+            "citation_id": getattr(citation, "citation_id", None),
+            "source_layer": getattr(citation, "source_layer", None),
             "object_id": citation.object_id,
             "filename": citation.filename,
             "page_number": citation.page_number,
@@ -1630,6 +1960,20 @@ def _source_refs(retrieval_round: Any | None) -> list[dict[str, Any]]:
         }
         for citation in citations[:_SOURCE_REF_LIMIT]
     ]
+
+
+def _source_refs_from_snapshot(
+    snapshot: Mapping[str, Any] | None,
+) -> list[StudyVerificationSourceRef]:
+    """从查证快照取「实际采用」来源的版本引用；损坏项跳过，不伪造引用。"""
+
+    refs: list[StudyVerificationSourceRef] = []
+    for item in snapshot_source_refs(snapshot):
+        try:
+            refs.append(StudyVerificationSourceRef.model_validate(item))
+        except ValidationError:
+            continue
+    return refs
 
 
 def _evidence_records(rows: Any) -> list[StudyEvidenceRecord]:
@@ -1685,22 +2029,75 @@ def _text_list(value: Any) -> list[str]:
     return [str(item)[:160] for item in value[:6] if str(item).strip()]
 
 
+_REF_KEYS = (
+    "kind",
+    "citation_id",
+    "source_layer",
+    "object_id",
+    "message_id",
+    "filename",
+    "media_type",
+    "source_version",
+    "read_range",
+    "ordinal",
+    "page_number",
+    "section_title",
+    "index_version_id",
+    "available",
+)
+
+
 def _ref_list(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     refs: list[dict[str, Any]] = []
-    for item in value[:_SOURCE_REF_LIMIT]:
-        if isinstance(item, dict):
-            refs.append(
-                {
-                    "object_id": str(item.get("object_id") or ""),
-                    "filename": str(item.get("filename") or ""),
-                    "page_number": item.get("page_number"),
-                    "section_title": item.get("section_title"),
-                    "index_version_id": item.get("index_version_id"),
-                }
-            )
+    for item in value[:_MATERIAL_REF_LIMIT]:
+        if not isinstance(item, dict):
+            continue
+        ref = {key: item.get(key) for key in _REF_KEYS if key in item}
+        if ref:
+            refs.append(ref)
     return refs
+
+
+def _material_ref_list(value: Any) -> list[dict[str, Any]]:
+    """本轮实际读取的资料引用（只保留已知键）。"""
+
+    return _ref_list(value)
+
+
+def _merge_refs(*groups: Any) -> list[dict[str, Any]]:
+    """按顺序合并引用组并去重（先出现者优先），上限 ``_MATERIAL_REF_LIMIT``。"""
+
+    merged: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+    for group in groups:
+        for ref in _ref_list(group):
+            key = (
+                str(ref.get("kind") or ""),
+                str(ref.get("object_id") or ""),
+                str(ref.get("message_id") or ""),
+                ref.get("ordinal"),
+                ref.get("page_number"),
+                str(ref.get("citation_id") or ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(ref)
+            if len(merged) >= _MATERIAL_REF_LIMIT:
+                return merged
+    return merged
+
+
+def _snapshot_stale_reason(snapshot: dict[str, Any]) -> str | None:
+    """重放快照中的失效说明（无则 None）。"""
+
+    stale = snapshot.get("stale_check")
+    if not isinstance(stale, dict):
+        return None
+    reason = str(stale.get("reason") or "").strip()
+    return reason or _STALE_REASON
 
 
 def _short_text(value: str, limit: int) -> str:

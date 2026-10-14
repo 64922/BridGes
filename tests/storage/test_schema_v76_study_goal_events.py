@@ -28,7 +28,7 @@ _NOW = datetime(2026, 10, 14, tzinfo=UTC)
 def test_goal_events_export_delete_and_recovery(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
-    assert SCHEMA_VERSION >= 75
+    assert SCHEMA_VERSION >= 76
     monkeypatch.setenv("BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'bridges.db'}")
     monkeypatch.setenv("BRIDGES_SECRET_KEY", "issue08-goal-events-secret")
     monkeypatch.setenv("BRIDGES_ENVIRONMENT", "test")
@@ -195,16 +195,16 @@ def test_goal_events_export_delete_and_recovery(
         app.state.state_store.close()
 
 
-def test_upgrade_from_v74_adds_goal_id_columns(tmp_path: Path) -> None:
-    path = tmp_path / "upgrade-74.db"
+def test_upgrade_from_v75_adds_goal_id_columns(tmp_path: Path) -> None:
+    path = tmp_path / "upgrade-75.db"
     with sqlite3.connect(path) as connection:
-        for version in range(1, 75):
+        for version in range(1, 76):
             for statement in MIGRATIONS[version]:
                 connection.execute(statement)
         connection.execute(
             "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
         )
-        connection.execute("INSERT INTO schema_meta VALUES ('version', '74')")
+        connection.execute("INSERT INTO schema_meta VALUES ('version', '75')")
     database = BridgesDatabase(path)
     assert database.initialize() == SCHEMA_VERSION
 

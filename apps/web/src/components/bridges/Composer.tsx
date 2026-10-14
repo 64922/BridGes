@@ -113,8 +113,9 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftErrorSeqRef = useRef(0);
   // 有文字或已有附件即可发送；上传未完成的批次禁止提前发送。
-  const hasStudyFile = mode === "study" && drafts.some((draft) => !isPhotoAttachment(draft.media_type));
-  const canSend = !hasStudyFile &&
+  // Issue 10：学习模式接受同一份附件合同（照片与文件），发送按钮不再
+  // 因文件附件被禁用；读取范围与解析状态由服务端与消息附件卡如实呈现。
+  const canSend =
     (text.trim().length > 0 || drafts.length > 0) &&
     dictationPhase === "idle" &&
     uploadingCount === 0;
@@ -648,7 +649,6 @@ export function Composer({
         />
       </div>
 
-      {hasStudyFile && <p role="alert">学习模式只接受本节书页照片，请移除文件附件后发送。</p>}
       {draftErrors.length > 0 && (
         <ul
           role="alert"
@@ -1059,7 +1059,7 @@ export function Composer({
             onClick={() => void send()}
             disabled={!canSend}
             aria-label="发送消息"
-            title={canSend ? "发送" : mode === "study" && variant === "new-chat" ? "请先上传本节书页照片" : "输入内容后才能发送"}
+            title={canSend ? "发送" : "输入内容或添加附件后才能发送"}
           >
             <Icon name="send" size={16} aria-hidden />发送
           </Button>

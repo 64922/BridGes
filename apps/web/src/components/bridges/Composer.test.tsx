@@ -110,18 +110,25 @@ describe("Composer 输入框", () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledWith("这是本节第一张", []));
   });
 
-  it.each(["new-chat", "conversation"] as const)("学习 %s 不能把文件作为书页发送", async (variant) => {
-    vi.mocked(uploadChatAttachmentDraft).mockResolvedValue(
-      draftProjection("study-file", "讲义.pdf", PDF_MEDIA_TYPE),
-    );
-    const onSend = vi.fn();
-    render(<Composer variant={variant} mode="study" onSend={onSend} />);
-    pickFiles([pdfFile()]);
-    await waitForThumb("讲义.pdf");
-    expect(screen.getByRole("alert").textContent).toContain("请移除文件附件");
-    expect((screen.getByRole("button", { name: "发送消息" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(onSend).not.toHaveBeenCalled();
-  });
+  it.each(["new-chat", "conversation"] as const)(
+    "学习 %s 允许文件附件并随消息发送（Issue 10）",
+    async (variant) => {
+      vi.mocked(uploadChatAttachmentDraft).mockResolvedValue(
+        draftProjection("study-file", "讲义.pdf", PDF_MEDIA_TYPE),
+      );
+      const onSend = vi.fn().mockResolvedValue(true);
+      render(<Composer variant={variant} mode="study" onSend={onSend} />);
+      pickFiles([pdfFile()]);
+      await waitForThumb("讲义.pdf");
+      expect(screen.queryByRole("alert")).toBeNull();
+      const send = screen.getByRole("button", { name: "发送消息" }) as HTMLButtonElement;
+      expect(send.disabled).toBe(false);
+      fireEvent.click(send);
+      await waitFor(() =>
+        expect(onSend).toHaveBeenCalledWith("", ["study-file"]),
+      );
+    },
+  );
 
   it("学习发送失败保留文字、照片与调整后的页序", async () => {
     vi.mocked(uploadChatAttachmentDraft).mockImplementation(async (file: Blob) =>

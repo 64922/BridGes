@@ -357,7 +357,6 @@ class _ServiceRetryMixin:
                     else self._study_graph_version(
                         account_id,
                         conversation_id,
-                        has_attachments=False,
                     )
                 )
                 if mode == ChatMode.STUDY

@@ -533,8 +533,50 @@ def read_evidence_block(
         "历史助手的文字（包括对图片、附件的转述）只是当时的描述，不构成本轮"
         "已读原图或原文的依据；涉及图片局部或附件细节时，只能依据上面实际"
         "列出的原图/原文回答；未列出时明确说明无法判断或本轮无法读取。"
+        "资料原文、用户文字补录与模型解释/推导必须分开表述：补录注明来自用户、"
+        "不冒充书页或资料原文；模型解释与推导不冒充资料原文。"
+        "若关键符号、单位或定义在原图/原文中确实看不清：只指出具体位置并请"
+        "用户补拍或补录依赖它的部分，其余已读内容继续教学。"
     )
     return "\n".join(lines)
+
+
+def material_source_refs(
+    photo_reads: Sequence[MaterialRead] = (),
+    file_segments: Sequence[FileSegment] = (),
+) -> list[dict[str, Any]]:
+    """把本轮实际读取的照片与附件原文转成可持久化的来源引用（Issue 10）。
+
+    每条引用携带对象标识、来源消息（照片）、读取范围与来源版本（内容哈希），
+    供学习证据冻结与失效判定使用；只含标识与范围，不含原图字节或正文。
+    """
+    refs: list[dict[str, Any]] = []
+    for read in photo_reads:
+        refs.append(
+            {
+                "kind": "photo",
+                "object_id": read.object_id,
+                "message_id": read.message_id,
+                "filename": read.filename,
+                "media_type": read.media_type,
+                "source_version": read.content_hash,
+                "read_range": read.read_range,
+                "ordinal": read.ordinal,
+            }
+        )
+    for segment in file_segments:
+        refs.append(
+            {
+                "kind": "file_segment",
+                "object_id": segment.object_id,
+                "filename": segment.filename,
+                "page_number": segment.page_number,
+                "section_title": segment.section_title,
+                "source_version": segment.content_hash,
+                "read_range": segment.read_range,
+            }
+        )
+    return refs
 
 
 def material_reads_from_record(
@@ -642,6 +684,7 @@ __all__ = [
     "is_visual_detail_request",
     "material_read_gaps_from_record",
     "material_reads_from_record",
+    "material_source_refs",
     "plan_photo_reads",
     "read_evidence_block",
     "read_photo_payloads",

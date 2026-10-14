@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from bridges.contracts.study import StudyState
 from bridges.storage import BridgesObjectRepository, EncryptedFileObjectStore
 from bridges.study.scope import assign_unit_id
 from bridges.study.service import StudyRepository, StudyWorkflow
+from bridges.study.versions import STUDY_GRAPH_VERSION
 
 
 class _RecognizedPageGateway:
@@ -157,6 +159,14 @@ def seed_recognized_study_state(
         )
         run = service._repo.get_run_by_message(account_id, assistant.message_id)
         assert run is not None
+        # Issue 10：新会话不再因附件进入旧书页管线；本夹具显式把运行固定到
+        # 旧图版本，直接执行 §StudyWorkflow 验证历史识别链路（12 负责退出）。
+        database.scoped(account_id).execute(
+            "UPDATE generation_runs SET graph_version = ?"
+            " WHERE account_id = ? AND run_id = ?",
+            (STUDY_GRAPH_VERSION, account_id, run.run_id),
+        )
+        run = replace(run, graph_version=STUDY_GRAPH_VERSION)
         StudyWorkflow(service._study_execution_ports()).run(
             run, on_event=lambda event: None, stop_event=None
         )

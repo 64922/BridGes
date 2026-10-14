@@ -15,6 +15,7 @@ from bridges.chat.repository import (
 from bridges.chat.service_contract import ChatDomainError
 from bridges.chat.service_helpers import (
     _TITLE_MAX,
+    _attachment_message_title,
     _validate_image_payload,
     _validate_mcp_call_payload,
     _validate_video_payload,
@@ -111,10 +112,9 @@ class _ServiceGenerationAdmissionMixin:
             )
         # V2 Issue 05：附件来自账户级草稿域，发送成功后随消息原子绑定；
         # 校验失败（数量/重复/跨账户）在此拒绝，草稿保留供用户调整重试。
+        # Issue 10：学习模式接受同一份附件合同（照片与文件）。
         if attachment_ids:
-            self._validate_draft_attachments(
-                account_id, attachment_ids, photos_only=record.mode == ChatMode.STUDY.value,
-            )
+            self._validate_draft_attachments(account_id, attachment_ids)
         mode = ChatMode(record.mode)
         if mode == ChatMode.STUDY:
             self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
@@ -153,7 +153,6 @@ class _ServiceGenerationAdmissionMixin:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
-            has_attachments=bool(attachment_ids),
             module_id=module_id,
             idempotency_key=idempotency_key,
             understanding=understanding,
@@ -217,14 +216,17 @@ class _ServiceGenerationAdmissionMixin:
         self._repo.touch_conversation(account_id, conversation_id, now)
 
         if not record.title:
-            # 纯附件消息没有正文：以照片占位标题保持会话列表可读。
+            # 纯附件消息没有正文：照片沿用占位标题，文件用首个附件文件名，
+            # 保持会话列表可读且不误标消息类型。
             # （空正文必带附件——纯空消息已被 empty_message 拒绝。）
             if content:
                 title = (
                     content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
                 )
             else:
-                title = "照片消息"
+                title = _attachment_message_title(
+                    self._attachments, account_id, attachment_ids
+                )
             self._repo.set_conversation_title(account_id, conversation_id, title, now)
 
         self._process_profile_effects(

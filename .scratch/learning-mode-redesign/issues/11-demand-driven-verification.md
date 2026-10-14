@@ -4,9 +4,9 @@
 
 **Blocked by:** 03 — 嵌入式理解验证与即时纠错。
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-**发布状态：** 用户已确认拆分与依赖，正式发布；尚未实施。
+**发布状态：** 用户已确认拆分与依赖；本票已实施并完成验证，新学习模式尚未上线。
 
 **对应合同：** D06；AC12、AC13、AC16；C01。
 
@@ -42,15 +42,15 @@
 
 ## 验收标准
 
-- [ ] 基础概念无需统一联网，查证只由具体需要触发。
-- [ ] 论文、时效、精确外部数据、争议和明确核实请求走真实查证分支。
-- [ ] 数学计算与外部数值事实区分，未无意义搜索。
-- [ ] 用户来源限制不可绕过，公开查询不含私人原文、档案或凭据。
-- [ ] 引用与实际来源/读取范围一致，摘要不冒充全文。
-- [ ] 冲突、部分支持和未核实项分别表达，不伪造确定结论。
-- [ ] 失败不判学生错，不生成虚假评价依据；支持部分仍能交付。
-- [ ] 停止、重试、来源失效与预算耗尽不重复外呼或覆盖有效状态。
-- [ ] 状态反馈、生命周期、回归和 C01 审查完成。
+- [x] 基础概念无需统一联网，查证只由具体需要触发。
+- [x] 论文、时效、精确外部数据、争议和明确核实请求走真实查证分支。
+- [x] 数学计算与外部数值事实区分，未无意义搜索。
+- [x] 用户来源限制不可绕过，公开查询不含私人原文、档案或凭据。
+- [x] 引用与实际来源/读取范围一致，摘要不冒充全文。
+- [x] 冲突、部分支持和未核实项分别表达，不伪造确定结论。
+- [x] 失败不判学生错，不生成虚假评价依据；支持部分仍能交付。
+- [x] 停止、重试、来源失效与预算耗尽不重复外呼或覆盖有效状态。
+- [x] 状态反馈、生命周期、回归和 C01 审查完成。
 
 ## 验证与交付证据
 
@@ -64,3 +64,19 @@
 2026-10-13：教学按需查证切片草稿，待拆分确认。
 
 2026-10-13：用户确认「按此发布」，本票发布到本地问题跟踪器。分诊状态表示信息齐备；须待直接阻塞票验收完成后实施，本轮未开始编码。
+
+2026-10-14：工单 11 在独立分支 `codex/issue-11-demand-driven-verification` 实施并完成验证（依赖 03 已合入 main `e9427573`）。
+
+- **实现与所有权：** 新增 `bridges.contracts.study_source_verification`（协议版本 `study-source-verification-v1`：`StudyVerificationPurpose` 五类触发、`StudySourceReadScope`（full_text/structured/abstract/none，摘要不冒充全文）、`StudySourceAdoption`、`StudySourceVerificationStatus`（success/partial/empty/insufficient/fetch_error/conflict/error/unconfigured/blocked/cancelled）与来源/引用/投影模型）与 `bridges.study.demand_verification`（确定性 `plan_verification_demand` 多信号判断，数学计算不因出现数值触发；`plan_study_verification_search` 原文只在本地裁决触发与审计、外发只用本地脱敏后的最小公开查询词；`build_verification_snapshot` 冻结目的/来源/读取范围/采用关系/状态/缺口/版本；`snapshot_incomplete`/`snapshot_source_refs`/`verification_directive` 生成硬约束；`StudySourceVerificationRepository` 按账户读取与终态事务提交，唯一约束幂等且只追加不重写；`persist_verification_snapshot` 写运行配置且不覆盖已有快照）。
+- **触发与接入：** 学习导师轮在公开搜索阶段按需查证——基础概念零外呼；论文/时效/精确外部数据/争议/明确核实五类触发经既有登记来源（Tavily）与共享运行预算执行；用户禁止联网或来源限制为硬边界（BLOCKED 快照 + 指令块保留缺口，不借其他工具绕过）；凭据未配置如实记录 UNCONFIGURED；公开查询为空时不把原文当查询外发；失败/空命中/仅摘要/冲突照常交付可支持部分并剥离伪造引用（`allow_model_knowledge_fallback`）；预算未进入公开搜索阶段时如实记录缺口。停止经 CANCELLED 终态收敛为 STOPPED 且不提交记录；重试复用消息上已冻结的有效搜索投影（不重新外呼）。论文分支与旧路径不受影响（论文 web 分支加 `not study_tutor` 互斥保证）。
+- **03 冻结合同接入：** `StudyEvaluationBasis` 新增 `source_refs`（实际采用来源的版本引用）与 `evidence_incomplete`；本轮查证未完成或待答问题冻结于未完成查证时，正式练习降级为开放探查、清空标准答案、MISCONCEPTION 不判错（规划层依据标记 + 写入层双保险检查）。
+- **持久化与生命周期：** v73 迁移新增 `study_source_verifications`（UNIQUE(account_id, assistant_message_id)、FK conversations ON DELETE CASCADE）+ 会话索引，登记 `REQUIRED_TABLES`/`REQUIRED_INDEXES`/`REQUIRED_TABLE_COLUMNS`；`ACCOUNT_TABLES`、导出类别「学习公开查证记录」（含脱敏查询概述、来源与实际读取范围、采用关系、状态与缺口；不含私人原文）、逻辑清单、备份恢复与账户删除全部接入；v72 测试断言按既有约定放宽为 `>= 72`。
+- **提交语义：** `service_stream.persist_study_progress` 在消息 streaming→done 同一事务内先提交 03 证据、再提交查证记录与局部进展；停止、失败与被取代轮次不进入回调，`ON CONFLICT DO NOTHING` 保证重试不覆盖有效状态。
+- **界面决策（本票无前端改动）：** 空命中、不可达、冲突与部分成功沿用现有 `WebSearchCard` 的可恢复说明与来源展示；用户禁止/未配置不发生外呼，由回复指令块保留缺口并在回答中如实说明；不新增消息投影与前端组件，避免与 04/05 的展示票重复建设。
+- **验收标准证据：** ①基础概率问题零规划调用、零外呼；②五类触发分别走真实查证分支且外发载荷只含本地脱敏词；③数学计算含数值不触发搜索；④用户禁止联网为硬边界、外发载荷无私人原文/档案/凭据；⑤引用绑定实际来源与读取范围、仅摘要来源保持摘要级引用；⑥冲突来源单独结果即冲突状态并分别表达；⑦查证失败不写入判错依据、正式练习降级为开放探查；⑧停止不提交、重试复用既有投影不重呼、预算耗尽如实记录；⑨迁移/导出/删除/账户作用域测试覆盖。
+- **后端验证（conda `agent`）：** 聚焦集 132 项通过（`test_issue11_demand_driven_verification.py` 10、`test_schema_v73_study_source_verification.py`、v72 回归、03/02 回归、`test_web_search_chat.py`、`test_issue06_latency_budget.py`、`tests/lifecycle`、`test_openapi_sync.py`）。全量 pytest（工作树）：345 失败/5772 通过/39 跳过/4 收集错误（career_plan 旧 API 拆分遗留，两树一致）；对失败文件集在主库基线复跑 341 失败/1 收集错误，差异 4 项（profiles 1、mail 3）经隔离运行确认两树均红，本票无新增回归。审查中发现并修复旧学习路径的 `UnboundLocalError`（`study_demand` 未初始化），修复后 4 例旧路径用例复跑通过。
+- **静态检查：** 改动文件 Ruff 全部通过（`database.py:1671` 一项 E501 为 main 既有）；改动文件 mypy 无新增报错（`turn.py` 一项既有 `str | None` 行位移）；`pip check` 干净。
+- **C01：** 契约、模块、提示词与测试均按 BridGes 自身需求与既有模式自主设计，未复制参考项目代码或提示词；无新增依赖、未恢复退役模块、未新建搜索提供方。
+- **剩余限制与后续：** 本票测试为确定性夹具（真实服务链路经 pytest 真实栈覆盖）；真实外部可得性与结论核实准确性由 13 实测；关联消息的查证投影读取与界面呈现由 04/05 展示票消费。
+
+2026-10-14（交付记录）：本票提交 `cced0142`（12 文件）；因 04/05 先合入 main（main 升至 v74），分支内先合并 main（`e92ef408`：本票迁移重编号为 v75、`SCHEMA_VERSION=75`、测试改名 `test_schema_v75_study_source_verification.py` 并更新断言，catalog/database/verification/service_stream 按双方语义合并），再以 `--no-ff` 合入 main，合并提交 `c04c2c2b`（合并树与 `e92ef408` 一致）。合并前经代理 `http://127.0.0.1:7890` fetch 确认远端 main 与本票合并前基点同为 `e6dd44f3`。合并后聚焦集 156 项通过（本票行为与 v71–v75 迁移、03/04/05 回归、`test_web_search_chat.py`、`test_issue06_latency_budget.py`、`tests/lifecycle`、`test_openapi_sync.py`）；`tests/chat + tests/storage + tests/lifecycle` 双树（合并树 vs 主库 `e6dd44f3`）`-n 4` 对账：合并树失败集合为基线严格子集（95 vs 96），无本票新增失败。推送：`git -c http.proxy=http://127.0.0.1:7890 -c https.proxy=http://127.0.0.1:7890 push origin main`（`e6dd44f3..c04c2c2b`），`git ls-remote origin refs/heads/main` 与本库 main 一致为 `c04c2c2b`。推送后主库被 issue 10 的进行中合并占用，按用户确认等待其完成：issue 10 合并 `c034f69e`、交付记录 `8ebd65ac` 落地后在最终 main 复跑聚焦集 160 项全部通过（含 issue 10 新用例；`StudyEvaluationBasis` 冲突按双方语义合并为 `source_refs`（本票，`StudyVerificationSourceRef`）与 `material_refs`（issue 10）两字段并存）。随后删除本票 worktree（`.worktrees/11-demand-driven-verification`）与本地分支 `codex/issue-11-demand-driven-verification`（最后为 `e92ef408`），`git worktree prune` 后仅剩主工作树与 06/08 票 worktree；其他任务的分支与目录未触碰。本交付记录提交后随 main 推送。

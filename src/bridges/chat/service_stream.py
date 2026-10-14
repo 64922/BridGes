@@ -34,6 +34,7 @@ from bridges.contracts.understanding import (
 )
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.study.controls import StudyControlRepository
+from bridges.study.demand_verification import StudySourceVerificationRepository
 from bridges.study.goal_events import StudyGoalEventRepository
 from bridges.study.goal_planning import StudyGoalPlanner
 from bridges.study.goal_turn import StudyGoalTurn, StudyGoalTurnService
@@ -103,6 +104,9 @@ class _ServiceStreamMixin:
                 verification_repository = StudyVerificationRepository(
                     self._repo.database
                 )
+                source_verification_repository = StudySourceVerificationRepository(
+                    self._repo.database
+                )
                 control_repository = StudyControlRepository(
                     self._repo.database
                 )
@@ -127,6 +131,13 @@ class _ServiceStreamMixin:
                     )
                     if candidate is not None and self._study_diagnosis is not None:
                         self._study_diagnosis.schedule_in_transaction(candidate)
+                    # Issue 11：公开查证记录在同一事务内提交（只在成功终态；
+                    # 停止/失败/被取代的轮次不写记录，重试不覆盖有效状态）。
+                    source_verification_repository.commit_turn_in_transaction(
+                        self._repo,
+                        run,
+                        assistant_message_id,
+                    )
                     progress_repository.save_completed_turn_in_transaction(
                         self._repo, run, user_message, content
                     )

@@ -396,9 +396,7 @@ def test_unresolved_clarification_lapses_and_does_not_ask_again(
             account = _register(client, "issue08-lapse")
             first = _start_study_turn(client, GOAL_LINEAR, "issue08-lapse-a")
             generation_helpers["drive"](app)
-            second = _start_study_turn(
-                client, GOAL_PROBABILITY, "issue08-lapse-b"
-            )
+            _start_study_turn(client, GOAL_PROBABILITY, "issue08-lapse-b")
             generation_helpers["drive"](app)
             repository = StudyGoalRepository(app.state.bridges_database)
             goal_linear = repository.get_linked_goal(
