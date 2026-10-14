@@ -34,6 +34,28 @@ from bridges.web_search.contracts import WebSearchProjection
 logger = logging.getLogger(__name__)
 
 _TITLE_MAX = 24
+
+
+def _attachment_message_title(
+    attachments: Any | None, account_id: str, attachment_ids: list[str]
+) -> str:
+    """纯附件消息的会话标题（Issue 10）。
+
+    照片消息沿用既有占位标题；本轮首个附件是文件时用其文件名（截断），
+    不再把文件消息误标为「照片消息」。附件模块在函数内导入，避免
+    辅助模块在聊天包初始化早期引入附件/摄取依赖（循环导入）。
+    """
+    if attachments is None or not attachment_ids:
+        return "附件消息"
+    from bridges.chat.attachments import PHOTO_MEDIA_TYPES
+
+    draft = attachments.get_draft(account_id, attachment_ids[0])
+    if draft is None or draft.media_type in PHOTO_MEDIA_TYPES:
+        return "照片消息"
+    filename = str(draft.original_filename or "").strip() or "附件消息"
+    return filename if len(filename) <= _TITLE_MAX else filename[:_TITLE_MAX] + "…"
+
+
 def _started_event_payload(
     *,
     conversation_id: str,

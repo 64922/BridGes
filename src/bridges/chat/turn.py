@@ -85,6 +85,7 @@ from bridges.chat.material_reading import (
     is_file_detail_request,
     material_read_gaps_from_record,
     material_reads_from_record,
+    material_source_refs,
     read_evidence_block,
     read_photo_payloads,
     select_file_segments,
@@ -4261,6 +4262,10 @@ class TurnOrchestrator:
                     budget=budget,
                     history=history,
                     retrieval_round=retrieval_round,
+                    material_refs=material_source_refs(photo_reads, file_segments),
+                    has_new_material=self._has_new_material(
+                        account_id, conversation_id, route_owner
+                    ),
                 )
                 if verification_directive and history:
                     if history[0].get("role") == "system":
@@ -5293,13 +5298,16 @@ class TurnOrchestrator:
         budget: RunBudget,
         history: list[dict[str, Any]],
         retrieval_round: RetrievalRoundProjection | None,
+        material_refs: list[dict[str, Any]] | None = None,
+        has_new_material: bool = False,
     ) -> str | None:
         """Issue 03：学习导师轮的验证规划（评价/帮助/出题）。
 
         规划在生成前完成，评价快照写入运行配置（重试沿用同一快照）；
         待答问题只在成功终态由终态回调激活，停止、失败或未实际展示的
         问题绝不提前生效。规划失败静默降级：回答照常，既有待答问题
-        保持，不伪造评价。
+        保持，不伪造评价。Issue 10：本轮实际读取的资料引用与「是否携带
+        新材料」随规划冻结进快照，供依据绑定与补拍/失效判定。
         """
 
         from bridges.study.local_progress import StudyLocalProgressRepository
@@ -5325,6 +5333,25 @@ class TurnOrchestrator:
             model_quota=model_quota,
             budget=budget,
             retrieval_round=retrieval_round,
+            material_refs=material_refs,
+            has_new_material=has_new_material,
+        )
+
+    def _has_new_material(
+        self,
+        account_id: str,
+        conversation_id: str,
+        user_message: MessageRecord | None,
+    ) -> bool:
+        """本轮学生消息是否携带附件（照片或文件）——补拍/更新判定用。"""
+
+        if user_message is None or self._attachments is None:
+            # 无附件服务（测试桩/极简装配）时无法确认新资料，保守为否。
+            return False
+        return bool(
+            self._attachments.list_for_message(
+                account_id, conversation_id, user_message.message_id
+            )
         )
 
     def _run_retrieval(

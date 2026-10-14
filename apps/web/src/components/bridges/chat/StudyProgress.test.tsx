@@ -39,6 +39,7 @@ describe("学习阶段与页级证据", () => {
         question: "如果 A、B 互斥，P(A∩B) 是多少？为什么？",
         knowledge_context: "互斥与独立",
         assistance: "hinted",
+        source_status: "available",
         version: 1,
         source_message_id: "assistant-2",
         created_at: "2026-10-13T00:00:00Z",
@@ -47,7 +48,35 @@ describe("学习阶段与页级证据", () => {
 
     expect(screen.getByText(/待答：如果 A、B 互斥/)).toBeTruthy();
     expect(screen.getByText(/已提供提示，本次将按提示后完成记录/)).toBeTruthy();
+    expect(screen.queryByText(/将按未验证处理/)).toBeNull();
     expect(screen.queryByText("书页识别")).toBeNull();
+  });
+
+  it("资料失效的待答问题提示将按未验证处理，不按旧依据判定", () => {
+    render(<StudyProgress
+      studyLocalProgress={{
+        topic: "线性函数",
+        knowledge_context: "照片里的推导。",
+        current_focus: "斜率为什么是 a？",
+        source_message_ids: ["user-1", "assistant-1"],
+        version: 3,
+        runtime_run_id: "run-3",
+        updated_at: "2026-10-13T00:00:00Z",
+      }}
+      studyPendingCheck={{
+        check_id: "check-2",
+        kind: "open_probe",
+        question: "照片里把 a 判成斜率的依据是什么？",
+        knowledge_context: "线性函数 y=ax+b",
+        assistance: "none",
+        source_status: "unavailable",
+        version: 2,
+        source_message_id: "assistant-3",
+        created_at: "2026-10-13T00:00:00Z",
+      }}
+    />);
+
+    expect(screen.getByText(/将按未验证处理，不按旧依据判定/)).toBeTruthy();
   });
 
   it("旧状态显示只读说明并保留可解释阶段", () => {

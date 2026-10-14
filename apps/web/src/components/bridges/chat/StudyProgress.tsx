@@ -95,6 +95,8 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
           <p role="status" aria-label="当前待答问题">
             待答：{studyPendingCheck.question}
             {studyPendingCheck.assistance === "hinted" && "（已提供提示，本次将按提示后完成记录）"}
+            {studyPendingCheck.source_status === "unavailable"
+              && "（本题依据的资料已不可用或已更新，将按未验证处理，不按旧依据判定）"}
           </p>
         )}
         {route && nodes.length > 0 && (
@@ -144,6 +146,8 @@ export function StudyProgress({ study: state, studyLocalProgress, studyGoal, stu
           <p role="status" aria-label="当前待答问题">
             待答：{studyPendingCheck.question}
             {studyPendingCheck.assistance === "hinted" && "（已提供提示，本次将按提示后完成记录）"}
+            {studyPendingCheck.source_status === "unavailable"
+              && "（本题依据的资料已不可用或已更新，将按未验证处理，不按旧依据判定）"}
           </p>
         )}
       </section>

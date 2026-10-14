@@ -67,7 +67,6 @@ class _ServiceGenerationRecordsMixin:
         use_knowledge_base: bool,
         use_profile: bool,
         now: datetime,
-        has_attachments: bool = False,
         module_id: str | None = None,
         idempotency_key: str | None = None,
         understanding: MainUnderstanding | None = None,
@@ -185,11 +184,7 @@ class _ServiceGenerationRecordsMixin:
             created_at=now,
             updated_at=now,
             graph_version=(
-                self._study_graph_version(
-                    account_id,
-                    conversation_id,
-                    has_attachments=has_attachments,
-                )
+                self._study_graph_version(account_id, conversation_id)
                 if mode == ChatMode.STUDY
                 else DAILY_GRAPH_VERSION
             ),
@@ -209,15 +204,19 @@ class _ServiceGenerationRecordsMixin:
         self: ChatService,
         account_id: str,
         conversation_id: str,
-        *,
-        has_attachments: bool,
     ) -> str:
-        """Keep page-based study sessions on their workflow; route text-only study to tutor."""
+        """Route study turns to the adaptive tutor; keep legacy page sessions.
+
+        Issue 10：附件的存在不再把新会话推入旧书页管线——照片与文件都
+        由导师路径按当前问题读取（照片直读、文件按解析片段检索）。只有
+        已经拥有旧 ``study_states`` 的会话继续留在旧工作流，直到 12 的
+        旧执行退出承接历史。
+        """
         if StudyLocalProgressRepository(self._repo.database).get(
             account_id, conversation_id
         ) is not None:
             return STUDY_TUTOR_GRAPH_VERSION
-        if has_attachments or StudyRepository(self._repo.database).get(
+        if StudyRepository(self._repo.database).get(
             account_id, conversation_id
         ) is not None:
             return STUDY_GRAPH_VERSION
