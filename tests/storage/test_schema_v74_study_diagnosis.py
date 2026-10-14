@@ -74,7 +74,7 @@ def _result(
 def test_diagnosis_migration_export_delete_and_recovery(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
-    assert SCHEMA_VERSION == 73
+    assert SCHEMA_VERSION >= 74
     monkeypatch.setenv("BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'bridges.db'}")
     monkeypatch.setenv("BRIDGES_SECRET_KEY", "issue05-diagnosis-secret")
     monkeypatch.setenv("BRIDGES_ENVIRONMENT", "test")
