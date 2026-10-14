@@ -1055,6 +1055,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat/conversations/{conversation_id}/study/records/{record_id}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Correct Study Record
+         * @description 保存用户对一条学习记录的主动纠正（用户自评，未经独立核验）。
+         *
+         *     按记录版本做并发校验：版本不一致返回 409，如实提示并保留原记录；
+         *     纠正保留被取代结论与操作版本，自动诊断不能无条件覆盖。
+         */
+        post: operations["correct_study_record_chat_conversations__conversation_id__study_records__record_id__corrections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/study/records/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Study Record
+         * @description 删除一条学习记录并保留撤回标记；迟到诊断不能恢复该判断。
+         *
+         *     删除停止该判断及关联旧证据在学情归档/个性化中的采用；原聊天仍可
+         *     按历史读取义务查看。重复删除或版本冲突如实返回 409。
+         */
+        delete: operations["delete_study_record_chat_conversations__conversation_id__study_records__record_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chat/conversations/{conversation_id}/messages/{message_id}/retry": {
         parameters: {
             query?: never;
@@ -25072,6 +25118,8 @@ export interface components {
          *
          *     知识点身份包含学科与用途上下文；同名但上下文不同的概念是不同
          *     档案条目。单次完成只是当前证据下的判断，不表示长期掌握。
+         *     用户纠正与原始核验结论分开呈现：纠正保留主动来源与被取代结论，
+         *     用户自评不冒充已核验掌握。
          */
         StudyLearningRecordProjection: {
             /**
@@ -25156,6 +25204,42 @@ export interface components {
              * @description 档案条目最近更新时间。
              */
             updated_at: string;
+            /**
+             * Record Version
+             * @description 记录版本；纠正与删除按该版本做并发校验。
+             * @default 1
+             */
+            record_version: number;
+            /**
+             * @description 记录的用户控制状态。
+             * @default active
+             */
+            state: components["schemas"]["StudyRecordState"];
+            /**
+             * User Note
+             * @description 用户主动纠正的内容（用户自评，未经核验）；未纠正时为空。
+             * @default
+             */
+            user_note: string;
+            /**
+             * Corrected At
+             * @description 用户最近一次纠正的时间。
+             */
+            corrected_at?: string | null;
+            /** @description 被用户纠正取代的原核验结论；不再用于后续教学。 */
+            superseded_verdict?: components["schemas"]["StudyDiagnosisVerdict"] | null;
+            /**
+             * Superseded Performance
+             * @description 被取代结论的原表现描述（保留作对照）。
+             * @default
+             */
+            superseded_performance: string;
+            /**
+             * Source Available
+             * @description 本条档案的全部依据来源是否仍可读取。
+             * @default true
+             */
+            source_available: boolean;
         };
         /**
          * StudyLocalProgressProjection
@@ -25388,8 +25472,38 @@ export interface components {
             calculation_checked: boolean;
         };
         /**
+         * StudyRecordCorrectionRequest
+         * @description 用户对一条学习记录的主动纠正（用户自评，未经独立核验）。
+         */
+        StudyRecordCorrectionRequest: {
+            /**
+             * Note
+             * @description 用户说明的正确理解或判断依据；作为主动来源保存。
+             */
+            note: string;
+            /**
+             * Expected Version
+             * @description 用户编辑时看到的记录版本；冲突时拒绝覆盖。
+             */
+            expected_version: number;
+        };
+        /**
+         * StudyRecordDeletionRequest
+         * @description 用户删除一条学习记录；按既有用户管理规范确认后提交。
+         */
+        StudyRecordDeletionRequest: {
+            /**
+             * Expected Version
+             * @description 用户确认删除时看到的记录版本；冲突时拒绝删除。
+             */
+            expected_version: number;
+        };
+        /**
          * StudyRecordEvidenceProjection
          * @description 档案中一条已核验证据的定位；不复制回答正文或私有依据。
+         *
+         *     来源（回答/反馈消息）已删除或不可读时 ``source_available`` 为 false
+         *     并给出真实说明，不伪造引文。
          */
         StudyRecordEvidenceProjection: {
             /**
@@ -25428,11 +25542,28 @@ export interface components {
             feedback_message_id?: string | null;
             /**
              * Occurred At
-             * Format: date-time
-             * @description 证据发生时间（归并顺序依据）。
+             * @description 证据发生时间（归并顺序依据）；来源不可读时为 null。
              */
-            occurred_at: string;
+            occurred_at?: string | null;
+            /**
+             * Source Available
+             * @description 来源消息是否仍可读取；不可读时如实标注。
+             * @default true
+             */
+            source_available: boolean;
+            /**
+             * Source Note
+             * @description 来源不可用的真实说明；可用时为空。
+             * @default
+             */
+            source_note: string;
         };
+        /**
+         * StudyRecordState
+         * @description 学习档案的用户控制状态；纠正与删除都是账户级真实持久状态。
+         * @enum {string}
+         */
+        StudyRecordState: "active" | "corrected" | "deleted";
         /** StudyReview */
         StudyReview: {
             /** Questions */
@@ -32725,6 +32856,152 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    correct_study_record_chat_conversations__conversation_id__study_records__record_id__corrections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                record_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudyRecordCorrectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudyLearningRecordProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    delete_study_record_chat_conversations__conversation_id__study_records__record_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                record_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StudyRecordDeletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
                 };
             };
             /** @description Service Unavailable */

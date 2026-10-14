@@ -7,8 +7,17 @@
 - 知识判断按「证据发生顺序」归并：迟到的旧证据不覆盖更新证据；方向
   冲突保留为待确认，不伪造成单一结论。
 - 单次完成只是当前证据下的判断，不写长期掌握、百分比或能力标签。
-- 来源失效（证据被删除）后结果不再写入；呈现层按仍可读取的证据投影，
-  不显示悬空引用。
+- 来源失效（证据被删除）后结果不再写入。
+
+Issue 06 提交守卫（本模块是迟到结果的唯一落库入口）：
+
+- 记录被用户删除后，属于撤回范围的旧证据迟到完成一律拒绝：任务如实
+  标记失效，不写结果、不恢复记录；真正的新作答（发生时间晚于删除）才
+  能形成新的观察。
+- 记录被用户纠正后，用户操作之前的证据即使迟到完成也不覆盖纠正；
+  之后的证据可以形成新观察，但与用户纠正并存并保持待确认——自动结果
+  不能假装比用户主动纠正更权威。
+- 档案版本用乐观锁守卫（``record_version``），任何写入都不覆盖更新状态。
 """
 
 from __future__ import annotations
@@ -26,22 +35,17 @@ from bridges.contracts.study_diagnosis import (
     StudyDiagnosisStatus,
     StudyDiagnosisTaskProjection,
     StudyDiagnosisVerdict,
-    StudyLearningRecordProjection,
-    StudyRecordEvidenceProjection,
 )
-from bridges.contracts.study_verification import (
-    StudyEvaluationBasis,
-    StudyEvidenceAssistance,
-)
+from bridges.contracts.study_verification import StudyEvaluationBasis
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 
 #: 每个档案条目保留的已归并证据上限（有界，避免无限档案行）。
 _RECORD_EVIDENCE_LIMIT = 20
-#: 单个对话投影返回的档案条目上限。
-_RECORD_QUERY_LIMIT = 20
 #: 单个对话投影返回的诊断任务上限。
 _TASK_QUERY_LIMIT = 20
+#: 迟到结果命中用户撤回范围时任务记录的失效说明。
+_RETRACTED_REASON = "该记录已被用户撤回，迟到诊断不再写入。"
 
 _SUPPORT_VERDICTS = frozenset(
     {
@@ -154,6 +158,14 @@ def knowledge_key(subject: str, title: str, usage_context: str) -> str:
         _normalize_identity(usage_context),
     ]
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()[:32]
+
+
+class _RecordRetractedError(Exception):
+    """迟到结果命中用户撤回范围：拒绝落库，任务如实标记失效。"""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 class StudyDiagnosisRepository:
@@ -354,68 +366,102 @@ class StudyDiagnosisRepository:
         evidence_at: datetime,
         now: datetime | None = None,
     ) -> bool:
-        """提交诊断结果并归并档案；返回是否写入（迟到/重复提交为 False）。"""
+        """提交诊断结果并归并档案；返回是否写入（迟到/重复提交为 False）。
+
+        Issue 06 提交守卫：结果落库前校验用户纠正、删除与档案版本；
+        命中撤回范围的迟到结果被拒绝，任务如实标记失效而非覆盖用户操作。
+        """
 
         timestamp = now or datetime.now(UTC)
-        with self._database.transaction():
-            result_version = task.result_version + 1
-            result_id = f"dr-{secrets.token_urlsafe(16)}"
-            cursor = self._database.scoped(task.account_id).execute(
-                "UPDATE study_diagnosis_tasks SET status = 'succeeded',"
-                " result_id = ?, result_version = ?, failure_reason = '',"
-                " completed_at = ?, updated_at = ?"
-                " WHERE account_id = ? AND task_id = ?"
-                " AND status = 'running' AND generation = ?",
-                (
-                    result_id,
-                    result_version,
-                    timestamp.isoformat(),
-                    timestamp.isoformat(),
-                    task.account_id,
-                    task.task_id,
-                    generation,
-                ),
+        try:
+            with self._database.transaction():
+                result_version = task.result_version + 1
+                result_id = f"dr-{secrets.token_urlsafe(16)}"
+                cursor = self._database.scoped(task.account_id).execute(
+                    "UPDATE study_diagnosis_tasks SET status = 'succeeded',"
+                    " result_id = ?, result_version = ?, failure_reason = '',"
+                    " completed_at = ?, updated_at = ?"
+                    " WHERE account_id = ? AND task_id = ?"
+                    " AND status = 'running' AND generation = ?",
+                    (
+                        result_id,
+                        result_version,
+                        timestamp.isoformat(),
+                        timestamp.isoformat(),
+                        task.account_id,
+                        task.task_id,
+                        generation,
+                    ),
+                )
+                if cursor.rowcount == 0:
+                    return False
+                record_id = self._apply_record(
+                    task,
+                    result,
+                    result_id=result_id,
+                    evidence_at=evidence_at,
+                    now=timestamp,
+                )
+                self._database.scoped(task.account_id).execute(
+                    "INSERT INTO study_diagnosis_results"
+                    " (result_id, task_id, account_id, conversation_id, evidence_id,"
+                    " record_id, protocol_version, input_version, result_version,"
+                    " verdict, subject, knowledge_title, usage_context, performance,"
+                    " supporting_json, refuting_json, uncertainty, next_validation,"
+                    " created_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        result_id,
+                        task.task_id,
+                        task.account_id,
+                        task.conversation_id,
+                        task.evidence_id,
+                        record_id,
+                        task.protocol_version,
+                        task.input_version,
+                        result_version,
+                        result.verdict.value,
+                        result.subject,
+                        result.title,
+                        result.usage_context,
+                        result.performance,
+                        json.dumps(result.supporting, ensure_ascii=False),
+                        json.dumps(result.refuting, ensure_ascii=False),
+                        result.uncertainty,
+                        result.next_validation,
+                        timestamp.isoformat(),
+                    ),
+                )
+            return True
+        except _RecordRetractedError as exc:
+            # 事务已整体回滚（任务状态与结果都未写入）；任务如实标记
+            # 失效，待确认状态不伪造成成功或失败重试。
+            self._mark_invalidated_for_generation(
+                task.account_id,
+                task.task_id,
+                generation,
+                exc.reason,
+                timestamp,
             )
-            if cursor.rowcount == 0:
-                return False
-            record_id = self._apply_record(
-                task,
-                result,
-                result_id=result_id,
-                evidence_at=evidence_at,
-                now=timestamp,
-            )
-            self._database.scoped(task.account_id).execute(
-                "INSERT INTO study_diagnosis_results"
-                " (result_id, task_id, account_id, conversation_id, evidence_id,"
-                " record_id, protocol_version, input_version, result_version,"
-                " verdict, subject, knowledge_title, usage_context, performance,"
-                " supporting_json, refuting_json, uncertainty, next_validation,"
-                " created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    result_id,
-                    task.task_id,
-                    task.account_id,
-                    task.conversation_id,
-                    task.evidence_id,
-                    record_id,
-                    task.protocol_version,
-                    task.input_version,
-                    result_version,
-                    result.verdict.value,
-                    result.subject,
-                    result.title,
-                    result.usage_context,
-                    result.performance,
-                    json.dumps(result.supporting, ensure_ascii=False),
-                    json.dumps(result.refuting, ensure_ascii=False),
-                    result.uncertainty,
-                    result.next_validation,
-                    timestamp.isoformat(),
-                ),
-            )
-        return True
+            return False
+
+    def _mark_invalidated_for_generation(
+        self,
+        account_id: str,
+        task_id: str,
+        generation: int,
+        reason: str,
+        now: datetime,
+    ) -> None:
+        """仅失效当前执行代次；租约恢复后的新一轮结果不受影响。"""
+
+        self._database.scoped(account_id).execute(
+            "UPDATE study_diagnosis_tasks SET status = 'invalidated',"
+            " failure_reason = ?, completed_at = ?, updated_at = ?"
+            " WHERE account_id = ? AND task_id = ?"
+            " AND status = 'running' AND generation = ?",
+            (reason[:300], now.isoformat(), now.isoformat(), account_id, task_id, generation),
+        )
 
     def _apply_record(
         self,
@@ -426,7 +472,13 @@ class StudyDiagnosisRepository:
         evidence_at: datetime,
         now: datetime,
     ) -> str:
-        """按证据发生顺序归并知识判断，返回档案条目标识。"""
+        """按证据发生顺序归并知识判断，返回档案条目标识。
+
+        Issue 06：先校验用户撤回范围——已删除记录关联的旧证据、删除时点
+        之前的证据与被纠正之前的证据都不能覆盖用户操作；命中撤回范围时
+        抛出 ``_RecordRetractedError`` 让提交整体拒绝。只有真正的新作答（发生
+        时间晚于删除/纠正）才能形成新的观察。
+        """
 
         key = knowledge_key(result.subject, result.title, result.usage_context)
         scoped = self._database.scoped(task.account_id)
@@ -470,38 +522,79 @@ class StudyDiagnosisRepository:
                 )
                 return record_id
             record_id = str(row["record_id"])
+            state = str(row["state"] or "active")
+            retracted = _json_str_list(str(row["retracted_evidence_ids_json"]))
+            deleted_at = _parse_optional_time(row["deleted_at"])
+            if task.evidence_id in retracted or (
+                deleted_at is not None and evidence_at <= deleted_at
+            ):
+                # 迟到结果属于用户撤回范围：不写结果、不恢复记录。
+                raise _RecordRetractedError(_RETRACTED_REASON)
             current_verdict = StudyDiagnosisVerdict(str(row["verdict"]))
             conflict = _verdict_conflict(current_verdict, result.verdict)
-            newer = _parse_time(str(row["latest_evidence_at"])) < evidence_at
-            if newer:
-                values: dict[str, Any] = {
-                    "verdict": result.verdict.value,
-                    "performance": result.performance,
-                    "supporting_json": json.dumps(
-                        result.supporting, ensure_ascii=False
+            merged: dict[str, Any] = {
+                "verdict": result.verdict.value,
+                "performance": result.performance,
+                "supporting_json": json.dumps(result.supporting, ensure_ascii=False),
+                "refuting_json": json.dumps(result.refuting, ensure_ascii=False),
+                "uncertainty": result.uncertainty,
+                "next_validation": result.next_validation,
+                "latest_evidence_id": task.evidence_id,
+                "latest_result_id": result_id,
+                "latest_evidence_at": evidence_at.isoformat(),
+            }
+            values: dict[str, Any]
+            if state == "deleted":
+                # 真正的新作答（发生时间晚于删除）：形成新观察，旧证据
+                # 的撤回标记与旧用户控制不复活。
+                values = {
+                    **merged,
+                    "state": "active",
+                    "user_note": "",
+                    "corrected_at": None,
+                    "pending_confirmation": 0,
+                    "evidence_ids_json": json.dumps(
+                        [task.evidence_id], ensure_ascii=False
                     ),
-                    "refuting_json": json.dumps(result.refuting, ensure_ascii=False),
-                    "uncertainty": result.uncertainty,
-                    "next_validation": result.next_validation,
-                    "pending_confirmation": 1 if conflict else 0,
-                    "latest_evidence_id": task.evidence_id,
-                    "latest_result_id": result_id,
-                    "latest_evidence_at": evidence_at.isoformat(),
                 }
             else:
-                values = {
-                    "pending_confirmation": (
-                        1
-                        if conflict or int(row["pending_confirmation"]) == 1
-                        else 0
-                    )
-                }
-            evidence_ids = _json_str_list(str(row["evidence_ids_json"]))
-            if task.evidence_id not in evidence_ids:
-                evidence_ids.append(task.evidence_id)
-            values["evidence_ids_json"] = json.dumps(
-                evidence_ids[-_RECORD_EVIDENCE_LIMIT:], ensure_ascii=False
-            )
+                corrected_at = _parse_optional_time(row["corrected_at"])
+                superseded = state == "corrected"
+                newer = _parse_time(str(row["latest_evidence_at"])) < evidence_at
+                if (
+                    superseded
+                    and corrected_at is not None
+                    and evidence_at <= corrected_at
+                ):
+                    # 用户纠正前发生的证据迟到完成：只登记观察，不覆盖
+                    # 用户操作，也不改变自动判断。
+                    values = {"pending_confirmation": 1}
+                elif not newer:
+                    # 迟到的旧证据：按发生顺序不覆盖更新证据，只合并冲突状态。
+                    values = {
+                        "pending_confirmation": (
+                            1
+                            if conflict
+                            or superseded
+                            or int(row["pending_confirmation"]) == 1
+                            else 0
+                        )
+                    }
+                else:
+                    # 用户纠正后的新观察与纠正并存：自动结果不能假装比
+                    # 用户主动纠正更权威，保留待确认。
+                    values = {
+                        **merged,
+                        "pending_confirmation": (
+                            1 if conflict or superseded else 0
+                        ),
+                    }
+                evidence_ids = _json_str_list(str(row["evidence_ids_json"]))
+                if task.evidence_id not in evidence_ids:
+                    evidence_ids.append(task.evidence_id)
+                values["evidence_ids_json"] = json.dumps(
+                    evidence_ids[-_RECORD_EVIDENCE_LIMIT:], ensure_ascii=False
+                )
             assignments = ", ".join(f"{column} = ?" for column in values)
             cursor = scoped.execute(
                 "UPDATE study_learning_records SET "
@@ -519,90 +612,6 @@ class StudyDiagnosisRepository:
             if cursor.rowcount == 1:
                 return record_id
         raise StorageError("学习档案版本冲突：诊断结果未覆盖更新证据，请重试。")
-
-    # ------------------------------------------------------------------
-    # 用户可见投影
-    # ------------------------------------------------------------------
-
-    def record_projections(
-        self,
-        account_id: str,
-        conversation_id: str,
-        *,
-        limit: int = _RECORD_QUERY_LIMIT,
-    ) -> list[StudyLearningRecordProjection]:
-        """返回与本对话核验证据相关的档案条目（无证据的悬空条目不显示）。"""
-
-        scoped = self._database.scoped(account_id)
-        rows = scoped.execute(
-            "SELECT r.* FROM study_learning_records AS r"
-            " WHERE r.account_id = ? AND EXISTS ("
-            "   SELECT 1 FROM study_diagnosis_results AS d"
-            "   WHERE d.account_id = r.account_id AND d.record_id = r.record_id"
-            "   AND d.conversation_id = ?)"
-            " ORDER BY r.updated_at DESC, r.rowid DESC LIMIT ?",
-            (account_id, conversation_id, limit),
-        ).fetchall()
-        projections: list[StudyLearningRecordProjection] = []
-        for row in rows:
-            evidences = self._record_evidences(account_id, str(row["record_id"]))
-            if not evidences:
-                # 来源已失效（证据被删除）：不显示悬空档案条目。
-                continue
-            projections.append(
-                StudyLearningRecordProjection(
-                    record_id=str(row["record_id"]),
-                    subject=str(row["subject"]),
-                    title=str(row["title"]),
-                    usage_context=str(row["usage_context"]),
-                    verdict=StudyDiagnosisVerdict(str(row["verdict"])),
-                    performance=str(row["performance"]),
-                    supporting=_json_str_list(str(row["supporting_json"])),
-                    refuting=_json_str_list(str(row["refuting_json"])),
-                    uncertainty=str(row["uncertainty"]),
-                    next_validation=str(row["next_validation"]),
-                    pending_confirmation=bool(int(row["pending_confirmation"])),
-                    evidence_count=len(evidences),
-                    evidences=evidences,
-                    created_at=_parse_time(str(row["created_at"])),
-                    updated_at=_parse_time(str(row["updated_at"])),
-                )
-            )
-        return projections
-
-    def _record_evidences(
-        self, account_id: str, record_id: str
-    ) -> list[StudyRecordEvidenceProjection]:
-        rows = self._database.scoped(account_id).execute(
-            "SELECT e.evidence_id, e.question, e.knowledge_context, e.assistance,"
-            " e.answer_message_id, e.feedback_message_id, e.created_at,"
-            " d.verdict FROM study_evidence AS e"
-            " JOIN study_diagnosis_results AS d"
-            " ON d.account_id = e.account_id AND d.evidence_id = e.evidence_id"
-            " WHERE e.account_id = ? AND d.record_id = ?"
-            " ORDER BY e.created_at ASC, e.rowid ASC LIMIT ?",
-            (account_id, record_id, _RECORD_EVIDENCE_LIMIT),
-        ).fetchall()
-        evidences: list[StudyRecordEvidenceProjection] = []
-        for row in rows:
-            try:
-                assistance = StudyEvidenceAssistance(str(row["assistance"]))
-                verdict = StudyDiagnosisVerdict(str(row["verdict"]))
-            except ValueError:
-                continue
-            evidences.append(
-                StudyRecordEvidenceProjection(
-                    evidence_id=str(row["evidence_id"]),
-                    question=str(row["question"]),
-                    knowledge_context=str(row["knowledge_context"]),
-                    assistance=assistance,
-                    verdict=verdict,
-                    answer_message_id=row["answer_message_id"],
-                    feedback_message_id=row["feedback_message_id"],
-                    occurred_at=_parse_time(str(row["created_at"])),
-                )
-            )
-        return evidences
 
 
 def _task_record(row: Any) -> StudyDiagnosisTaskRecord | None:
@@ -662,3 +671,9 @@ def _parse_time(value: str) -> datetime:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed
+
+
+def _parse_optional_time(value: Any) -> datetime | None:
+    if value is None or str(value) == "":
+        return None
+    return _parse_time(str(value))

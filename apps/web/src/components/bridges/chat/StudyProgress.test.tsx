@@ -517,9 +517,18 @@ describe("后台核验与学习档案", () => {
       answer_message_id: "user-9",
       feedback_message_id: "assistant-9",
       occurred_at: "2026-10-14T00:00:00Z",
+      source_available: true,
+      source_note: "",
     }],
     created_at: "2026-10-14T00:00:00Z",
     updated_at: "2026-10-14T00:00:00Z",
+    record_version: 1,
+    state: "active" as const,
+    user_note: "",
+    corrected_at: null,
+    superseded_verdict: null,
+    superseded_performance: "",
+    source_available: true,
   };
 
   it("展示待核验真实状态与档案判断，不渲染百分比或能力标签", () => {
@@ -612,5 +621,145 @@ describe("后台核验与学习档案", () => {
     />);
 
     expect(screen.queryByLabelText("学习档案")).toBeNull();
+  });
+
+  const localProgress = {
+    topic: "互斥与独立",
+    knowledge_context: "两个事件不能同时发生。",
+    current_focus: "互斥是不是独立？",
+    source_message_ids: ["user-1", "assistant-1"],
+    version: 9,
+    runtime_run_id: "run-9",
+    updated_at: "2026-10-14T00:00:00Z",
+  };
+
+  it("纠正按记录版本提交用户自评，成功后关闭编辑", async () => {
+    const onCorrect = vi.fn(async () => true);
+    render(<StudyProgress
+      studyLocalProgress={localProgress}
+      studyLearningRecord={[record]}
+      onCorrectRecord={onCorrect}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: "纠正" }));
+    fireEvent.change(screen.getByLabelText("纠正内容"), {
+      target: { value: "我当时其实靠猜的。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(onCorrect).toHaveBeenCalledWith(
+      "lr-1", "我当时其实靠猜的。", 1,
+    ));
+    await waitFor(() => expect(screen.queryByLabelText("纠正内容")).toBeNull());
+  });
+
+  it("纠正失败保留输入草稿不清空", async () => {
+    const onCorrect = vi.fn(async () => false);
+    render(<StudyProgress
+      studyLocalProgress={localProgress}
+      studyLearningRecord={[record]}
+      onCorrectRecord={onCorrect}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: "纠正" }));
+    const textarea = screen.getByLabelText("纠正内容") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "保留这段草稿" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(onCorrect).toHaveBeenCalled());
+    expect((screen.getByLabelText("纠正内容") as HTMLTextAreaElement).value)
+      .toBe("保留这段草稿");
+  });
+
+  it("纠正态展示自评、被取代的原结论与并存提示", () => {
+    render(<StudyProgress
+      studyLocalProgress={localProgress}
+      studyLearningRecord={[{
+        ...record,
+        state: "corrected" as const,
+        user_note: "我当时其实靠猜的。",
+        corrected_at: "2026-10-14T01:00:00Z",
+        superseded_verdict: "independent_completion" as const,
+        superseded_performance: "能说明互斥不等于独立。",
+        pending_confirmation: true,
+        record_version: 2,
+      }]}
+    />);
+
+    expect(screen.getByText(/用户纠正（自评，未经核验）/)).toBeTruthy();
+    expect(screen.getByText(/我的纠正（自评，未经核验）：我当时其实靠猜的。/)).toBeTruthy();
+    expect(screen.getByText(/原核验结论「独立完成」已被你的纠正取代，不再用于后续教学。?/))
+      .toBeTruthy();
+    expect(screen.getByText(/原表现：能说明互斥不等于独立/)).toBeTruthy();
+    expect(screen.getByText(/你的纠正与后续自动核验并存，待进一步验证/)).toBeTruthy();
+  });
+
+  it("删除先确认再按记录版本提交", async () => {
+    const onDelete = vi.fn(async () => {});
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      render(<StudyProgress
+        studyLocalProgress={localProgress}
+        studyLearningRecord={[record]}
+        onDeleteRecord={onDelete}
+      />);
+
+      fireEvent.click(screen.getByRole("button", { name: "删除" }));
+
+      await waitFor(() => expect(onDelete).toHaveBeenCalledWith("lr-1", 1));
+      expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("不再用于后续教学"));
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("取消删除确认时不提交", () => {
+    const onDelete = vi.fn(async () => {});
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      render(<StudyProgress
+        studyLocalProgress={localProgress}
+        studyLearningRecord={[record]}
+        onDeleteRecord={onDelete}
+      />);
+
+      fireEvent.click(screen.getByRole("button", { name: "删除" }));
+
+      expect(onDelete).not.toHaveBeenCalled();
+      expect(screen.getByText("互斥与独立")).toBeTruthy();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("来源不可读的证据与记录如实标注，不伪造引文", () => {
+    render(<StudyProgress
+      studyLocalProgress={localProgress}
+      studyLearningRecord={[{
+        ...record,
+        source_available: false,
+        evidences: [
+          {
+            ...record.evidences[0],
+            source_available: false,
+            source_note: "回答消息已删除，无法回读原文。",
+            occurred_at: null,
+          },
+          {
+            ...record.evidences[0],
+            evidence_id: "ev-2",
+            question: "",
+            source_available: false,
+            source_note: "",
+            occurred_at: null,
+          },
+        ],
+        evidence_count: 2,
+      }]}
+    />);
+
+    expect(screen.getByText(/部分依据来源已不可读，仅保留可核对的历史记录/)).toBeTruthy();
+    expect(screen.getByText(/回答消息已删除，无法回读原文。/)).toBeTruthy();
+    expect(screen.getByText(/一条依据（来源已不可读）/)).toBeTruthy();
   });
 });
