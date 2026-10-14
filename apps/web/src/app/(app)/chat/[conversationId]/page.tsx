@@ -16,7 +16,9 @@ import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 import {
+  correctStudyRecord,
   createChatRun,
+  deleteStudyRecord,
   getChatConversation,
   isChatStreamEventOf,
   retryChatRun,
@@ -690,6 +692,50 @@ export default function ChatConversationPage() {
     }
   }, [conversationId, load]);
 
+  // Issue 06：档案纠正（用户自评，未经核验）。按记录版本做并发校验：
+  // 失败如实提示并刷新最新状态，组件内保留当前输入不丢失；成功返回 true。
+  const correctRecord = useCallback(
+    async (recordId: string, note: string, expectedVersion: number) => {
+      setSendError(null);
+      try {
+        await correctStudyRecord(conversationId, recordId, {
+          note,
+          expected_version: expectedVersion,
+        });
+        await load(true);
+        setAnnouncement("已保存纠正，原核验结论不再沿用");
+        return true;
+      } catch (error) {
+        setSendError({
+          message:
+            error instanceof Error ? error.message : "保存纠正失败，请稍后再试。",
+        });
+        await load(true);
+        return false;
+      }
+    },
+    [conversationId, load]
+  );
+
+  // Issue 06：删除档案记录并保留撤回标记；失败保持原记录并刷新真实状态。
+  const deleteRecord = useCallback(
+    async (recordId: string, expectedVersion: number) => {
+      setSendError(null);
+      try {
+        await deleteStudyRecord(conversationId, recordId, expectedVersion);
+        await load(true);
+        setAnnouncement("已删除学习记录");
+      } catch (error) {
+        setSendError({
+          message:
+            error instanceof Error ? error.message : "删除记录失败，请稍后再试。",
+        });
+        await load(true);
+      }
+    },
+    [conversationId, load]
+  );
+
   const retry = useCallback(
     async (messageId: string, moduleOverride?: ChatModuleId) => {
       setSendError(null);
@@ -868,11 +914,13 @@ export default function ChatConversationPage() {
                   studyPause={conversation.study_pause}
                   studySummary={conversation.study_summary}
                   historyStatus={conversation.study_history_status}
-                  studyDiagnosisTasks={conversation.study_diagnosis_tasks}
-                  studyLearningRecord={conversation.study_learning_record}
-                  busy={generating} onAction={sendMessage}
-                  onRetryDiagnosis={retryDiagnosis}
-                />
+            studyDiagnosisTasks={conversation.study_diagnosis_tasks}
+            studyLearningRecord={conversation.study_learning_record}
+            busy={generating} onAction={sendMessage}
+            onRetryDiagnosis={retryDiagnosis}
+            onCorrectRecord={correctRecord}
+            onDeleteRecord={deleteRecord}
+          />
               )}
               <ChatThread
                 messages={threadMessages}

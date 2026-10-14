@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 75
+SCHEMA_VERSION = 76
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3526,6 +3526,43 @@ MIGRATIONS: dict[int, list[str]] = {
             ON study_source_verifications (account_id, conversation_id, created_at)
         """,
     ],
+    # Issue 06：学习档案的用户纠正、删除与迟到结果保护。记录新增用户控制
+    # 状态、主动纠正内容与撤回标记（被删除记录关联的旧证据身份不再被任何
+    # 入口复活）；用户操作以追加事件表保存主动来源、被取代结论与操作时的
+    # 记录版本。旧数据默认 active，无回填。
+    76: [
+        "ALTER TABLE study_learning_records ADD COLUMN state TEXT NOT NULL"
+        " DEFAULT 'active' CHECK (state IN ('active', 'corrected', 'deleted'))",
+        "ALTER TABLE study_learning_records ADD COLUMN user_note TEXT NOT NULL"
+        " DEFAULT ''",
+        "ALTER TABLE study_learning_records ADD COLUMN corrected_at TEXT",
+        "ALTER TABLE study_learning_records ADD COLUMN deleted_at TEXT",
+        "ALTER TABLE study_learning_records ADD COLUMN"
+        " retracted_evidence_ids_json TEXT NOT NULL DEFAULT '[]'",
+        """
+        CREATE TABLE study_record_controls (
+            control_id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            record_id TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('correction', 'deletion')),
+            user_note TEXT NOT NULL DEFAULT '',
+            superseded_verdict TEXT NOT NULL CHECK (superseded_verdict IN
+                ('independent_completion', 'hinted_completion', 'misconception',
+                 'unverified', 'undetermined')),
+            superseded_performance TEXT NOT NULL DEFAULT '',
+            superseded_record_version INTEGER NOT NULL
+                CHECK (superseded_record_version >= 1),
+            record_version INTEGER NOT NULL CHECK (record_version >= 1),
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (record_id) REFERENCES study_learning_records(record_id)
+                ON DELETE CASCADE
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_study_record_controls_account
+            ON study_record_controls (account_id, record_id, created_at)
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3558,6 +3595,9 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "study_diagnosis_tasks",
     "study_diagnosis_results",
     "study_learning_records",
+    # Issue 06：档案纠正/删除的用户操作事件与撤回标记随详情与控制接口
+    # 无条件读取，迁移半执行时须在启动阶段失败关闭。
+    "study_record_controls",
     "learning_project_migration_conversations",
     "schema_meta",
     # 工单 01：画像页面与启动装配会无条件查询这三张表。历史上它们因迁移编号
@@ -3608,6 +3648,7 @@ REQUIRED_INDEXES: frozenset[str] = frozenset({
     "idx_study_diagnosis_results_conversation",
     "idx_study_diagnosis_results_evidence",
     "idx_study_learning_records_updated",
+    "idx_study_record_controls_account",
 })
 
 #: 需要在「存在性」之上再核对必需列的核心对象。
@@ -3818,6 +3859,24 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "record_version",
         "created_at",
         "updated_at",
+        # Issue 06：用户控制状态、主动纠正与撤回标记。
+        "state",
+        "user_note",
+        "corrected_at",
+        "deleted_at",
+        "retracted_evidence_ids_json",
+    }),
+    "study_record_controls": frozenset({
+        "control_id",
+        "account_id",
+        "record_id",
+        "kind",
+        "user_note",
+        "superseded_verdict",
+        "superseded_performance",
+        "superseded_record_version",
+        "record_version",
+        "created_at",
     }),
     "profile_items": frozenset({
         "profile_item_id",
@@ -3908,6 +3967,14 @@ MIGRATION_ADDED_COLUMNS: dict[str, frozenset[str]] = {
         "goal_state",
     }),
     "profile_item_migrations": frozenset({"identity_backfilled"}),
+    # Issue 06：v76 为用户控制状态与撤回标记补加列。
+    "study_learning_records": frozenset({
+        "state",
+        "user_note",
+        "corrected_at",
+        "deleted_at",
+        "retracted_evidence_ids_json",
+    }),
 }
 
 #: schema 完整性失败时写入错误消息的稳定错误码。
