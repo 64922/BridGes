@@ -1,0 +1,41 @@
+[0] 真实模型（development 装配，不注册任何替身；凭据来自操作系统凭据库）
+
+[1] 用户：我把软件工程填成了第一志愿的专业。
+    执行器空闲：{'ticks': 0, 'executor_thread': True, 'elapsed_ms': 6030}
+    助手（status=done）：'软件工程是个很扎实的选择。它既有严谨的逻辑体系，又有很强的实践属性，学起来会很有“手感”。\n\n既然填了第一志愿，看来你对这个领域是有一定期待或信心的。接下来如果有具体的疑问，或者只是想聊聊对大学生活的设想，我都在。'
+    模型调用：neighbor_hint_present=False output={"items": [{"dimension": "academic_status", "normalized_value": "软件工程", "fact_text": "我把软件工程填成了第一志愿的专业。", "evidence_ref": "WBdB0eXW7o2Cfxhj81dJFw", "evidence_quote": "我把软件工程填成了第一志愿的专业。", "evidence_fragments": [], "reliability": 1.0, "action": "create", "evidence_start": 0, "evidence_end": 16}]}
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_written error=None
+    原子条目：'我把软件工程填成了第一志愿的专业。' status=active
+    依据投影：原话='我把软件工程填成了第一志愿的专业。' quote_status=recorded
+      来源 message_id=WBdB0eXW7o2Cfxhj81dJFw status=available quote='我把软件工程填成了第一志愿的专业。' quote_status=recorded
+
+[2] 用户：这个专业我打算一直读到硕士。（跨轮省略，回指第 1 条）
+    执行器空闲：{'ticks': 0, 'executor_thread': True, 'elapsed_ms': 6625}
+    助手：'这个规划很清晰。软件工程读到硕士，能在算法深度、系统架构或特定领域（如人工智能、分布式系统）上建立更深的壁垒，对长远发展很有帮助。\n\n本科阶段打好基础，硕士阶段再根据兴趣细化方向，是一条很稳健的路径。'
+    模型调用：neighbor_hint_present=True output={"items": [{"dimension": "academic_status", "normalized_value": "这个专业我打算一直读到硕士", "fact_text": "我打算把软件工程这个专业一直读到硕士。", "evidence_ref": "AFbuuqgQVn4heIphpYZByg", "evidence_quote": "这个专业我打算一直读到硕士。", "evidence_fragments": [{"evidence_ref": "WBdB0eXW7o2Cfxhj81dJFw", "evidence_quote": "软件工程"}], "reliability": 0.95, "action": "create", "evidence_start": 0, "evidence_end": 13}]}
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_written error=None
+    原子条目：'我把软件工程填成了第一志愿的专业。' status=active
+    原子条目：'我打算把软件工程这个专业一直读到硕士。' status=active
+    依据投影：原话='我把软件工程填成了第一志愿的专业。' quote_status=recorded
+      来源 message_id=WBdB0eXW7o2Cfxhj81dJFw status=available quote='我把软件工程填成了第一志愿的专业。' quote_status=recorded
+    依据投影：原话='这个专业我打算一直读到硕士。' quote_status=recorded
+      来源 message_id=AFbuuqgQVn4heIphpYZByg status=available quote='这个专业我打算一直读到硕士。' quote_status=recorded
+      来源 message_id=WBdB0eXW7o2Cfxhj81dJFw status=available quote='软件工程' quote_status=recorded
+
+[3] 来源竞态：直接改掉第 1 条用户消息正文后再读依据
+    依据投影：原话=None quote_status=source_unavailable
+      来源 message_id=WBdB0eXW7o2Cfxhj81dJFw status=available quote=None quote_status=source_unavailable
+    依据投影：原话='这个专业我打算一直读到硕士。' quote_status=recorded
+      来源 message_id=AFbuuqgQVn4heIphpYZByg status=available quote='这个专业我打算一直读到硕士。' quote_status=recorded
+      来源 message_id=WBdB0eXW7o2Cfxhj81dJFw status=available quote=None quote_status=source_unavailable
+
+[4] 孤立「同意」：助手建议后用户只回「同意」
+    执行器空闲：{'ticks': 0, 'executor_thread': True, 'elapsed_ms': 5812}
+    助手：'那就先踏实走好本科这几步。如果有具体的课程难点或技术困惑，随时来聊。'
+    模型调用：neighbor_hint_present=True output={"items": [{"dimension": "stage_goal", "normalized_value": "这个专业我打算一直读到硕士", "fact_text": "我打算在这个专业一直读到硕士。", "evidence_ref": "P4EG77FtIpPD9_2lvgxcmA", "evidence_quote": "这个专业我打算一直读到硕士。", "evidence_fragments": [{"evidence_ref": "2GKeGteABkikD_L8OgWwMw", "evidence_quote": "软件工程"}], "reliability": 0.95, "action": "create", "evidence_start": 0, "evidence_end": 13}]}
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_empty error=None
+    原子条目：'我把软件工程填成了第一志愿的专业。' status=active
+    原子条目：'我打算把软件工程这个专业一直读到硕士。' status=active
+    新增条目数：0（期望：0 或仅有当前消息可直接核验的自述）
+
+运行目录：D:\BridGes\.worktrees\05-multi-turn-evidence\.tmp\issue05-demo-f52e92fb

@@ -1,0 +1,118 @@
+[
+  {
+    "ref": "WBdB0eXW7o2Cfxhj81dJFw",
+    "neighbor_hint_present": false,
+    "neighbor_hint_lines": [],
+    "output": {
+      "items": [
+        {
+          "dimension": "academic_status",
+          "normalized_value": "软件工程",
+          "fact_text": "我把软件工程填成了第一志愿的专业。",
+          "evidence_ref": "WBdB0eXW7o2Cfxhj81dJFw",
+          "evidence_quote": "我把软件工程填成了第一志愿的专业。",
+          "evidence_fragments": [],
+          "reliability": 1.0,
+          "action": "create",
+          "evidence_start": 0,
+          "evidence_end": 16
+        }
+      ]
+    },
+    "usage": {
+      "completion_tokens": 145,
+      "prompt_tokens": 568,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 568
+      },
+      "total_tokens": 713
+    }
+  },
+  {
+    "ref": "AFbuuqgQVn4heIphpYZByg",
+    "neighbor_hint_present": true,
+    "neighbor_hint_lines": [
+      "（仅供回指的邻近消息（含助手），不得作为事实证据）",
+      "[WBdB0eXW7o2Cfxhj81dJFw]用户：我把软件工程填成了第一志愿的专业。",
+      "[2GKeGteABkikD_L8OgWwMw]助手：软件工程是个很扎实的选择。它既有严谨的逻辑体系，又有很强的实践属性，学起来会很有“手感”。",
+      "",
+      "既然填了第一志愿，看来你对这个领域是有一定期待或信心的。接下来如果有具体的疑问，或者只是想聊聊对大学生活的设想，我都在。"
+    ],
+    "output": {
+      "items": [
+        {
+          "dimension": "academic_status",
+          "normalized_value": "这个专业我打算一直读到硕士",
+          "fact_text": "我打算把软件工程这个专业一直读到硕士。",
+          "evidence_ref": "AFbuuqgQVn4heIphpYZByg",
+          "evidence_quote": "这个专业我打算一直读到硕士。",
+          "evidence_fragments": [
+            {
+              "evidence_ref": "WBdB0eXW7o2Cfxhj81dJFw",
+              "evidence_quote": "软件工程"
+            }
+          ],
+          "reliability": 0.95,
+          "action": "create",
+          "evidence_start": 0,
+          "evidence_end": 13
+        }
+      ]
+    },
+    "usage": {
+      "completion_tokens": 197,
+      "prompt_tokens": 714,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 714
+      },
+      "total_tokens": 911
+    }
+  },
+  {
+    "ref": "P4EG77FtIpPD9_2lvgxcmA",
+    "neighbor_hint_present": true,
+    "neighbor_hint_lines": [
+      "（仅供回指的邻近消息（含助手），不得作为事实证据）",
+      "[WBdB0eXW7o2Cfxhj81dJFw]用户：（来源内容已被改写。）",
+      "[2GKeGteABkikD_L8OgWwMw]助手：软件工程是个很扎实的选择。它既有严谨的逻辑体系，又有很强的实践属性，学起来会很有“手感”。",
+      "",
+      "既然填了第一志愿，看来你对这个领域是有一定期待或信心的。接下来如果有具体的疑问，或者只是想聊聊对大学生活的设想，我都在。",
+      "[AFbuuqgQVn4heIphpYZByg]用户：这个专业我打算一直读到硕士。",
+      "[qSZC3nwjU9gSUdBk4b2Afg]助手：这个规划很清晰。软件工程读到硕士，能在算法深度、系统架构或特定领域（如人工智能、分布式系统）上建立更深的壁垒，对长远发展很有帮助。",
+      "",
+      "本科阶段打好基础，硕士阶段再根据兴趣细化方向，是一条很稳健的路径。"
+    ],
+    "output": {
+      "items": [
+        {
+          "dimension": "stage_goal",
+          "normalized_value": "这个专业我打算一直读到硕士",
+          "fact_text": "我打算在这个专业一直读到硕士。",
+          "evidence_ref": "P4EG77FtIpPD9_2lvgxcmA",
+          "evidence_quote": "这个专业我打算一直读到硕士。",
+          "evidence_fragments": [
+            {
+              "evidence_ref": "2GKeGteABkikD_L8OgWwMw",
+              "evidence_quote": "软件工程"
+            }
+          ],
+          "reliability": 0.95,
+          "action": "create",
+          "evidence_start": 0,
+          "evidence_end": 13
+        }
+      ]
+    },
+    "usage": {
+      "completion_tokens": 196,
+      "prompt_tokens": 783,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 783
+      },
+      "total_tokens": 979
+    }
+  }
+]
