@@ -1,0 +1,1691 @@
+{
+  "kind": "profile-baseline-evidence",
+  "generated_at": "2026-10-15T17:14:13+00:00",
+  "run_dir": "D:\\BridGes\\.worktrees\\06-revision-conflict-and-deduplication\\.tmp\\issue01-deterministic-20261015T171408Z-e3ff78",
+  "journeys": [
+    {
+      "journey_id": "t01-name",
+      "scenario_id": "T01",
+      "problem_class": "name",
+      "title": "明确姓名自述不应漏提取",
+      "target": "提取「称呼为小林」并在后续回答中使用。",
+      "expected_baseline_status": "pass",
+      "expected_baseline_observation": "自然自述经语义分支提出候选（deterministic 基线为回声提案替身），生产证据核验通过后原子条目写入「我叫小林」；04 之前无提取运行。",
+      "evidence_note": "对照 PRD 3.1 与 T01；责任票 03/04。",
+      "conversation_id": "gxDaIvq94Rs1Jt2CgoxdOA",
+      "turns": [
+        {
+          "user_content": "我叫小林。",
+          "expectation": "提取「称呼为小林」并在后续回答中使用。",
+          "user_message_id": "ycoOIXxPv6t7VKJ4oxoxOA",
+          "assistant_message_id": "d9wPnRppcXi2lY1RjwZ7Uw",
+          "assistant_status": "done",
+          "assistant_content": "这是一条来自本地替身模式的确定性测试回答。",
+          "assistant_error_code": null,
+          "generation_run": {
+            "run_id": "CarZah_0B7m_mMA1RBMnUA",
+            "status": "done",
+            "error_code": null,
+            "duration_ms": 203,
+            "created_at": "2026-10-15T17:14:13.298055+00:00",
+            "updated_at": "2026-10-15T17:14:13.552361+00:00",
+            "adopted_profile_slice": {
+              "adopted_items": [],
+              "compiled_at": "2026-10-15T17:14:13.441084Z",
+              "compiled_policy_version": "purpose-slice-1.1",
+              "excluded_items": [],
+              "length_budget": 4,
+              "owner_account_id": "vdQISjT6ZGYdz2dAhHmhIQ",
+              "purpose": {
+                "explicit_request": null,
+                "learning_stage": null,
+                "mode": "companion",
+                "module_id": null,
+                "query": null,
+                "task_kind": "general"
+              },
+              "revocation_version": "e3b0c44298fc1c149afbf4c8996fb924",
+              "run_id": "d9wPnRppcXi2lY1RjwZ7Uw",
+              "slice_id": "slice-6dfd32c159540920b5ee092470adb083",
+              "snapshot_versions": []
+            }
+          },
+          "model_calls": [
+            {
+              "capability": "qwen_text_chat",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "status": "success",
+              "retry_count": 0,
+              "error_code": null,
+              "usage": null
+            }
+          ],
+          "extraction_runs": [
+            {
+              "extraction_id": "profile-extract-131b1d20fa1fb180d066ed5eccc97276",
+              "message_id": "ycoOIXxPv6t7VKJ4oxoxOA",
+              "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+              "source": "qwen_model",
+              "status": "succeeded",
+              "outcome": "succeeded_written",
+              "attempts": 1,
+              "observed_count": 0,
+              "last_error": null,
+              "created_at": "2026-10-15T17:14:13+00:00",
+              "updated_at": "2026-10-15T17:14:13+00:00",
+              "committed_record_ids": [
+                "item-MlQb-T7Z7G56IYCYk0Ye2g"
+              ]
+            }
+          ],
+          "idle": {
+            "ticks": 1,
+            "executor_thread": false,
+            "elapsed_ms": 233
+          },
+          "recording_calls": [
+            {
+              "run_id": "profile-extract-131b1d20fa1fb180d066ed5eccc97276",
+              "project_id": "gxDaIvq94Rs1Jt2CgoxdOA",
+              "message_count": 2,
+              "neighbor_hint_present": false,
+              "neighbor_hint_content": [],
+              "related_memory_hint_present": false,
+              "related_memory_hint_content": [],
+              "current_message_content": "我叫小林。"
+            }
+          ]
+        }
+      ],
+      "profile_snapshot": {
+        "four_dimensions": [],
+        "items": [
+          {
+            "profile_item_id": "item-MlQb-T7Z7G56IYCYk0Ye2g",
+            "text": "我叫小林",
+            "identity_key": "650d365bd33c6602626267bf37fbcfa3",
+            "status": "active",
+            "write_origin": "automatic",
+            "version": 1,
+            "created_at": "2026-10-15T17:14:13+00:00",
+            "updated_at": "2026-10-15T17:14:13+00:00"
+          }
+        ],
+        "observations": [],
+        "tasks": [
+          {
+            "task_id": "profile-retry-131b1d20fa1fb180d066ed5eccc97276",
+            "message_id": "ycoOIXxPv6t7VKJ4oxoxOA",
+            "status": "succeeded",
+            "attempts": 1,
+            "last_error": null
+          }
+        ],
+        "extraction_runs": [
+          {
+            "extraction_id": "profile-extract-131b1d20fa1fb180d066ed5eccc97276",
+            "message_id": "ycoOIXxPv6t7VKJ4oxoxOA",
+            "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+            "source": "qwen_model",
+            "status": "succeeded",
+            "outcome": "succeeded_written",
+            "attempts": 1,
+            "observed_count": 0,
+            "last_error": null,
+            "created_at": "2026-10-15T17:14:13+00:00",
+            "updated_at": "2026-10-15T17:14:13+00:00",
+            "committed_record_ids": [
+              "item-MlQb-T7Z7G56IYCYk0Ye2g"
+            ]
+          }
+        ]
+      },
+      "neighbor_reader_probe": [],
+      "elapsed_ms": 405,
+      "all_recording_calls": [
+        {
+          "run_id": "profile-extract-131b1d20fa1fb180d066ed5eccc97276",
+          "project_id": "gxDaIvq94Rs1Jt2CgoxdOA",
+          "message_count": 2,
+          "neighbor_hint_present": false,
+          "neighbor_hint_content": [],
+          "related_memory_hint_present": false,
+          "related_memory_hint_content": [],
+          "current_message_content": "我叫小林。"
+        }
+      ],
+      "evaluation": {
+        "checks": [
+          {
+            "check_id": "fact_captured",
+            "passed": true,
+            "detail": "texts='我叫小林 item-MlQb-T7Z7G56IYCYk0Ye2g'"
+          }
+        ],
+        "observed_status": "pass",
+        "baseline_match": true
+      }
+    },
+    {
+      "journey_id": "t01-pet",
+      "scenario_id": "T01",
+      "problem_class": "pet",
+      "title": "宠物自述不应漏提取",
+      "target": "提取「养了一只叫团子的猫」并在后续回答中使用。",
+      "expected_baseline_status": "pass",
+      "expected_baseline_observation": "同上：召回替身提案 → 证据核验 → 原子条目写入「我养了一只猫叫团子」。",
+      "evidence_note": "对照 PRD 3.1 与 T01；责任票 03/04。",
+      "conversation_id": "S5pFX6aYBevzQ2jXgeY87Q",
+      "turns": [
+        {
+          "user_content": "我养了一只猫叫团子。",
+          "expectation": "提取「养了一只叫团子的猫」并在后续回答中使用。",
+          "user_message_id": "0-MNTOHeE3LaPXpRzlvRnA",
+          "assistant_message_id": "0ibp4WQ7BRRZTjRqmwt7bA",
+          "assistant_status": "done",
+          "assistant_content": "这是一条来自本地替身模式的确定性测试回答。",
+          "assistant_error_code": null,
+          "generation_run": {
+            "run_id": "wjSQR96piPUi5wm0suX-SA",
+            "status": "done",
+            "error_code": null,
+            "duration_ms": 250,
+            "created_at": "2026-10-15T17:14:13.631674+00:00",
+            "updated_at": "2026-10-15T17:14:13.902443+00:00",
+            "adopted_profile_slice": {
+              "adopted_items": [],
+              "compiled_at": "2026-10-15T17:14:13.806663Z",
+              "compiled_policy_version": "purpose-slice-1.1",
+              "excluded_items": [],
+              "length_budget": 4,
+              "owner_account_id": "eM6QUOHgvpzz4VxdsUncmQ",
+              "purpose": {
+                "explicit_request": null,
+                "learning_stage": null,
+                "mode": "companion",
+                "module_id": null,
+                "query": null,
+                "task_kind": "general"
+              },
+              "revocation_version": "e3b0c44298fc1c149afbf4c8996fb924",
+              "run_id": "0ibp4WQ7BRRZTjRqmwt7bA",
+              "slice_id": "slice-e639eb64180729c377bb4d483531dec4",
+              "snapshot_versions": []
+            }
+          },
+          "model_calls": [
+            {
+              "capability": "qwen_text_chat",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "status": "success",
+              "retry_count": 0,
+              "error_code": null,
+              "usage": null
+            }
+          ],
+          "extraction_runs": [
+            {
+              "extraction_id": "profile-extract-8934b89177d9bfbda104fa361abf0fc1",
+              "message_id": "0-MNTOHeE3LaPXpRzlvRnA",
+              "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+              "source": "qwen_model",
+              "status": "succeeded",
+              "outcome": "succeeded_written",
+              "attempts": 1,
+              "observed_count": 0,
+              "last_error": null,
+              "created_at": "2026-10-15T17:14:13+00:00",
+              "updated_at": "2026-10-15T17:14:13+00:00",
+              "committed_record_ids": [
+                "item-D1CTae6Zm4SSN2ZaYH4YJQ"
+              ]
+            }
+          ],
+          "idle": {
+            "ticks": 1,
+            "executor_thread": false,
+            "elapsed_ms": 265
+          },
+          "recording_calls": [
+            {
+              "run_id": "profile-extract-8934b89177d9bfbda104fa361abf0fc1",
+              "project_id": "S5pFX6aYBevzQ2jXgeY87Q",
+              "message_count": 2,
+              "neighbor_hint_present": false,
+              "neighbor_hint_content": [],
+              "related_memory_hint_present": false,
+              "related_memory_hint_content": [],
+              "current_message_content": "我养了一只猫叫团子。"
+            }
+          ]
+        }
+      ],
+      "profile_snapshot": {
+        "four_dimensions": [],
+        "items": [
+          {
+            "profile_item_id": "item-D1CTae6Zm4SSN2ZaYH4YJQ",
+            "text": "我养了一只猫叫团子",
+            "identity_key": "16da0f1fe25c6a4f4444e1e79d651a16",
+            "status": "active",
+            "write_origin": "automatic",
+            "version": 1,
+            "created_at": "2026-10-15T17:14:13+00:00",
+            "updated_at": "2026-10-15T17:14:13+00:00"
+          }
+        ],
+        "observations": [],
+        "tasks": [
+          {
+            "task_id": "profile-retry-8934b89177d9bfbda104fa361abf0fc1",
+            "message_id": "0-MNTOHeE3LaPXpRzlvRnA",
+            "status": "succeeded",
+            "attempts": 1,
+            "last_error": null
+          }
+        ],
+        "extraction_runs": [
+          {
+            "extraction_id": "profile-extract-8934b89177d9bfbda104fa361abf0fc1",
+            "message_id": "0-MNTOHeE3LaPXpRzlvRnA",
+            "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+            "source": "qwen_model",
+            "status": "succeeded",
+            "outcome": "succeeded_written",
+            "attempts": 1,
+            "observed_count": 0,
+            "last_error": null,
+            "created_at": "2026-10-15T17:14:13+00:00",
+            "updated_at": "2026-10-15T17:14:13+00:00",
+            "committed_record_ids": [
+              "item-D1CTae6Zm4SSN2ZaYH4YJQ"
+            ]
+          }
+        ]
+      },
+      "neighbor_reader_probe": [],
+      "elapsed_ms": 297,
+      "all_recording_calls": [
+        {
+          "run_id": "profile-extract-8934b89177d9bfbda104fa361abf0fc1",
+          "project_id": "S5pFX6aYBevzQ2jXgeY87Q",
+          "message_count": 2,
+          "neighbor_hint_present": false,
+          "neighbor_hint_content": [],
+          "related_memory_hint_present": false,
+          "related_memory_hint_content": [],
+          "current_message_content": "我养了一只猫叫团子。"
+        }
+      ],
+      "evaluation": {
+        "checks": [
+          {
+            "check_id": "fact_captured",
+            "passed": true,
+            "detail": "texts='我养了一只猫叫团子 item-D1CTae6Zm4SSN2ZaYH4YJQ'"
+          }
+        ],
+        "observed_status": "pass",
+        "baseline_match": true
+      }
+    },
+    {
+      "journey_id": "t01-habit",
+      "scenario_id": "T01",
+      "problem_class": "habit",
+      "title": "习惯自述不应漏提取",
+      "target": "提取「周末一般去爬山」并在周末相关回答中使用。",
+      "expected_baseline_status": "pass",
+      "expected_baseline_observation": "习惯表达（一般会…）属于自然自述，写入原子条目「周末一般会去爬山」。",
+      "evidence_note": "对照 PRD 3.1 与 T01；责任票 03/04。",
+      "conversation_id": "16JdlpcAF83lf6YccDJLXg",
+      "turns": [
+        {
+          "user_content": "周末一般会去爬山。",
+          "expectation": "提取「周末一般去爬山」并在周末相关回答中使用。",
+          "user_message_id": "vYDM8wrKi8B41vi8TrSwsw",
+          "assistant_message_id": "PwH1QMGgWLE_uJdlonHJJw",
+          "assistant_status": "done",
+          "assistant_content": "这是一条来自本地替身模式的确定性测试回答。",
+          "assistant_error_code": null,
+          "generation_run": {
+            "run_id": "HI5d7HvQ8iyk_gDuom8HdA",
+            "status": "done",
+            "error_code": null,
+            "duration_ms": 188,
+            "created_at": "2026-10-15T17:14:13.981519+00:00",
+            "updated_at": "2026-10-15T17:14:14.188379+00:00",
+            "adopted_profile_slice": {
+              "adopted_items": [],
+              "compiled_at": "2026-10-15T17:14:14.093080Z",
+              "compiled_policy_version": "purpose-slice-1.1",
+              "excluded_items": [],
+              "length_budget": 4,
+              "owner_account_id": "rWiffuCz7_DrBnFXi03gbw",
+              "purpose": {
+                "explicit_request": null,
+                "learning_stage": null,
+                "mode": "companion",
+                "module_id": null,
+                "query": null,
+                "task_kind": "general"
+              },
+              "revocation_version": "e3b0c44298fc1c149afbf4c8996fb924",
+              "run_id": "PwH1QMGgWLE_uJdlonHJJw",
+              "slice_id": "slice-7b69f8a0f07a2b8d542bfffca5c2b651",
+              "snapshot_versions": []
+            }
+          },
+          "model_calls": [
+            {
+              "capability": "qwen_text_chat",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "status": "success",
+              "retry_count": 0,
+              "error_code": null,
+              "usage": null
+            }
+          ],
+          "extraction_runs": [
+            {
+              "extraction_id": "profile-extract-f9715c97b2c23ea57ec6d8162a9a7d3e",
+              "message_id": "vYDM8wrKi8B41vi8TrSwsw",
+              "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+              "source": "qwen_model",
+              "status": "succeeded",
+              "outcome": "succeeded_written",
+              "attempts": 1,
+              "observed_count": 0,
+              "last_error": null,
+              "created_at": "2026-10-15T17:14:14+00:00",
+              "updated_at": "2026-10-15T17:14:14+00:00",
+              "committed_record_ids": [
+                "item-ni-t3tqSyWje5P2G9ELmpQ"
+              ]
+            }
+          ],
+          "idle": {
+            "ticks": 1,
+            "executor_thread": false,
+            "elapsed_ms": 219
+          },
+          "recording_calls": [
+            {
+              "run_id": "profile-extract-f9715c97b2c23ea57ec6d8162a9a7d3e",
+              "project_id": "16JdlpcAF83lf6YccDJLXg",
+              "message_count": 2,
+              "neighbor_hint_present": false,
+              "neighbor_hint_content": [],
+              "related_memory_hint_present": false,
+              "related_memory_hint_content": [],
+              "current_message_content": "周末一般会去爬山。"
+            }
+          ]
+        }
+      ],
+      "profile_snapshot": {
+        "four_dimensions": [],
+        "items": [
+          {
+            "profile_item_id": "item-ni-t3tqSyWje5P2G9ELmpQ",
+            "text": "周末一般会去爬山",
+            "identity_key": "0161fbd29bee8bd18596870a856fe994",
+            "status": "active",
+            "write_origin": "automatic",
+            "version": 1,
+            "created_at": "2026-10-15T17:14:14+00:00",
+            "updated_at": "2026-10-15T17:14:14+00:00"
+          }
+        ],
+        "observations": [],
+        "tasks": [
+          {
+            "task_id": "profile-retry-f9715c97b2c23ea57ec6d8162a9a7d3e",
+            "message_id": "vYDM8wrKi8B41vi8TrSwsw",
+            "status": "succeeded",
+            "attempts": 1,
+            "last_error": null
+          }
+        ],
+        "extraction_runs": [
+          {
+            "extraction_id": "profile-extract-f9715c97b2c23ea57ec6d8162a9a7d3e",
+            "message_id": "vYDM8wrKi8B41vi8TrSwsw",
+            "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+            "source": "qwen_model",
+            "status": "succeeded",
+            "outcome": "succeeded_written",
+            "attempts": 1,
+            "observed_count": 0,
+            "last_error": null,
+            "created_at": "2026-10-15T17:14:14+00:00",
+            "updated_at": "2026-10-15T17:14:14+00:00",
+            "committed_record_ids": [
+              "item-ni-t3tqSyWje5P2G9ELmpQ"
+            ]
+          }
+        ]
+      },
+      "neighbor_reader_probe": [],
+      "elapsed_ms": 234,
+      "all_recording_calls": [
+        {
+          "run_id": "profile-extract-f9715c97b2c23ea57ec6d8162a9a7d3e",
+          "project_id": "16JdlpcAF83lf6YccDJLXg",
+          "message_count": 2,
+          "neighbor_hint_present": false,
+          "neighbor_hint_content": [],
+          "related_memory_hint_present": false,
+          "related_memory_hint_content": [],
+          "current_message_content": "周末一般会去爬山。"
+        }
+      ],
+      "evaluation": {
+        "checks": [
+          {
+            "check_id": "fact_captured",
+            "passed": true,
+            "detail": "texts='周末一般会去爬山 item-ni-t3tqSyWje5P2G9ELmpQ'"
+          }
+        ],
+        "observed_status": "pass",
+        "baseline_match": true
+      }
+    },
+    {
+      "journey_id": "t02-psychology",
+      "scenario_id": "T02",
+      "problem_class": "sensitive_keyword",
+      "title": "学科兴趣不应被敏感词误拦截",
+      "target": "提取学科兴趣「心理学」，不产生心理推断。",
+      "expected_baseline_status": "pass",
+      "expected_baseline_observation": "「心理学」不再被 心理 关键词误判为敏感内容；语义分支提取成功并写入原子条目，不产生心理推断。",
+      "evidence_note": "对照 PRD 3.1 与 T02；责任票 04/09。",
+      "conversation_id": "LB8UqSF02Ws5IpSwxFG3yQ",
+      "turns": [
+        {
+          "user_content": "我喜欢心理学。",
+          "expectation": "提取学科兴趣「心理学」，不产生心理推断。",
+          "user_message_id": "FaCEzWjhBgS1gWor5gCAww",
+          "assistant_message_id": "csqzaz4HRuFoIgn3SYon6w",
+          "assistant_status": "done",
+          "assistant_content": "这是一条来自本地替身模式的确定性测试回答。",
+          "assistant_error_code": null,
+          "generation_run": {
+            "run_id": "OYTK8uNgmfovahG9L3L-Ew",
+            "status": "done",
+            "error_code": null,
+            "duration_ms": 157,
+            "created_at": "2026-10-15T17:14:14.271196+00:00",
+            "updated_at": "2026-10-15T17:14:14.426156+00:00",
+            "adopted_profile_slice": {
+              "adopted_items": [],
+              "compiled_at": "2026-10-15T17:14:14.362826Z",
+              "compiled_policy_version": "purpose-slice-1.1",
+              "excluded_items": [],
+              "length_budget": 4,
+              "owner_account_id": "nNfog1ULpswfLd8BLiGJJw",
+              "purpose": {
+                "explicit_request": null,
+                "learning_stage": null,
+                "mode": "companion",
+                "module_id": null,
+                "query": null,
+                "task_kind": "general"
+              },
+              "revocation_version": "e3b0c44298fc1c149afbf4c8996fb924",
+              "run_id": "csqzaz4HRuFoIgn3SYon6w",
+              "slice_id": "slice-245cc3d67b734f265c7fac11e8d0986b",
+              "snapshot_versions": []
+            }
+          },
+          "model_calls": [
+            {
+              "capability": "qwen_text_chat",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "status": "success",
+              "retry_count": 0,
+              "error_code": null,
+              "usage": null
+            }
+          ],
+          "extraction_runs": [
+            {
+              "extraction_id": "profile-extract-d8fad0abb3482cb43d38ad4e326df1a0",
+              "message_id": "FaCEzWjhBgS1gWor5gCAww",
+              "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+              "source": "qwen_model",
+              "status": "succeeded",
+              "outcome": "succeeded_written",
+              "attempts": 1,
+              "observed_count": 0,
+              "last_error": null,
+              "created_at": "2026-10-15T17:14:14+00:00",
+              "updated_at": "2026-10-15T17:14:14+00:00",
+              "committed_record_ids": [
+                "item-5j_R-ae2v9IQxq4-An_tLQ"
+              ]
+            }
+          ],
+          "idle": {
+            "ticks": 1,
+            "executor_thread": false,
+            "elapsed_ms": 188
+          },
+          "recording_calls": [
+            {
+              "run_id": "profile-extract-d8fad0abb3482cb43d38ad4e326df1a0",
+              "project_id": "LB8UqSF02Ws5IpSwxFG3yQ",
+              "message_count": 2,
+              "neighbor_hint_present": false,
+              "neighbor_hint_content": [],
+              "related_memory_hint_present": false,
+              "related_memory_hint_content": [],
+              "current_message_content": "我喜欢心理学。"
+            }
+          ]
+        }
+      ],
+      "profile_snapshot": {
+        "four_dimensions": [],
+        "items": [
+          {
+            "profile_item_id": "item-5j_R-ae2v9IQxq4-An_tLQ",
+            "text": "我喜欢心理学",
+            "identity_key": "0d6cc252d2e4461efff41b27fa6f3db3",
+            "status": "active",
+            "write_origin": "automatic",
+            "version": 1,
+            "created_at": "2026-10-15T17:14:14+00:00",
+            "updated_at": "2026-10-15T17:14:14+00:00"
+          }
+        ],
+        "observations": [],
+        "tasks": [
+          {
+            "task_id": "profile-retry-d8fad0abb3482cb43d38ad4e326df1a0",
+            "message_id": "FaCEzWjhBgS1gWor5gCAww",
+            "status": "succeeded",
+            "attempts": 1,
+            "last_error": null
+          }
+        ],
+        "extraction_runs": [
+          {
+            "extraction_id": "profile-extract-d8fad0abb3482cb43d38ad4e326df1a0",
+            "message_id": "FaCEzWjhBgS1gWor5gCAww",
+            "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+            "source": "qwen_model",
+            "status": "succeeded",
+            "outcome": "succeeded_written",
+            "attempts": 1,
+            "observed_count": 0,
+            "last_error": null,
+            "created_at": "2026-10-15T17:14:14+00:00",
+            "updated_at": "2026-10-15T17:14:14+00:00",
+            "committed_record_ids": [
+              "item-5j_R-ae2v9IQxq4-An_tLQ"
+            ]
+          }
+        ]
+      },
+      "neighbor_reader_probe": [],
+      "elapsed_ms": 188,
+      "all_recording_calls": [
+        {
+          "run_id": "profile-extract-d8fad0abb3482cb43d38ad4e326df1a0",
+          "project_id": "LB8UqSF02Ws5IpSwxFG3yQ",
+          "message_count": 2,
+          "neighbor_hint_present": false,
+          "neighbor_hint_content": [],
+          "related_memory_hint_present": false,
+          "related_memory_hint_content": [],
+          "current_message_content": "我喜欢心理学。"
+        }
+      ],
+      "evaluation": {
+        "checks": [
+          {
+            "check_id": "interest_captured_not_blocked",
+            "passed": true,
+            "detail": "statuses=('succeeded',) texts='我喜欢心理学 item-5j_R-ae2v9IQxq4-An_tLQ'"
+          }
+        ],
+        "observed_status": "pass",
+        "baseline_match": true
+      }
+    },
+    {
+      "journey_id": "t03-time-limit",
+      "scenario_id": "T03",
+      "problem_class": "time_constraint",
+      "title": "学习内容与时间限制应同时保留",
+      "target": "提取「正在学线性代数」与「每晚约半小时」。",
+      "expected_baseline_status": "pass",
+      "expected_baseline_observation": "语义分支提取整句事实（含学习内容与每晚半小时的时间限定），证据核验保留时间限定后写入原子条目；04 之前时间约束丢失。",
+      "evidence_note": "对照 PRD 3.1 与 T03；责任票 04/11。",
+      "conversation_id": "eEWMuBMDNqCl0gvfcR98mg",
+      "turns": [
+        {
+          "user_content": "我在学线性代数，每晚只能抽出半小时。",
+          "expectation": "提取「正在学线性代数」与「每晚约半小时」。",
+          "user_message_id": "JbZ_PhINIQ4OW1Yj6kJTiA",
+          "assistant_message_id": "orXwZT9QFbjQzw2zRfGy1A",
+          "assistant_status": "done",
+          "assistant_content": "这是一条来自本地替身模式的确定性测试回答。",
+          "assistant_error_code": null,
+          "generation_run": {
+            "run_id": "o-Gh_ikzHH9uOqwBOaTYQQ",
+            "status": "done",
+            "error_code": null,
+            "duration_ms": 172,
+            "created_at": "2026-10-15T17:14:14.513150+00:00",
+            "updated_at": "2026-10-15T17:14:14.711405+00:00",
+            "adopted_profile_slice": {
+              "adopted_items": [],
+              "compiled_at": "2026-10-15T17:14:14.624890Z",
+              "compiled_policy_version": "purpose-slice-1.1",
+              "excluded_items": [],
+              "length_budget": 4,
+              "owner_account_id": "20oUQoHOtx8kMfdYyaPeXQ",
+              "purpose": {
+                "explicit_request": null,
+                "learning_stage": null,
+                "mode": "companion",
+                "module_id": null,
+                "query": null,
+                "task_kind": "general"
+              },
+              "revocation_version": "e3b0c44298fc1c149afbf4c8996fb924",
+              "run_id": "orXwZT9QFbjQzw2zRfGy1A",
+              "slice_id": "slice-aeaa737a33f37712c63555ebbd4cc721",
+              "snapshot_versions": []
+            }
+          },
+          "model_calls": [
+            {
+              "capability": "qwen_text_chat",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "status": "success",
+              "retry_count": 0,
+              "error_code": null,
+              "usage": null
+            }
+          ],
+          "extraction_runs": [
+            {
+              "extraction_id": "profile-extract-98609f9fbfae7a3fe4aa6553e0745392",
+              "message_id": "JbZ_PhINIQ4OW1Yj6kJTiA",
+              "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+              "source": "qwen_model",
+              "status": "succeeded",
+              "outcome": "succeeded_written",
+              "attempts": 1,
+              "observed_count": 0,
+              "last_error": null,
+              "created_at": "2026-10-15T17:14:14+00:00",
+              "updated_at": "2026-10-15T17:14:14+00:00",
+              "committed_record_ids": [
+                "item-pqyCvRm1RbhEaX2Tjdvqkw"
+              ]
+            }
+          ],
+          "idle": {
+            "ticks": 1,
+            "executor_thread": false,
+            "elapsed_ms": 219
+          },
+          "recording_calls": [
+            {
+              "run_id": "profile-extract-98609f9fbfae7a3fe4aa6553e0745392",
+              "project_id": "eEWMuBMDNqCl0gvfcR98mg",
+              "message_count": 2,
+              "neighbor_hint_present": false,
+              "neighbor_hint_content": [],
+              "related_memory_hint_present": false,
+              "related_memory_hint_content": [],
+              "current_message_content": "我在学线性代数，每晚只能抽出半小时。"
+            }
+          ]
+        }
+      ],
+      "profile_snapshot": {
+        "four_dimensions": [],
+        "items": [
+          {
+            "profile_item_id": "item-pqyCvRm1RbhEaX2Tjdvqkw",
+            "text": "我在学线性代数，每晚只能抽出半小时",
+            "identity_key": "3263f6f6cab9a6c95e201426cb92d6b5",
+            "status": "active",
+            "write_origin": "automatic",
+            "version": 1,
+            "created_at": "2026-10-15T17:14:14+00:00",
+            "updated_at": "2026-10-15T17:14:14+00:00"
+          }
+        ],
+        "observations": [],
+        "tasks": [
+          {
+            "task_id": "profile-retry-98609f9fbfae7a3fe4aa6553e0745392",
+            "message_id": "JbZ_PhINIQ4OW1Yj6kJTiA",
+            "status": "succeeded",
+            "attempts": 1,
+            "last_error": null
+          }
+        ],
+        "extraction_runs": [
+          {
+            "extraction_id": "profile-extract-98609f9fbfae7a3fe4aa6553e0745392",
+            "message_id": "JbZ_PhINIQ4OW1Yj6kJTiA",
+            "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+            "source": "qwen_model",
+            "status": "succeeded",
+            "outcome": "succeeded_written",
+            "attempts": 1,
+            "observed_count": 0,
+            "last_error": null,
+            "created_at": "2026-10-15T17:14:14+00:00",
+            "updated_at": "2026-10-15T17:14:14+00:00",
+            "committed_record_ids": [
+              "item-pqyCvRm1RbhEaX2Tjdvqkw"
+            ]
+          }
+        ]
+      },
+      "neighbor_reader_probe": [],
+      "elapsed_ms": 234,
+      "all_recording_calls": [
+        {
+          "run_id": "profile-extract-98609f9fbfae7a3fe4aa6553e0745392",
+          "project_id": "eEWMuBMDNqCl0gvfcR98mg",
+          "message_count": 2,
+          "neighbor_hint_present": false,
+          "neighbor_hint_content": [],
+          "related_memory_hint_present": false,
+          "related_memory_hint_content": [],
+          "current_message_content": "我在学线性代数，每晚只能抽出半小时。"
+        }
+      ],
+      "evaluation": {
+        "checks": [
+          {
+            "check_id": "content_captured",
+            "passed": true,
+            "detail": "texts='我在学线性代数，每晚只能抽出半小时 item-pqyCvRm1RbhEaX2Tjdvqkw'"
+          },
+          {
+            "check_id": "time_constraint_captured",
+            "passed": true,
+            "detail": "texts='我在学线性代数，每晚只能抽出半小时 item-pqyCvRm1RbhEaX2Tjdvqkw'"
+          }
+        ],
+        "observed_status": "pass",
+        "baseline_match": true
+      }
+    },
+    {
+      "journey_id": "t04-cross-turn",
+      "scenario_id": "T04",
+      "problem_class": "neighbor_messages",
+      "title": "跨轮抽取应拿到正确历史范围",
+      "target": "网关抽取收到真实会话的邻近用户消息（非空），并据此解析指代。",
+      "expected_baseline_status": "pass",
+      "expected_baseline_observation": "工单 05：抽取携带真实会话标识，窗口按位置取当前消息之前的有界前文（含助手消息）并随载荷传入；应用级探测呈现同一窗口。",
+      "evidence_note": "对照 PRD 3.1 与 T04；责任票 05。",
+      "conversation_id": "kPmeEt6xhP65APddA-wqEQ",
+      "turns": [
+        {
+          "user_content": "我在读计算机专业，大二。",
+          "expectation": "网关抽取收到真实会话的邻近用户消息（非空），并据此解析指代。",
+          "user_message_id": "54Wl5DXjhBP9Ye8GLUxbDA",
+          "assistant_message_id": "rCwHMhiFh51eByQPJn2khQ",
+          "assistant_status": "done",
+          "assistant_content": "这是一条来自本地替身模式的确定性测试回答。",
+          "assistant_error_code": null,
+          "generation_run": {
+            "run_id": "vBVSANvycIx2y8nRPiK1tA",
+            "status": "done",
+            "error_code": null,
+            "duration_ms": 172,
+            "created_at": "2026-10-15T17:14:14.806856+00:00",
+            "updated_at": "2026-10-15T17:14:14.998070+00:00",
+            "adopted_profile_slice": {
+              "adopted_items": [],
+              "compiled_at": "2026-10-15T17:14:14.902586Z",
+              "compiled_policy_version": "purpose-slice-1.1",
+              "excluded_items": [],
+              "length_budget": 4,
+              "owner_account_id": "YZV77LLJI6xiXKNj3KWgOw",
+              "purpose": {
+                "explicit_request": null,
+                "learning_stage": null,
+                "mode": "companion",
+                "module_id": null,
+                "query": null,
+                "task_kind": "general"
+              },
+              "revocation_version": "e3b0c44298fc1c149afbf4c8996fb924",
+              "run_id": "rCwHMhiFh51eByQPJn2khQ",
+              "slice_id": "slice-bbe4038717d01b1c8263a602025d524f",
+              "snapshot_versions": []
+            }
+          },
+          "model_calls": [
+            {
+              "capability": "qwen_text_chat",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "status": "success",
+              "retry_count": 0,
+              "error_code": null,
+              "usage": null
+            }
+          ],
+          "extraction_runs": [
+            {
+              "extraction_id": "profile-extract-7bf435b4eee27c4b7dcd466bc16fabfa",
+              "message_id": "54Wl5DXjhBP9Ye8GLUxbDA",
+              "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+              "source": "qwen_model",
+              "status": "succeeded",
+              "outcome": "succeeded_written",
+              "attempts": 1,
+              "observed_count": 0,
+              "last_error": null,
+              "created_at": "2026-10-15T17:14:14+00:00",
+              "updated_at": "2026-10-15T17:14:15+00:00",
+              "committed_record_ids": [
+                "item-LNWLGYCMnCGgmofFA-yuig"
+              ]
+            }
+          ],
+          "idle": {
+            "ticks": 1,
+            "executor_thread": false,
+            "elapsed_ms": 217
+          },
+          "recording_calls": [
+            {
+              "run_id": "profile-extract-7bf435b4eee27c4b7dcd466bc16fabfa",
+              "project_id": "kPmeEt6xhP65APddA-wqEQ",
+              "message_count": 2,
+              "neighbor_hint_present": false,
+              "neighbor_hint_content": [],
+              "related_memory_hint_present": false,
+              "related_memory_hint_content": [],
+              "current_message_content": "我在读计算机专业，大二。"
+            }
+          ]
+        },
+        {
+          "user_content": "以后先给我结论，再展开解释。",
+          "expectation": "网关抽取收到真实会话的邻近用户消息（非空），并据此解析指代。",
+          "user_message_id": "IZKqr6KOEVYqI_4HOM_6rw",
+          "assistant_message_id": "SYnTvSebVNaM5gJruVKmTQ",
+          "assistant_status": "done",
+          "assistant_content": "这是一条来自本地替身模式的确定性测试回答。",
+          "assistant_error_code": null,
+          "generation_run": {
+            "run_id": "4SWlePVyrgWvAUq4K1e2oQ",
+            "status": "done",
+            "error_code": null,
+            "duration_ms": 171,
+            "created_at": "2026-10-15T17:14:15.029721+00:00",
+            "updated_at": "2026-10-15T17:14:15.237362+00:00",
+            "adopted_profile_slice": {
+              "adopted_items": [],
+              "compiled_at": "2026-10-15T17:14:15.141552Z",
+              "compiled_policy_version": "purpose-slice-1.1",
+              "excluded_items": [
+                {
+                  "exclusion_reason": "与当前问题无关",
+                  "fact_text": "",
+                  "profile_item_id": "item-LNWLGYCMnCGgmofFA-yuig"
+                }
+              ],
+              "length_budget": 4,
+              "owner_account_id": "YZV77LLJI6xiXKNj3KWgOw",
+              "purpose": {
+                "explicit_request": "detailed",
+                "learning_stage": null,
+                "mode": "companion",
+                "module_id": null,
+                "query": null,
+                "task_kind": "explain"
+              },
+              "revocation_version": "9e5a340a3a49d9bed79a310b072c1f11",
+              "run_id": "SYnTvSebVNaM5gJruVKmTQ",
+              "slice_id": "slice-7ef7870223ad6d5a74b30a6b5624813d",
+              "snapshot_versions": [
+                [
+                  "item-LNWLGYCMnCGgmofFA-yuig",
+                  1,
+                  "active"
+                ]
+              ]
+            }
+          },
+          "model_calls": [
+            {
+              "capability": "qwen_text_chat",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "status": "success",
+              "retry_count": 0,
+              "error_code": null,
+              "usage": null
+            }
+          ],
+          "extraction_runs": [
+            {
+              "extraction_id": "profile-extract-031381bc2308c768af530391108aca2e",
+              "message_id": "IZKqr6KOEVYqI_4HOM_6rw",
+              "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+              "source": "qwen_model",
+              "status": "succeeded",
+              "outcome": "succeeded_written",
+              "attempts": 1,
+              "observed_count": 0,
+              "last_error": null,
+              "created_at": "2026-10-15T17:14:15+00:00",
+              "updated_at": "2026-10-15T17:14:15+00:00",
+              "committed_record_ids": [
+                "item-pCVWWL4dKfVRQTTjb2wuUg"
+              ]
+            }
+          ],
+          "idle": {
+            "ticks": 1,
+            "executor_thread": false,
+            "elapsed_ms": 203
+          },
+          "recording_calls": [
+            {
+              "run_id": "profile-extract-031381bc2308c768af530391108aca2e",
+              "project_id": "kPmeEt6xhP65APddA-wqEQ",
+              "message_count": 3,
+              "neighbor_hint_present": true,
+              "neighbor_hint_content": [
+                "（仅供回指的邻近消息（含助手），不得作为事实证据）\n[54Wl5DXjhBP9Ye8GLUxbDA]用户：我在读计算机专业，大二。\n[rCwHMhiFh51eByQPJn2khQ]助手：这是一条来自本地替身模式的确定性测试回答。"
+              ],
+              "related_memory_hint_present": false,
+              "related_memory_hint_content": [],
+              "current_message_content": "以后先给我结论，再展开解释。"
+            }
+          ]
+        }
+      ],
+      "profile_snapshot": {
+        "four_dimensions": [],
+        "items": [
+          {
+            "profile_item_id": "item-LNWLGYCMnCGgmofFA-yuig",
+            "text": "我在读计算机专业，大二",
+            "identity_key": "5b1933bead2fdab945b2ed65cafdb421",
+            "status": "active",
+            "write_origin": "automatic",
+            "version": 1,
+            "created_at": "2026-10-15T17:14:15+00:00",
+            "updated_at": "2026-10-15T17:14:15+00:00"
+          },
+          {
+            "profile_item_id": "item-pCVWWL4dKfVRQTTjb2wuUg",
+            "text": "以后先给我结论，再展开解释",
+            "identity_key": "a871f85c7cb4eb43d3aa3c1c192cbc0b",
+            "status": "active",
+            "write_origin": "automatic",
+            "version": 1,
+            "created_at": "2026-10-15T17:14:15+00:00",
+            "updated_at": "2026-10-15T17:14:15+00:00"
+          }
+        ],
+        "observations": [],
+        "tasks": [
+          {
+            "task_id": "profile-retry-7bf435b4eee27c4b7dcd466bc16fabfa",
+            "message_id": "54Wl5DXjhBP9Ye8GLUxbDA",
+            "status": "succeeded",
+            "attempts": 1,
+            "last_error": null
+          },
+          {
+            "task_id": "profile-retry-031381bc2308c768af530391108aca2e",
+            "message_id": "IZKqr6KOEVYqI_4HOM_6rw",
+            "status": "succeeded",
+            "attempts": 1,
+            "last_error": null
+          }
+        ],
+        "extraction_runs": [
+          {
+            "extraction_id": "profile-extract-7bf435b4eee27c4b7dcd466bc16fabfa",
+            "message_id": "54Wl5DXjhBP9Ye8GLUxbDA",
+            "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+            "source": "qwen_model",
+            "status": "succeeded",
+            "outcome": "succeeded_written",
+            "attempts": 1,
+            "observed_count": 0,
+            "last_error": null,
+            "created_at": "2026-10-15T17:14:14+00:00",
+            "updated_at": "2026-10-15T17:14:15+00:00",
+            "committed_record_ids": [
+              "item-LNWLGYCMnCGgmofFA-yuig"
+            ]
+          },
+          {
+            "extraction_id": "profile-extract-031381bc2308c768af530391108aca2e",
+            "message_id": "IZKqr6KOEVYqI_4HOM_6rw",
+            "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+            "source": "qwen_model",
+            "status": "succeeded",
+            "outcome": "succeeded_written",
+            "attempts": 1,
+            "observed_count": 0,
+            "last_error": null,
+            "created_at": "2026-10-15T17:14:15+00:00",
+            "updated_at": "2026-10-15T17:14:15+00:00",
+            "committed_record_ids": [
+              "item-pCVWWL4dKfVRQTTjb2wuUg"
+            ]
+          }
+        ]
+      },
+      "neighbor_reader_probe": [
+        "用户：我在读计算机专业，大二。",
+        "助手：这是一条来自本地替身模式的确定性测试回答。"
+      ],
+      "elapsed_ms": 469,
+      "all_recording_calls": [
+        {
+          "run_id": "profile-extract-7bf435b4eee27c4b7dcd466bc16fabfa",
+          "project_id": "kPmeEt6xhP65APddA-wqEQ",
+          "message_count": 2,
+          "neighbor_hint_present": false,
+          "neighbor_hint_content": [],
+          "related_memory_hint_present": false,
+          "related_memory_hint_content": [],
+          "current_message_content": "我在读计算机专业，大二。"
+        },
+        {
+          "run_id": "profile-extract-031381bc2308c768af530391108aca2e",
+          "project_id": "kPmeEt6xhP65APddA-wqEQ",
+          "message_count": 3,
+          "neighbor_hint_present": true,
+          "neighbor_hint_content": [
+            "（仅供回指的邻近消息（含助手），不得作为事实证据）\n[54Wl5DXjhBP9Ye8GLUxbDA]用户：我在读计算机专业，大二。\n[rCwHMhiFh51eByQPJn2khQ]助手：这是一条来自本地替身模式的确定性测试回答。"
+          ],
+          "related_memory_hint_present": false,
+          "related_memory_hint_content": [],
+          "current_message_content": "以后先给我结论，再展开解释。"
+        }
+      ],
+      "evaluation": {
+        "checks": [
+          {
+            "check_id": "neighbor_context_present",
+            "passed": true,
+            "detail": "calls=[{'run_id': 'profile-extract-7bf435b4eee27c4b7dcd466bc16fabfa', 'project_id': 'kPmeEt6xhP65APddA-wqEQ', 'message_count': 2, 'neighbor_hint_present': False, 'neighbor_hint_content': [], 'related_memory_hint_present': False, 'related_memory_hint_content': [], 'current_message_content': '我在读计算机专业，大二。'}, {'run_id': 'profile-extract-031381bc2308c768af530391108aca2e', 'project_id': 'kPmeEt6xhP65APddA-wqEQ', 'message_count': 3, 'neighbor_hint_present': True, 'neighbor_hint_content': ['（仅供回指的邻近消息（含助手），不得作为事实证据）\\n[54Wl5DXjhBP9Ye8GLUxbDA]用户：我在读计算机专业，大二。\\n[rCwHMhiFh51eByQPJn2khQ]助手：这是一条来自本地替身模式的确定性测试回答。'], 'related_memory_hint_present': False, 'related_memory_hint_content': [], 'current_message_content': '以后先给我结论，再展开解释。'}]"
+          },
+          {
+            "check_id": "real_conversation_context_passed",
+            "passed": true,
+            "detail": "calls=[{'run_id': 'profile-extract-7bf435b4eee27c4b7dcd466bc16fabfa', 'project_id': 'kPmeEt6xhP65APddA-wqEQ', 'message_count': 2, 'neighbor_hint_present': False, 'neighbor_hint_content': [], 'related_memory_hint_present': False, 'related_memory_hint_content': [], 'current_message_content': '我在读计算机专业，大二。'}, {'run_id': 'profile-extract-031381bc2308c768af530391108aca2e', 'project_id': 'kPmeEt6xhP65APddA-wqEQ', 'message_count': 3, 'neighbor_hint_present': True, 'neighbor_hint_content': ['（仅供回指的邻近消息（含助手），不得作为事实证据）\\n[54Wl5DXjhBP9Ye8GLUxbDA]用户：我在读计算机专业，大二。\\n[rCwHMhiFh51eByQPJn2khQ]助手：这是一条来自本地替身模式的确定性测试回答。'], 'related_memory_hint_present': False, 'related_memory_hint_content': [], 'current_message_content': '以后先给我结论，再展开解释。'}]"
+          },
+          {
+            "check_id": "preference_captured",
+            "passed": true,
+            "detail": "texts='我在读计算机专业，大二 以后先给我结论，再展开解释 item-LNWLGYCMnCGgmofFA-yuig item-pCVWWL4dKfVRQTTjb2wuUg'"
+          }
+        ],
+        "observed_status": "pass",
+        "baseline_match": true
+      }
+    },
+    {
+      "journey_id": "positive-academic-control",
+      "scenario_id": "T03",
+      "problem_class": "positive_control",
+      "title": "正向对照：明确学业自述走通提取与原子写入",
+      "target": "高置信学业自述经语义分支（回声替身/真实模型）成功提交原子条目。",
+      "expected_baseline_status": "pass",
+      "expected_baseline_observation": "提取运行 succeeded_written，原子条目写入且保持 active（03 起原子条目是长期信息唯一权威，四维记录不再参与写入）。采用/召回不在本旅程检查范围（见 recall-academic-control）。",
+      "evidence_note": "当前可用写入路径的正向对照；后续票不得破坏。",
+      "conversation_id": "CHMI80LT2dtZhhlgeccYbA",
+      "turns": [
+        {
+          "user_content": "我是计算机专业的大二学生。",
+          "expectation": "高置信学业自述经语义分支（回声替身/真实模型）成功提交原子条目。",
+          "user_message_id": "6bMLMrUlZMGmVMg9EBl0sQ",
+          "assistant_message_id": "5cB4yiv2vo1pXxgeaDc8NQ",
+          "assistant_status": "done",
+          "assistant_content": "这是一条来自本地替身模式的确定性测试回答。",
+          "assistant_error_code": null,
+          "generation_run": {
+            "run_id": "G5CYjoQc-YMN_wOWs1ds0g",
+            "status": "done",
+            "error_code": null,
+            "duration_ms": 171,
+            "created_at": "2026-10-15T17:14:15.326839+00:00",
+            "updated_at": "2026-10-15T17:14:15.508233+00:00",
+            "adopted_profile_slice": {
+              "adopted_items": [],
+              "compiled_at": "2026-10-15T17:14:15.412259Z",
+              "compiled_policy_version": "purpose-slice-1.1",
+              "excluded_items": [],
+              "length_budget": 4,
+              "owner_account_id": "qEy60mitt0VweAlRLZe8pg",
+              "purpose": {
+                "explicit_request": null,
+                "learning_stage": null,
+                "mode": "companion",
+                "module_id": null,
+                "query": null,
+                "task_kind": "general"
+              },
+              "revocation_version": "e3b0c44298fc1c149afbf4c8996fb924",
+              "run_id": "5cB4yiv2vo1pXxgeaDc8NQ",
+              "slice_id": "slice-665ef2e5f067ffda2a99032679c97202",
+              "snapshot_versions": []
+            }
+          },
+          "model_calls": [
+            {
+              "capability": "qwen_text_chat",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "status": "success",
+              "retry_count": 0,
+              "error_code": null,
+              "usage": null
+            }
+          ],
+          "extraction_runs": [
+            {
+              "extraction_id": "profile-extract-c2e9987b3da09424900d5d82fca48132",
+              "message_id": "6bMLMrUlZMGmVMg9EBl0sQ",
+              "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+              "source": "qwen_model",
+              "status": "succeeded",
+              "outcome": "succeeded_written",
+              "attempts": 1,
+              "observed_count": 0,
+              "last_error": null,
+              "created_at": "2026-10-15T17:14:15+00:00",
+              "updated_at": "2026-10-15T17:14:15+00:00",
+              "committed_record_ids": [
+                "item-moygVlr_g4HGcwxh3Vmekw"
+              ]
+            }
+          ],
+          "idle": {
+            "ticks": 1,
+            "executor_thread": false,
+            "elapsed_ms": 186
+          },
+          "recording_calls": [
+            {
+              "run_id": "profile-extract-c2e9987b3da09424900d5d82fca48132",
+              "project_id": "CHMI80LT2dtZhhlgeccYbA",
+              "message_count": 2,
+              "neighbor_hint_present": false,
+              "neighbor_hint_content": [],
+              "related_memory_hint_present": false,
+              "related_memory_hint_content": [],
+              "current_message_content": "我是计算机专业的大二学生。"
+            }
+          ]
+        }
+      ],
+      "profile_snapshot": {
+        "four_dimensions": [],
+        "items": [
+          {
+            "profile_item_id": "item-moygVlr_g4HGcwxh3Vmekw",
+            "text": "我是计算机专业的大二学生",
+            "identity_key": "238d5788883dbae555099a12575d5453",
+            "status": "active",
+            "write_origin": "automatic",
+            "version": 1,
+            "created_at": "2026-10-15T17:14:15+00:00",
+            "updated_at": "2026-10-15T17:14:15+00:00"
+          }
+        ],
+        "observations": [],
+        "tasks": [
+          {
+            "task_id": "profile-retry-c2e9987b3da09424900d5d82fca48132",
+            "message_id": "6bMLMrUlZMGmVMg9EBl0sQ",
+            "status": "succeeded",
+            "attempts": 1,
+            "last_error": null
+          }
+        ],
+        "extraction_runs": [
+          {
+            "extraction_id": "profile-extract-c2e9987b3da09424900d5d82fca48132",
+            "message_id": "6bMLMrUlZMGmVMg9EBl0sQ",
+            "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+            "source": "qwen_model",
+            "status": "succeeded",
+            "outcome": "succeeded_written",
+            "attempts": 1,
+            "observed_count": 0,
+            "last_error": null,
+            "created_at": "2026-10-15T17:14:15+00:00",
+            "updated_at": "2026-10-15T17:14:15+00:00",
+            "committed_record_ids": [
+              "item-moygVlr_g4HGcwxh3Vmekw"
+            ]
+          }
+        ]
+      },
+      "neighbor_reader_probe": [],
+      "elapsed_ms": 203,
+      "all_recording_calls": [
+        {
+          "run_id": "profile-extract-c2e9987b3da09424900d5d82fca48132",
+          "project_id": "CHMI80LT2dtZhhlgeccYbA",
+          "message_count": 2,
+          "neighbor_hint_present": false,
+          "neighbor_hint_content": [],
+          "related_memory_hint_present": false,
+          "related_memory_hint_content": [],
+          "current_message_content": "我是计算机专业的大二学生。"
+        }
+      ],
+      "evaluation": {
+        "checks": [
+          {
+            "check_id": "extraction_succeeded",
+            "passed": true,
+            "detail": "statuses=('succeeded',)"
+          },
+          {
+            "check_id": "atomic_item_written",
+            "passed": true,
+            "detail": ""
+          },
+          {
+            "check_id": "fact_active_in_snapshot",
+            "passed": true,
+            "detail": ""
+          }
+        ],
+        "observed_status": "pass",
+        "baseline_match": true
+      }
+    },
+    {
+      "journey_id": "recall-academic-control",
+      "scenario_id": "T04",
+      "problem_class": "recall_control",
+      "title": "召回对照：下一轮问题应直接采用已存学业事实",
+      "target": "下一轮采用切片（adopted_profile_slice）包含该学业事实并被回答直接使用。",
+      "expected_baseline_status": "known_failing",
+      "expected_baseline_observation": "切片编译把该事实排除为「与当前问题无关」，下一轮 adopted_items 为空；回答中的事实来自会话历史而非画像采用（D11 召回缺口）。",
+      "evidence_note": "责任票 11/15；采用因果待 18 复核。",
+      "conversation_id": "dOcDhRfQuJ_RBJFxnJF_Ow",
+      "turns": [
+        {
+          "user_content": "我是计算机专业的大二学生。",
+          "expectation": "下一轮采用切片（adopted_profile_slice）包含该学业事实并被回答直接使用。",
+          "user_message_id": "hXA60myHj887sCM3nBLdng",
+          "assistant_message_id": "pFlL7da1z3MiGI6kcx-ORA",
+          "assistant_status": "done",
+          "assistant_content": "这是一条来自本地替身模式的确定性测试回答。",
+          "assistant_error_code": null,
+          "generation_run": {
+            "run_id": "F5eF-61s9MzEHbtzf0sz-w",
+            "status": "done",
+            "error_code": null,
+            "duration_ms": 155,
+            "created_at": "2026-10-15T17:14:15.571421+00:00",
+            "updated_at": "2026-10-15T17:14:15.779083+00:00",
+            "adopted_profile_slice": {
+              "adopted_items": [],
+              "compiled_at": "2026-10-15T17:14:15.683402Z",
+              "compiled_policy_version": "purpose-slice-1.1",
+              "excluded_items": [],
+              "length_budget": 4,
+              "owner_account_id": "wFkU6e7iwyXjkSLz3qYjAA",
+              "purpose": {
+                "explicit_request": null,
+                "learning_stage": null,
+                "mode": "companion",
+                "module_id": null,
+                "query": null,
+                "task_kind": "general"
+              },
+              "revocation_version": "e3b0c44298fc1c149afbf4c8996fb924",
+              "run_id": "pFlL7da1z3MiGI6kcx-ORA",
+              "slice_id": "slice-ed0b467eb7f67cbbea1790d058a16706",
+              "snapshot_versions": []
+            }
+          },
+          "model_calls": [
+            {
+              "capability": "qwen_text_chat",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "status": "success",
+              "retry_count": 0,
+              "error_code": null,
+              "usage": null
+            }
+          ],
+          "extraction_runs": [
+            {
+              "extraction_id": "profile-extract-7d92b8e533328d4aa00c14706e14d4bb",
+              "message_id": "hXA60myHj887sCM3nBLdng",
+              "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+              "source": "qwen_model",
+              "status": "succeeded",
+              "outcome": "succeeded_written",
+              "attempts": 1,
+              "observed_count": 0,
+              "last_error": null,
+              "created_at": "2026-10-15T17:14:15+00:00",
+              "updated_at": "2026-10-15T17:14:15+00:00",
+              "committed_record_ids": [
+                "item-005HYPBjEUya-xroNnP90g"
+              ]
+            }
+          ],
+          "idle": {
+            "ticks": 1,
+            "executor_thread": false,
+            "elapsed_ms": 219
+          },
+          "recording_calls": [
+            {
+              "run_id": "profile-extract-7d92b8e533328d4aa00c14706e14d4bb",
+              "project_id": "dOcDhRfQuJ_RBJFxnJF_Ow",
+              "message_count": 2,
+              "neighbor_hint_present": false,
+              "neighbor_hint_content": [],
+              "related_memory_hint_present": false,
+              "related_memory_hint_content": [],
+              "current_message_content": "我是计算机专业的大二学生。"
+            }
+          ]
+        },
+        {
+          "user_content": "你记得我在读什么专业吗？",
+          "expectation": "下一轮采用切片（adopted_profile_slice）包含该学业事实并被回答直接使用。",
+          "user_message_id": "kE52N5-dU-YU0pu18af26w",
+          "assistant_message_id": "LZEw2oFb-cDvRp7eMFGLPw",
+          "assistant_status": "done",
+          "assistant_content": "这是一条来自本地替身模式的确定性测试回答。",
+          "assistant_error_code": null,
+          "generation_run": {
+            "run_id": "1EmyDJqBAXeg-ylOUalujg",
+            "status": "done",
+            "error_code": null,
+            "duration_ms": 172,
+            "created_at": "2026-10-15T17:14:15.811035+00:00",
+            "updated_at": "2026-10-15T17:14:16.002788+00:00",
+            "adopted_profile_slice": {
+              "adopted_items": [],
+              "compiled_at": "2026-10-15T17:14:15.906775Z",
+              "compiled_policy_version": "purpose-slice-1.1",
+              "excluded_items": [
+                {
+                  "exclusion_reason": "与当前问题无关",
+                  "fact_text": "",
+                  "profile_item_id": "item-005HYPBjEUya-xroNnP90g"
+                }
+              ],
+              "length_budget": 4,
+              "owner_account_id": "wFkU6e7iwyXjkSLz3qYjAA",
+              "purpose": {
+                "explicit_request": null,
+                "learning_stage": null,
+                "mode": "companion",
+                "module_id": null,
+                "query": null,
+                "task_kind": "general"
+              },
+              "revocation_version": "a090216a59ab8033a9ef8741cf206b95",
+              "run_id": "LZEw2oFb-cDvRp7eMFGLPw",
+              "slice_id": "slice-75c95a070c4ed0cf5a28ed864440c118",
+              "snapshot_versions": [
+                [
+                  "item-005HYPBjEUya-xroNnP90g",
+                  1,
+                  "active"
+                ]
+              ]
+            }
+          },
+          "model_calls": [
+            {
+              "capability": "qwen_text_chat",
+              "actual_model_id": "qwen3.7-plus-2026-05-26",
+              "status": "success",
+              "retry_count": 0,
+              "error_code": null,
+              "usage": null
+            }
+          ],
+          "extraction_runs": [
+            {
+              "extraction_id": "profile-extract-859ef9fab0bc18cf8d80a2aec0574662",
+              "message_id": "kE52N5-dU-YU0pu18af26w",
+              "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+              "source": "local_rule",
+              "status": "succeeded",
+              "outcome": "succeeded_observed",
+              "attempts": 1,
+              "observed_count": 1,
+              "last_error": null,
+              "created_at": "2026-10-15T17:14:15+00:00",
+              "updated_at": "2026-10-15T17:14:16+00:00",
+              "committed_record_ids": []
+            }
+          ],
+          "idle": {
+            "ticks": 1,
+            "executor_thread": false,
+            "elapsed_ms": 188
+          },
+          "recording_calls": []
+        }
+      ],
+      "profile_snapshot": {
+        "four_dimensions": [],
+        "items": [
+          {
+            "profile_item_id": "item-005HYPBjEUya-xroNnP90g",
+            "text": "我是计算机专业的大二学生",
+            "identity_key": "7363af43bff32563e1909643df8bd157",
+            "status": "active",
+            "write_origin": "automatic",
+            "version": 1,
+            "created_at": "2026-10-15T17:14:15+00:00",
+            "updated_at": "2026-10-15T17:14:15+00:00"
+          }
+        ],
+        "observations": [
+          {
+            "observation_id": "profile-observation-f43a95f893d0a17e2354121a2a60a30b",
+            "message_id": "kE52N5-dU-YU0pu18af26w",
+            "dimension": "knowledge_interest",
+            "normalized_value": "你记得我在读什么专业吗",
+            "reliability": 0.59,
+            "created_at": "2026-10-15T17:14:16+00:00"
+          }
+        ],
+        "tasks": [
+          {
+            "task_id": "profile-retry-7d92b8e533328d4aa00c14706e14d4bb",
+            "message_id": "hXA60myHj887sCM3nBLdng",
+            "status": "succeeded",
+            "attempts": 1,
+            "last_error": null
+          },
+          {
+            "task_id": "profile-retry-859ef9fab0bc18cf8d80a2aec0574662",
+            "message_id": "kE52N5-dU-YU0pu18af26w",
+            "status": "succeeded",
+            "attempts": 1,
+            "last_error": null
+          }
+        ],
+        "extraction_runs": [
+          {
+            "extraction_id": "profile-extract-859ef9fab0bc18cf8d80a2aec0574662",
+            "message_id": "kE52N5-dU-YU0pu18af26w",
+            "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+            "source": "local_rule",
+            "status": "succeeded",
+            "outcome": "succeeded_observed",
+            "attempts": 1,
+            "observed_count": 1,
+            "last_error": null,
+            "created_at": "2026-10-15T17:14:15+00:00",
+            "updated_at": "2026-10-15T17:14:16+00:00",
+            "committed_record_ids": []
+          },
+          {
+            "extraction_id": "profile-extract-7d92b8e533328d4aa00c14706e14d4bb",
+            "message_id": "hXA60myHj887sCM3nBLdng",
+            "extractor_version": "profile-auto-v2+signal-profile-signal-v3",
+            "source": "qwen_model",
+            "status": "succeeded",
+            "outcome": "succeeded_written",
+            "attempts": 1,
+            "observed_count": 0,
+            "last_error": null,
+            "created_at": "2026-10-15T17:14:15+00:00",
+            "updated_at": "2026-10-15T17:14:15+00:00",
+            "committed_record_ids": [
+              "item-005HYPBjEUya-xroNnP90g"
+            ]
+          }
+        ]
+      },
+      "neighbor_reader_probe": [
+        "用户：我是计算机专业的大二学生。",
+        "助手：这是一条来自本地替身模式的确定性测试回答。"
+      ],
+      "elapsed_ms": 469,
+      "all_recording_calls": [
+        {
+          "run_id": "profile-extract-7d92b8e533328d4aa00c14706e14d4bb",
+          "project_id": "dOcDhRfQuJ_RBJFxnJF_Ow",
+          "message_count": 2,
+          "neighbor_hint_present": false,
+          "neighbor_hint_content": [],
+          "related_memory_hint_present": false,
+          "related_memory_hint_content": [],
+          "current_message_content": "我是计算机专业的大二学生。"
+        }
+      ],
+      "evaluation": {
+        "checks": [
+          {
+            "check_id": "extraction_succeeded",
+            "passed": true,
+            "detail": "statuses=('succeeded', 'succeeded')"
+          },
+          {
+            "check_id": "adopted_in_next_turn",
+            "passed": false,
+            "detail": "adopted=[] excluded=['与当前问题无关']"
+          }
+        ],
+        "observed_status": "partial",
+        "baseline_match": true
+      }
+    }
+  ],
+  "totals": {
+    "model_calls": 10,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "generation_duration_ms_samples": [
+      203,
+      250,
+      188,
+      157,
+      172,
+      172,
+      171,
+      171,
+      155,
+      172
+    ],
+    "extraction_duration_ms_samples": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      1000,
+      0,
+      0,
+      0,
+      1000
+    ],
+    "note": "只报告本次实测；替身模式的 token 为 0 不代表真实成本。"
+  },
+  "inconclusive": false,
+  "reason": null,
+  "run_lock": {
+    "kind": "profile-baseline-run-lock",
+    "corpus_version": "profile-loop-corpus-v2",
+    "corpus_sha256": "819038dafd2cded1b9a260673f1bcf7a8817f14ced1df64e34f4a85e233f2a5b",
+    "journeys": [
+      "t01-name",
+      "t01-pet",
+      "t01-habit",
+      "t02-psychology",
+      "t03-time-limit",
+      "t04-cross-turn",
+      "positive-academic-control",
+      "recall-academic-control"
+    ],
+    "response_mode": "stub",
+    "injected_models_overridden": true,
+    "stub_profile_extraction": true,
+    "stub_chat": true,
+    "git_commit": "9323509ae84f5ae92d5ac2bb15f01a0de5a4529b",
+    "git_dirty": true,
+    "pipeline_snapshot_sha256": "fd1f442a0aa3bd98a746efeb0270e179543ff4fb18c8b01e301a54e028bd58a4",
+    "evaluation_sha256": "0ead2cedd6f65afbb79e7b956dd076188ce63b577242eea85357877889fe3eb8",
+    "python_version": "3.11.15",
+    "model_config": {
+      "model_id": "qwen3.7-plus-2026-05-26",
+      "capabilities": {
+        "text": true,
+        "image": true,
+        "tool_calling": true,
+        "structured_output": true
+      },
+      "context_window": 1000000,
+      "max_input_tokens": 999000,
+      "metadata_version": "bailian-model-list-v1",
+      "validated_at": null,
+      "revision": 0,
+      "source": "factory"
+    },
+    "contract_versions": {
+      "automatic_extractor": "profile-auto-v2",
+      "signal_classifier": "profile-signal-v3",
+      "prompt": "profile-extraction-prompt-v6",
+      "recipe": "profile-extraction-recipe-v1",
+      "context": "profile-extraction-context-v1",
+      "quality_policy": "profile-extraction-quality-v1",
+      "atomic_migration": "profile-atomic-v1"
+    },
+    "budget_constants": {
+      "turn_timeout_seconds": 600.0,
+      "profile_extraction_max_retries": 3,
+      "profile_extraction_max_neighbors": 4
+    },
+    "credentials": {
+      "qwen_configured": false,
+      "qwen_source": "none",
+      "tavily_configured": false,
+      "tavily_source": "none"
+    },
+    "started_at": "2026-10-15T17:14:16+00:00"
+  }
+}

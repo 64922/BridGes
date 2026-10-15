@@ -1,0 +1,143 @@
+[0] development 装配 + 真实模型（聊天/抽取）；凭据来自操作系统凭据库
+
+[1] 重复换说法只增加依据；不同爱好并存（T08/T07 语义）
+  用户：我喜欢跑步。
+    助手（status=done）：'跑步确实很能让人享受那种节奏感和掌控感。你是习惯晨跑还是夜跑？'
+    注入检查：画像切片=False 冲突澄清=False
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_written error=None
+      [active] '我喜欢跑步。' 依据 1 条 v1 
+  用户：我真的很喜欢跑步。
+    助手（status=done）：'能感觉到你提起它时的那份热忱。这种纯粹的喜欢很难得，跑起来的时候，世界好像就只剩下呼吸和步伐了。'
+    注入检查：画像切片=True 冲突澄清=False
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_empty error=None
+    换说法后：
+      [active] '我喜欢跑步。' 依据 1 条 v1 
+    检查：换说法未新增条目=True（跑步相关条目 1 条，依据 1 条）
+    依据投影：原话='我喜欢跑步。' 逐来源=['available/recorded']
+  用户：我也喜欢游泳。
+    助手（status=done）：'从陆地的律动切换到水中的浮力，这两种体验很互补。游泳那种被水包裹的静谧感，和跑步的节奏感确实不太一样。'
+    注入检查：画像切片=False 冲突澄清=False
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_empty error=None
+    不同爱好：
+      [active] '我喜欢跑步。' 依据 1 条 v1 
+    观察：本轮真实模型的抽取结果见上方提取 run（未新增候选时，爱好并存的确定性证据见 [6b]）
+
+[2] 纠错：说错年级不保留成真实经历（T07）
+  （先前的抽取结果：年级=大四已落库，模拟真实抽取成功的那一轮）
+    纠错前：
+      [active] '我现在读大四。' 依据 0 条 v1 
+      [active] '我喜欢跑步。' 依据 1 条 v1 
+  用户：之前说错了，我不是大四，是大三。
+    助手（status=done）：'收到，已更新：你是大三。'
+    注入检查：画像切片=True 冲突澄清=False
+    提取 run：source=local_rule status=succeeded outcome=succeeded_correction_written error=None
+    纠错后：
+      [active] '大三' 依据 0 条 v2 
+      [active] '我喜欢跑步。' 依据 1 条 v1 
+    检查：错误年级未被保留=True（含「大四」条目 0 条）
+
+[3] 状态变化：保留真实历史（T07）
+  用户：我现在升大四了。
+    助手（status=done）：'收到，状态更新：你现在是大四。'
+    注入检查：画像切片=False 冲突澄清=False
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_written error=None
+    状态变化后：
+      [active] '我现在升大四了。' 依据 1 条 v1 
+      [superseded] '大三' 依据 0 条 v3 （retired_reason=state_change；valid_until=2026-10-15T23:22:22+00:00）
+      [active] '我喜欢跑步。' 依据 1 条 v1 
+    检查：旧年级保留为历史=True（retired=[<AtomicProfileRevisionKind.STATE_CHANGE: 'state_change'>]）
+
+[4] 并行目标并存（T07）
+    （本轮生成异常 status=error，重发一次）
+  用户：我准备考研，最近也在找工作。
+    助手（status=error）：'大四这一年确实容易处于这种“双线作战”的状态。一边要应对考研的复习压力，一边又要关注秋招的动向，精力和时间都需要很精细地分配。\n\n既然你之前提到喜欢跑步和游泳，这两项运动其实是很好的调节方式。在备考和求职的间隙，通过运动把大脑从高强度的思考中暂时抽离出来，往往能带来更清晰的思路。\n\n目前在这两件事上，你是有更明确的侧重方向，还是打算同步推进看看机会？'
+    注入检查：画像切片=True 冲突澄清=False
+    并行目标：
+      [active] '我现在升大四了。' 依据 1 条 v1 
+      [superseded] '大三' 依据 0 条 v3 （retired_reason=state_change；valid_until=2026-10-15T23:22:22+00:00）
+      [active] '我喜欢跑步。' 依据 1 条 v1 
+    观察：真实模型本轮落库目标/事实=[]
+
+[5] 冲突未解决：不采用、依赖时澄清（T07/D05）
+  （两条互相矛盾的专业说法直接落库，模拟两次不同轮次的抽取结果）
+  用户：帮我推荐几门适合我专业方向的选修课。
+    助手（status=done）：'大四既要考研又要找工作，节奏肯定挺紧凑的。\n\n不过在帮你挑选修课之前，我得先跟你确认个小细节：关于你的专业，我之前记下了“软件工程”和“计算机科学与技术”两种说法。为了给你推荐得更准，咱们以哪个为准呢？'
+    注入检查：画像切片=True 冲突澄清=True
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_empty error=None
+    澄清问句（注入模型）：'- 关于你的专业，我记下了两种说法：「我的专业是软件工程」、「我的专业是计算机科学与技术」，以哪个为准？'
+    画像切片编号事实：['[1]（当前目标与资源）我现在升大四了。。用途：与当前任务相关的用户背景（自述）']
+    检查：争议条目不作为编号事实=True
+  用户：今晚吃什么好？
+    助手（status=done）：'既然今天一直在纠结考研和找工作的大事，脑子肯定转累了。今晚不如吃点不用太费神、但能带来满足感的东西？\n\n比如一碗热腾腾的汤面，或者简单的盖浇饭，暖胃又省心。你此刻更想吃清淡点的，还是来点重口味提提神？'
+    注入检查：画像切片=False 冲突澄清=False
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_empty error=None
+    检查：无关问题未注入澄清=True
+    页面视图：'我的专业是软件工程' conflict_state=unresolved v2 来源=automatic
+    页面视图：'我的专业是计算机科学与技术' conflict_state=unresolved v1 来源=automatic
+
+[6] worker 提交前插入用户修改：权威与版本守卫
+  （自此替换为确定性替身抽取器；worker、提交与守卫均为真实路径）
+  后台执行线程存在=True（否：drive_until_idle 手动推进 worker）
+  用户：我每天学习两小时，固定在晚上七点，请按这个安排作息。
+    助手（status=done）：'收到。已记录你的固定学习时段：**每晚 19:00 - 21:00**。\n\n这个时间段很整块，适合深度专注。既然你同时在准备考研和找工作，这两个小时你打算怎么分配？是全部留给复习，还是分一部分给求职准备？'
+    注入检查：画像切片=True 冲突澄清=False
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_written error=None
+    worker 完成后：
+      [active] '我每天学习两小时，固定在晚上七点' 依据 1 条 v1 
+      [active] '我的专业是软件工程' 依据 0 条 v2 （conflict_state=unresolved）
+      [active] '我的专业是计算机科学与技术' 依据 0 条 v1 （conflict_state=unresolved）
+      [active] '我现在升大四了。' 依据 1 条 v1 
+      [superseded] '大三' 依据 0 条 v3 （retired_reason=state_change；valid_until=2026-10-15T23:22:22+00:00）
+      [active] '我喜欢跑步。' 依据 1 条 v1 
+  用户在重放提交前于页面改正文（插入到 worker 提交之前）：
+    PATCH → 200，正文='我改成每天早上学习两小时。' v2（用户编辑后版本）
+  重放并推进 worker（自动抽取试图归并同一条）：{'ticks': 0, 'executor_thread': True, 'elapsed_ms': 2000}
+    替身抽取器收到重放消息=True（机制路径确实被走到）
+    重放提取 run：source=qwen_model status=succeeded outcome=succeeded_empty error=None
+    重放提交后：
+      [active] '我改成每天早上学习两小时。' 依据 1 条 v2 
+      [active] '我的专业是软件工程' 依据 0 条 v2 （conflict_state=unresolved）
+      [active] '我的专业是计算机科学与技术' 依据 0 条 v1 （conflict_state=unresolved）
+      [active] '我现在升大四了。' 依据 1 条 v1 
+      [superseded] '大三' 依据 0 条 v3 （retired_reason=state_change；valid_until=2026-10-15T23:22:22+00:00）
+      [active] '我喜欢跑步。' 依据 1 条 v1 
+    检查：用户编辑保留=True（正文='我改成每天早上学习两小时。'）
+    检查：worker 自动说法未改写用户版本=True
+    检查：过期版本写回被拒=409 {"error": "atomic_profile_conflict", "message": "版本冲突，请刷新后重试。", "details": {}}
+
+[6b] 确定性复现：重复归并进同一事实 + 不同爱好并存（替身抽取器）
+  用户：我一直喜欢跑步，也游泳。
+    助手（status=done）：'这两项运动确实很搭。跑步练心肺和耐力，游泳放松肌肉、调节呼吸节奏。在考研和找工作的双重压力下，能保持这样的运动习惯，对维持状态很有帮助。'
+    注入检查：画像切片=True 冲突澄清=False
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_written error=None
+    检查：归并进同一条=True（跑步条目 1 条，依据 1→2 条）
+    检查：游泳独立保留=True（游泳条目 1 条）
+
+[6c] 确定性复现：并行目标并存不互相替代（替身抽取器）
+  用户：再说一次：我准备考研，还打算找工作。
+    助手（status=done）：'收到。已确认你当前的双重目标：**准备考研** 且 **打算找工作**。'
+    注入检查：画像切片=True 冲突澄清=False
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_written error=None
+    并行目标（确定性）：
+      [active] '我还打算找工作' 依据 1 条 v1 
+      [active] '我准备考研' 依据 1 条 v1 
+      [active] '我也喜欢游泳' 依据 1 条 v1 
+      [active] '我真的很喜欢跑步' 依据 2 条 v2 
+      [active] '我改成每天早上学习两小时。' 依据 1 条 v2 
+      [active] '我的专业是软件工程' 依据 0 条 v2 （conflict_state=unresolved）
+      [active] '我的专业是计算机科学与技术' 依据 0 条 v1 （conflict_state=unresolved）
+      [active] '我现在升大四了。' 依据 1 条 v1 
+      [superseded] '大三' 依据 0 条 v3 （retired_reason=state_change；valid_until=2026-10-15T23:22:22+00:00）
+    检查：考研与求职并存=True
+
+[7] 页面状态与存储一致（GET /profiles/items 全量视图）
+    '我还打算找工作' conflict_state=none v1 来源=automatic
+    '我准备考研' conflict_state=none v1 来源=automatic
+    '我也喜欢游泳' conflict_state=none v1 来源=automatic
+    '我真的很喜欢跑步' conflict_state=none v2 来源=automatic
+    '我改成每天早上学习两小时。' conflict_state=none v2 来源=user
+    '我的专业是软件工程' conflict_state=unresolved v2 来源=automatic
+    '我的专业是计算机科学与技术' conflict_state=unresolved v1 来源=automatic
+    '我现在升大四了。' conflict_state=none v1 来源=automatic
+
+运行目录：D:\BridGes\.worktrees\06-revision-conflict-and-deduplication\.tmp\issue06-demo-c8ed6b59

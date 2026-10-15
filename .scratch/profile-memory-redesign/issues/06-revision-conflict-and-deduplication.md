@@ -44,3 +44,10 @@
 ## Comments
 
 2026-10-15：用户回复「按此发布」，确认本次拆分与依赖。已发布为 ready-for-agent，尚无实施记录。
+
+2026-10-16：实施与验证完成（分支 `codex/issue-06-revision-conflict-and-deduplication`，基点 `9323509a`）。
+
+- 交付：契约（`AtomicProfileRevisionKind`/`AtomicProfileConflictState`/`AtomicProfileConflict`、`retired_reason`+`conflict_state`）、迁移 82、atomic 分类/冲突/投影/澄清接口、signals 纠错标记扩展（说错/记错、不是 A 是 B）、聊天冲突澄清注入、前端冲突徽标、openapi 与 TS 契约再生成。
+- 测试：新增 28 项（profiles 25 + storage 2 + chat 1）；`pytest tests/profiles tests/storage tests/contracts` 738 通过；全量对 main（327 vs 329 failed）逐条差集分支独有失败 0（另有 2 项 main 独有为既有 flaky `test_api_boot`）。
+- 走查（真实模型）：换说法归并、纠错不留历史、状态变化保留历史（先纠错后升学经生产管道）、并行目标并存、冲突仅依赖时澄清、用户编辑权威与过期版本 409、页面/存储一致——全部检查通过。
+- 验证记录：`.scratch/profile-memory-redesign/validation/06-revision-conflict-and-deduplication/verification-record.md`；走查证据 `.../evidence/demo-walkthrough-20261016.txt`（+`-model-outputs.json`）。
