@@ -22,6 +22,7 @@ from bridges.profiles import (
     InMemoryAtomicProfileRepository,
     InMemoryAutomaticProfileRepository,
     InMemoryFourDimensionProfileRepository,
+    ProfileNeighborMessage,
     RuleBasedAutomaticProfileExtractor,
     SqliteAutomaticProfileRepository,
 )
@@ -627,12 +628,16 @@ class _CapturingGateway:
 
 
 def test_gateway_neighbors_are_reference_only() -> None:
-    """邻近用户原文只作回指线索，与当前消息分开标注（任务 3）。"""
+    """邻近原文（含助手消息）只作回指线索，与当前消息分开标注（任务 3 / 工单 05）。"""
 
     gateway = _CapturingGateway({"items": []})
     extractor = GatewayAutomaticProfileExtractor(
         cast(Any, gateway),
-        neighbor_reader=lambda account_id, conversation_id, message_id: ["我喜欢跑步"],
+        neighbor_reader=lambda account_id, conversation_id, message_id: [
+            ProfileNeighborMessage(
+                message_id="message-0", role="user", content="我喜欢跑步"
+            )
+        ],
     )
 
     extractor.extract(

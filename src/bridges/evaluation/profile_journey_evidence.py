@@ -119,7 +119,9 @@ def evaluate_journey(journey: BaselineJourney, evidence: dict[str, Any]) -> dict
         add("real_conversation_context_passed", context_ok, source)
         add(
             "preference_captured",
-            _contains_any(texts, ("先给结论", "先给重点", "先讲重点")),
+            _contains_any(
+                texts, ("先给结论", "先给我结论", "先给重点", "先讲重点")
+            ),
             f"texts={texts!r}",
         )
     elif journey.journey_id == "positive-academic-control":

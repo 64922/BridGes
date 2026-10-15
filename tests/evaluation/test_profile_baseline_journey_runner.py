@@ -169,17 +169,30 @@ def test_time_limit_and_learning_content_both_survive(baseline_env: Any) -> None
     assert journey["evaluation"]["baseline_match"] is True
 
 
-def test_cross_turn_gateway_call_has_no_neighbor_context(baseline_env: Any) -> None:
+def test_cross_turn_gateway_call_carries_real_conversation_and_window(
+    baseline_env: Any,
+) -> None:
     journeys = _run_all_journeys(baseline_env, "cross-turn")
     journey = journeys["t04-cross-turn"]
     calls = journey["all_recording_calls"]
     assert calls, "网关提取替身未被调用"
-    # 当前实现把字面量 retry 当作会话标识传入网关抽取器。
-    assert {call["project_id"] for call in calls} == {"retry"}
-    assert all(call["neighbor_hint_present"] is False for call in calls)
-    # 真实会话的应用级探测同样为空（逆序读取遇当前消息即退出）。
-    assert journey["neighbor_reader_probe"] == []
-    assert journey["evaluation"]["observed_status"] != "pass"
+    # 工单 05：抽取携带真实会话标识，不再传字面量 retry。
+    conversation_ids = {call["project_id"] for call in calls}
+    assert conversation_ids == {journey["conversation_id"]}
+    # 第一轮没有前文（合法为空）；跨轮那一轮必须携带含首轮原文的窗口提示。
+    assert calls[-1]["neighbor_hint_present"] is True
+    assert any(
+        "我在读计算机专业，大二。" in hint
+        for hint in calls[-1]["neighbor_hint_content"]
+    )
+    # 窗口按位置取当前消息之前的有界前文（含助手回复），不含当前消息。
+    probe = journey["neighbor_reader_probe"]
+    assert any("我在读计算机专业，大二。" in entry for entry in probe)
+    assert any(entry.startswith("助手：") for entry in probe)
+    assert all(
+        "以后先给我结论，再展开解释。" not in entry for entry in probe
+    )
+    assert journey["evaluation"]["observed_status"] == "pass", journey["evaluation"]
     assert journey["evaluation"]["baseline_match"] is True
 
 
@@ -236,4 +249,4 @@ def test_run_lock_freezes_corpus_code_and_response_mode(baseline_env: Any) -> No
     assert lock["response_mode"] == RESPONSE_MODE_STUB
     assert lock["injected_models_overridden"] is True
     assert lock["contract_versions"]["signal_classifier"].startswith("profile-signal")
-    assert lock["budget_constants"]["profile_extraction_max_neighbors"] == 2
+    assert lock["budget_constants"]["profile_extraction_max_neighbors"] == 4

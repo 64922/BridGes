@@ -223,13 +223,33 @@
 }
 
 .sourceItem {
+  display: grid;
+  gap: 4px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sourceRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.sourceQuote {
+  margin: 0;
+  border-left: 2px solid var(--color-accent-primary);
+  border-radius: 0 8px 8px 0;
+  padding: 4px 10px;
   color: var(--color-text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
+  background: var(--color-bg-secondary);
+  overflow-wrap: anywhere;
+}
+
+.sourceQuoteNote {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
 }
 
 .sourceItem button,

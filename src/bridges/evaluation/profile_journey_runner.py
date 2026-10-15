@@ -41,7 +41,7 @@ RESPONSE_MODE_STUB = "stub"
 RESPONSE_MODE_REAL = "real"
 
 _PROFILE_EXTRACTION_CAPABILITY = ("qwen_profile_extraction", "1")
-_NEIGHBOR_HINT_MARKER = "仅供回指的邻近用户消息"
+_NEIGHBOR_HINT_MARKER = "仅供回指的邻近消息"
 _RELATED_MEMORY_MARKER = "已知的相关旧记忆"
 _EVIDENCE_REF_IN_PROMPT = re.compile(r'evidence_ref 固定填写 "([^"]+)"')
 _TRAILING_PUNCTUATION = "，。！？!?,.;；：:、 \t\r\n"
@@ -175,9 +175,10 @@ def install_deterministic_profile_extractor(
 def probe_neighbor_reader(
     app: Any, account_id: str, conversation_id: str, message_id: str
 ) -> list[str] | None:
-    """应用级探测：真实仓库 + 真实邻居读取函数对指定消息的返回。
+    """应用级探测：真实仓库 + 真实窗口读取函数对指定消息的返回。
 
-    仅用于定位与交叉核对；入口证明来自录制替身收到的最终载荷。
+    返回格式化的「用户：/助手：」行（顺序即窗口顺序，含助手消息）；
+    仅用于定位与交叉核对，入口证明来自录制替身收到的最终载荷。
     """
 
     from bridges.api.app_support import _profile_neighbor_reader
@@ -186,7 +187,10 @@ def probe_neighbor_reader(
     if repository is None:
         return None
     reader = _profile_neighbor_reader(repository)
-    return reader(account_id, conversation_id, message_id)
+    return [
+        f"{'助手' if message.role == 'assistant' else '用户'}：{message.content}"
+        for message in reader(account_id, conversation_id, message_id)
+    ]
 
 
 class ProfileJourneyCollector:

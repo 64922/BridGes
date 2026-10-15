@@ -110,7 +110,8 @@ def configure_model_services(app: FastAPI) -> None:
             # 改进工单 03/04：画像提取调用与主对话/摘要共用运行配置额度快照
             # 与每次调用版本合同。
             model_config_provider=run_model_config,
-            # 改进工单 17：必要邻近用户原文只用于解析回指。
+            # 改进工单 17 / 工单 05：必要前文（含助手消息）只用于解析回指，
+            # 并在提交期核验跨轮片段；与抽取器共用同一窗口读取器。
             neighbor_reader=(
                 _profile_neighbor_reader(profile_conversation_repository)
                 if profile_conversation_repository is not None
@@ -136,6 +137,13 @@ def configure_model_services(app: FastAPI) -> None:
             else None
         ),
         atomic_profile_service=app.state.atomic_profile_service,
+        # 工单 05：提交期用同一邻近窗口核验跨轮片段证据；评价运行器与
+        # 生产共享这一装配，测试环境也保留（消息读取已接线时）。
+        neighbor_reader=(
+            _profile_neighbor_reader(profile_conversation_repository)
+            if profile_conversation_repository is not None
+            else None
+        ),
     )
     # Issue 02：跨重启恢复是显式启动动作，构造不再启动业务执行；
     # 恢复时刻与外部可见行为（启动时重新入队中断的抽取）保持不变。

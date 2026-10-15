@@ -7569,6 +7569,10 @@ export interface components {
         /**
          * AtomicProfileEvidenceSource
          * @description 一条画像依据的来源定位（改进工单 20；只含定位，不含整条正文）。
+         *
+         *     工单 05：多片段证据为每条来源附上已核验的原话片段（``quote`` 与
+         *     ``quote_status``）；只有仍能在该来源中核对的片段才展示，其余如实
+         *     标为不可用，不回传保存副本。
          */
         AtomicProfileEvidenceSource: {
             /**
@@ -7588,6 +7592,16 @@ export interface components {
              * @description 来源消息发生时间；不可得时为空。
              */
             created_at?: string | null;
+            /**
+             * Quote
+             * @description 该来源中已核验的原话片段；未记录或不可核对时为空。
+             */
+            quote?: string | null;
+            /**
+             * @description 该来源原话片段的展示状态。
+             * @default not_recorded
+             */
+            quote_status: components["schemas"]["AtomicProfileEvidenceQuoteStatus"];
         };
         /**
          * AtomicProfileEvidenceSourceStatus

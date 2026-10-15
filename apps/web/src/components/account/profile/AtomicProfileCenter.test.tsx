@@ -118,7 +118,9 @@ describe("AtomicProfileCenter", () => {
       .mockResolvedValueOnce(evidence({
         evidence_quote: null,
         evidence_quote_status: "source_unavailable",
-        sources: [{ message_id: "message-1", status: "deleted" }],
+        sources: [
+          { message_id: "message-1", status: "deleted", quote_status: "not_recorded" },
+        ],
       }));
 
     render(<AtomicProfileCenter />);
@@ -208,6 +210,7 @@ describe("AtomicProfileCenter", () => {
             status: "deleted",
             conversation_id: null,
             created_at: null,
+            quote_status: "not_recorded",
           },
         ],
       })
@@ -221,6 +224,51 @@ describe("AtomicProfileCenter", () => {
     expect(panel.textContent).toContain("保存的原话不再展示");
     expect(panel.textContent).not.toContain("我计划下周考雅思");
     expect(screen.queryByText("查看原文")).toBeNull();
+  });
+
+  it("shows each verified source quote once and marks invalidated fragments", async () => {
+    api.listAtomicProfileItems.mockResolvedValue([item()]);
+    api.fetchAtomicProfileItemEvidence.mockResolvedValue(
+      evidence({
+        evidence_quote: "这个专业我想继续读研",
+        sources: [
+          {
+            message_id: "message-2",
+            status: "available",
+            conversation_id: "conversation-9",
+            created_at: "2026-09-02T10:00:00Z",
+            quote: "这个专业我想继续读研",
+            quote_status: "recorded",
+          },
+          {
+            message_id: "message-1",
+            status: "available",
+            conversation_id: "conversation-9",
+            created_at: "2026-09-01T10:00:00Z",
+            quote: "计算机专业",
+            quote_status: "recorded",
+          },
+          {
+            message_id: "message-0",
+            status: "available",
+            conversation_id: "conversation-9",
+            created_at: "2026-09-01T09:00:00Z",
+            quote: null,
+            quote_status: "source_unavailable",
+          },
+        ],
+      })
+    );
+
+    render(<AtomicProfileCenter />);
+    fireEvent.click(await screen.findByText("查看依据"));
+
+    const panel = await screen.findByTestId("atomic-evidence");
+    // 主原话已在上方展示，逐来源行不重复；片段只在仍可核验时展示。
+    const quotes = screen.getAllByTestId("atomic-source-quote");
+    expect(quotes).toHaveLength(1);
+    expect(quotes[0].textContent).toBe("计算机专业");
+    expect(panel.textContent).toContain("该来源保存的片段已不可核对。");
   });
 
   it("labels an unknown validity window as unknown instead of long-term valid", async () => {

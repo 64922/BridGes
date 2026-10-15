@@ -258,6 +258,13 @@ class AtomicProfileItem(BaseModel):
     source_message_ids: list[str] = Field(
         default_factory=list, description="证据来源消息标识，去重后按出现顺序保留。"
     )
+    source_quotes: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "工单 05：来源消息 → 已核验原话片段（跨轮多片段证据）。"
+            "只保存来源中真实出现的片段；页面按来源逐条核验后展示。"
+        ),
+    )
     topic_hint: str | None = Field(
         default=None, description="内部提示，不进入页面投影或模型上下文。"
     )
@@ -362,8 +369,26 @@ class AtomicProfileEvidenceSourceStatus(StrEnum):
     UNREADABLE = "unreadable"
 
 
+class AtomicProfileEvidenceQuoteStatus(StrEnum):
+    """原话引用状态：只有 ``RECORDED`` 才展示正文，绝不伪造引语。
+
+    ``SOURCE_UNAVAILABLE``：保存过原话，但无法在当前可读来源中核对。
+    合同要求删除聊天原文时同步失效其派生原话副本，因此正文不再展示；
+    内部保留的记录不在此处回传。
+    """
+
+    RECORDED = "recorded"
+    NOT_RECORDED = "not_recorded"
+    SOURCE_UNAVAILABLE = "source_unavailable"
+
+
 class AtomicProfileEvidenceSource(BaseModel):
-    """一条画像依据的来源定位（改进工单 20；只含定位，不含整条正文）。"""
+    """一条画像依据的来源定位（改进工单 20；只含定位，不含整条正文）。
+
+    工单 05：多片段证据为每条来源附上已核验的原话片段（``quote`` 与
+    ``quote_status``）；只有仍能在该来源中核对的片段才展示，其余如实
+    标为不可用，不回传保存副本。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -374,6 +399,14 @@ class AtomicProfileEvidenceSource(BaseModel):
     )
     created_at: datetime | None = Field(
         default=None, description="来源消息发生时间；不可得时为空。"
+    )
+    quote: str | None = Field(
+        default=None,
+        description="该来源中已核验的原话片段；未记录或不可核对时为空。",
+    )
+    quote_status: AtomicProfileEvidenceQuoteStatus = Field(
+        default=AtomicProfileEvidenceQuoteStatus.NOT_RECORDED,
+        description="该来源原话片段的展示状态。",
     )
 
 
@@ -386,19 +419,6 @@ class AtomicProfileValidityStatus(StrEnum):
     EXPIRED = "expired"
     PAUSED = "paused"
     COMPLETED = "completed"
-
-
-class AtomicProfileEvidenceQuoteStatus(StrEnum):
-    """原话引用状态：只有 ``RECORDED`` 才展示正文，绝不伪造引语。
-
-    ``SOURCE_UNAVAILABLE``：保存过原话，但无法在当前可读来源中核对。
-    合同要求删除聊天原文时同步失效其派生原话副本，因此正文不再展示；
-    内部保留的记录不在此处回传。
-    """
-
-    RECORDED = "recorded"
-    NOT_RECORDED = "not_recorded"
-    SOURCE_UNAVAILABLE = "source_unavailable"
 
 
 class AtomicProfileFeedbackKind(StrEnum):

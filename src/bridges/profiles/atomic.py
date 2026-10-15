@@ -94,6 +94,7 @@ from bridges.observability.service import ObservabilityService
 from bridges.profiles.adapters import ProfileError
 from bridges.profiles.commit import (
     ProfileCommit,
+    ProfileEvidenceFragment,
     ProfileFactSubmission,
     SourceWithdrawal,
     SourceWithdrawalStatus,
@@ -1430,6 +1431,10 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 str(value)
                 for value in json.loads(str(row["source_message_ids_json"]))  # type: ignore[index]
             ],
+            source_quotes={
+                str(key): str(value)
+                for key, value in json.loads(str(row["source_quotes_json"])).items()  # type: ignore[index]
+            },
             topic_hint=(
                 str(row["topic_hint"])  # type: ignore[index]
                 if row["topic_hint"] is not None  # type: ignore[index]
@@ -1468,10 +1473,11 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "fact_relation, fact_object, fact_scope, fact_key, evidence_quote, "
             "valid_from, valid_until, validity_anchor_at, validity_phrase, goal_state, "
             "supersedes_id, superseded_by_id, source_record_id, "
-            "source_message_ids_json, topic_hint, topics_json, status, write_origin, "
+            "source_message_ids_json, source_quotes_json, topic_hint, topics_json, "
+            "status, write_origin, "
             "confidence, version, created_at, updated_at, user_edited_at, migration_run_id) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-            "?, ?, ?, ?, ?, ?) "
+            "?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(profile_item_id) DO UPDATE SET text = excluded.text, "
             "identity_key = excluded.identity_key, fact_subject = excluded.fact_subject, "
             "fact_relation = excluded.fact_relation, fact_object = excluded.fact_object, "
@@ -1486,6 +1492,7 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "superseded_by_id = excluded.superseded_by_id, "
             "source_record_id = excluded.source_record_id, "
             "source_message_ids_json = excluded.source_message_ids_json, "
+            "source_quotes_json = excluded.source_quotes_json, "
             "topic_hint = excluded.topic_hint, topics_json = excluded.topics_json, "
             "status = excluded.status, "
             "write_origin = excluded.write_origin, confidence = excluded.confidence, "
@@ -1513,6 +1520,7 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 item.superseded_by_id,
                 item.source_record_id,
                 json.dumps(item.source_message_ids, ensure_ascii=False),
+                json.dumps(item.source_quotes, ensure_ascii=False),
                 item.topic_hint,
                 json.dumps(item.topics, ensure_ascii=False),
                 item.status.value,
@@ -1996,7 +2004,9 @@ class AtomicProfileService:
             for message_id in item.source_message_ids
         }
         sources = [
-            self._evidence_source(message_id, message)
+            self._evidence_source(
+                message_id, message, item.source_quotes.get(message_id)
+            )
             for message_id, message in messages.items()
         ]
         feedback = [
@@ -2041,19 +2051,33 @@ class AtomicProfileService:
         )
 
     def _evidence_source(
-        self, message_id: str, message: ProfileSourceMessage | None
+        self,
+        message_id: str,
+        message: ProfileSourceMessage | None,
+        stored_quote: str | None,
     ) -> AtomicProfileEvidenceSource:
-        """解析一条来源消息的可得状态；只有可读用户消息给出定位信息。"""
+        """解析一条来源消息的可得状态；只有可读用户消息给出定位信息。
 
+        工单 05：逐来源原话同样只在当前可读消息中仍能核对时展示；来源
+        删除、不可读或原文已变化时，保存的片段标为不可用，不回传副本。
+        """
+
+        quote_status = (
+            AtomicProfileEvidenceQuoteStatus.SOURCE_UNAVAILABLE
+            if stored_quote
+            else AtomicProfileEvidenceQuoteStatus.NOT_RECORDED
+        )
         if self._message_reader is None:
             return AtomicProfileEvidenceSource(
                 message_id=message_id,
                 status=AtomicProfileEvidenceSourceStatus.UNREADABLE,
+                quote_status=quote_status,
             )
         if message is None:
             return AtomicProfileEvidenceSource(
                 message_id=message_id,
                 status=AtomicProfileEvidenceSourceStatus.DELETED,
+                quote_status=quote_status,
             )
         readable = (
             message.role == "user"
@@ -2065,12 +2089,19 @@ class AtomicProfileService:
                 message_id=message_id,
                 status=AtomicProfileEvidenceSourceStatus.UNREADABLE,
                 created_at=message.created_at,
+                quote_status=quote_status,
             )
+        quote = None
+        if stored_quote and stored_quote in message.content:
+            quote = stored_quote
+            quote_status = AtomicProfileEvidenceQuoteStatus.RECORDED
         return AtomicProfileEvidenceSource(
             message_id=message_id,
             status=AtomicProfileEvidenceSourceStatus.AVAILABLE,
             conversation_id=message.conversation_id,
             created_at=message.created_at,
+            quote=quote,
+            quote_status=quote_status,
         )
 
     def record_feedback(
@@ -2198,8 +2229,10 @@ class AtomicProfileService:
                 item.topics = new_topics
             if text_changed:
                 # 用户页面编辑是独立主动来源，不是聊天原话证据：换值后不保留
-                # 旧值的原话引用，避免把用户新写的正文伪称为聊天里说过。
+                # 旧值的原话引用（含跨轮片段），避免把用户新写的正文伪称为
+                # 聊天里说过。
                 item.evidence_quote = None
+                item.source_quotes = {}
                 # 用户编辑里明示的新期限以本次编辑时间为锚更新；没有时间表达
                 # 时保留原期限（用户改措辞不等于取消期限，也不自动续期）。
                 window = parse_validity_window(text, now)
@@ -2333,6 +2366,7 @@ class AtomicProfileService:
                     if existing.text != normalized:
                         # 用户写入新正文：旧原话不再对应当前事实，不伪称来源。
                         existing.evidence_quote = None
+                        existing.source_quotes = {}
                     existing.text = normalized
                     existing.identity_key = key
                     existing.status = AtomicProfileItemStatus.ACTIVE
@@ -2693,6 +2727,21 @@ class AtomicProfileService:
         key = identity_key(account_id, text)
         fact_key = fact_identity_key(account_id, identity)
         evidence_quote = normalize_text(fact.evidence_quote or "") or None
+        # 工单 05：跨轮多片段证据。调用方已完成定位与主体/否定/时间/条件
+        # 核验；这里只做规范化与来源记录，绝不凭空补片段。
+        evidence_fragments = tuple(
+            ProfileEvidenceFragment(
+                message_id=fragment.message_id,
+                quote=normalize_text(fragment.quote),
+            )
+            for fragment in fact.evidence_fragments
+            if normalize_text(fragment.quote)
+        )
+        source_quotes: dict[str, str] = {}
+        if evidence_quote and fact.evidence_message_id:
+            source_quotes[fact.evidence_message_id] = evidence_quote
+        for fragment in evidence_fragments:
+            source_quotes.setdefault(fragment.message_id, fragment.quote)
         window = parse_validity_window(text, anchor)
         if not self._has_active_identity(account_id, fact_key, key):
             suppressed = self._find_related_suppression(account_id, identity)
@@ -2729,6 +2778,8 @@ class AtomicProfileService:
                     topics=topics,
                     evidence_message_id=fact.evidence_message_id,
                     evidence_quote=evidence_quote,
+                    evidence_fragments=evidence_fragments,
+                    source_quotes=source_quotes,
                     confidence=fact.confidence,
                     validity=window,
                     anchor=anchor,
@@ -2752,9 +2803,20 @@ class AtomicProfileService:
                 validity_anchor_at=anchor if window else None,
                 validity_phrase=window.phrase if window else None,
                 source_record_id=None,
-                source_message_ids=(
-                    [fact.evidence_message_id] if fact.evidence_message_id else []
+                source_message_ids=list(
+                    dict.fromkeys(
+                        (
+                            [fact.evidence_message_id]
+                            if fact.evidence_message_id
+                            else []
+                        )
+                        + [
+                            fragment.message_id
+                            for fragment in evidence_fragments
+                        ]
+                    )
                 ),
+                source_quotes=dict(source_quotes),
                 topic_hint=(
                     fact.dimension.value if fact.dimension is not None else None
                 ),
@@ -2845,6 +2907,8 @@ class AtomicProfileService:
                     topics=[],
                     evidence_message_id=None,
                     evidence_quote=None,
+                    evidence_fragments=(),
+                    source_quotes={},
                     confidence=FourDimensionConfidence.HIGH,
                     validity=parse_validity_window(normalized, now),
                     anchor=now,
@@ -2853,6 +2917,7 @@ class AtomicProfileService:
                 if text_changed:
                     # 用户纠正不是聊天原话证据：正文更换后不保留旧值引用。
                     merged.evidence_quote = None
+                    merged.source_quotes = {}
                 merged.confidence = FourDimensionConfidence.HIGH
                 merged.user_edited_at = now
                 saved = self._repository.save_item(merged)
@@ -2866,6 +2931,7 @@ class AtomicProfileService:
                     # 用户纠正不是聊天原话证据：正文更换后不保留旧值引用；
                     # 明示的新期限以纠正时间为锚更新，没提期限则保留原期限。
                     target.evidence_quote = None
+                    target.source_quotes = {}
                     window = parse_validity_window(normalized, now)
                     if window is not None:
                         target.valid_from = window.valid_from
@@ -3559,6 +3625,8 @@ class AtomicProfileService:
         topics: list[str],
         evidence_message_id: str | None,
         evidence_quote: str | None,
+        evidence_fragments: tuple[ProfileEvidenceFragment, ...],
+        source_quotes: dict[str, str],
         confidence: FourDimensionConfidence,
         validity: ValidityWindow | None,
         anchor: datetime | None,
@@ -3568,12 +3636,17 @@ class AtomicProfileService:
 
         生命周期状态与旧期限不因普通补证据被重置；只有本次原文明示新期限
         时才按新锚更新。用户编辑过的条目（``user_edited_at`` 非空）不再被
-        自动写入追加主题，避免自动噪声混进用户选择的主题。
+        自动写入追加主题，避免自动噪声混进用户选择的主题。工单 05：跨轮
+        来源消息与其原话片段一并并入，逐来源原话只在来源中真实出现。
         """
 
-        if evidence_message_id is not None:
+        new_source_ids = (
+            ([evidence_message_id] if evidence_message_id is not None else [])
+            + [fragment.message_id for fragment in evidence_fragments]
+        )
+        if new_source_ids:
             item.source_message_ids = list(
-                dict.fromkeys([*item.source_message_ids, evidence_message_id])
+                dict.fromkeys([*item.source_message_ids, *new_source_ids])
             )
         if item.topic_hint is None and dimension is not None:
             item.topic_hint = dimension.value
@@ -3582,6 +3655,8 @@ class AtomicProfileService:
         _apply_fact_identity(item, identity, item.owner_account_id)
         if evidence_quote:
             item.evidence_quote = evidence_quote
+        if source_quotes:
+            item.source_quotes = {**item.source_quotes, **source_quotes}
         if validity is not None:
             _apply_validity(item, validity, anchor or now)
         if topics and item.user_edited_at is None:

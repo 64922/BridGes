@@ -9,6 +9,7 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, NamedTuple, Protocol
 
@@ -74,7 +75,11 @@ from bridges.profiles.atomic import (
     parse_goal_lifecycle_signal,
     parse_memory_directive,
 )
-from bridges.profiles.commit import ProfileCommit, ProfileFactSubmission
+from bridges.profiles.commit import (
+    ProfileCommit,
+    ProfileEvidenceFragment,
+    ProfileFactSubmission,
+)
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     confidence_rank,
@@ -122,14 +127,18 @@ PROFILE_EXTRACTION_MAX_PENDING_PER_ACCOUNT = 32
 #: 工单 04 升级 v5：开放事实（姓名/宠物/习惯）不再要求四维维度，dimension
 #: 作为可选解析提示；一条消息最多 6 项；要求模型优先给出原话片段
 #: evidence_quote；明确排除短期情绪与第三方内容。
-PROFILE_EXTRACTION_PROMPT_VERSION = "profile-extraction-prompt-v5"
+#: 工单 05 升级 v6：邻近窗口含助手消息并以消息标识标注（跨轮指代需要
+#: 助手提问等必要前文）；新增 evidence_fragments 多片段证据字段，主引用
+#: 仍是当前消息。
+PROFILE_EXTRACTION_PROMPT_VERSION = "profile-extraction-prompt-v6"
 PROFILE_EXTRACTION_RECIPE_VERSION = "profile-extraction-recipe-v1"
 PROFILE_EXTRACTION_CONTEXT_VERSION = "profile-extraction-context-v1"
 PROFILE_EXTRACTION_QUALITY_POLICY_VERSION = "profile-extraction-quality-v1"
 #: 输入载荷合同版本：工单 04 起包含相关旧记忆线索（只作参考，不作证据）。
 PROFILE_EXTRACTION_INPUT_SCHEMA_VERSION = "profile-message-v3"
-#: 邻近用户原文的最大条数：只用于解析回指，按实测预算可调。
-PROFILE_EXTRACTION_MAX_NEIGHBORS = 2
+#: 邻近消息的最大条数：只用于解析回指，按实测预算可调。工单 05：窗口
+#: 取当前消息之前的必要前文（含助手消息），从 2 提升到 4。
+PROFILE_EXTRACTION_MAX_NEIGHBORS = 4
 #: 工单 04：相关旧记忆线索的最大条数（只作稳定表述参考，不得作为证据）。
 PROFILE_EXTRACTION_MAX_RELATED_MEMORIES = 5
 #: 改进工单 07：账户级画像控制表（长期画像使用开关的持久状态）。
@@ -148,6 +157,24 @@ class ProfileUsageState(NamedTuple):
     enabled: bool
     version: int
     updated_at: datetime | None
+
+
+@dataclass(frozen=True)
+class ProfileNeighborMessage:
+    """当前消息之前的一条邻近消息（工单 05：跨轮指代的最小前文）。
+
+    只承载解析回指所需的定位信息：消息标识、角色（user/assistant）与
+    原文。窗口严格取当前消息之前的有界前文（按时序），绝不包含未来
+    消息；角色用于区分「用户自述」与「助手建议」的证据资格。
+    """
+
+    message_id: str
+    role: str
+    content: str
+
+
+#: 邻近窗口读取函数：按账户/会话/当前消息返回有界前文（按时序）。
+NeighborWindowReader = Callable[[str, str, str], list[ProfileNeighborMessage]]
 
 # Issue 13 来源守卫稳定名：错误码与观测指标共用同一字面量，改名必须
 # 同步两处，否则"错误码 ↔ 指标"的审计关联会静默漂移。
@@ -471,6 +498,52 @@ def _evidence_quote(content: str, normalized_value: str) -> str:
     return quote[: _MAX_EVIDENCE_QUOTE_LENGTH - 1] + "…"
 
 
+@dataclass(frozen=True)
+class _ResolvedCandidateEvidence:
+    """单个候选的已核验证据（工单 04 / 05）。
+
+    ``segment`` 为主引用片段（无精确证据时为 ``None``，沿用旧合同整消息
+    检查）；``fragments`` 为写入存储的跨轮片段（已遮敏）；``fragment_segments``
+    保留片段原文用于主体与取值核验。``anchor_text`` 是主片段与全部跨轮片段
+    的并集，取值锚定按该并集判定（跨轮结论可能两部分各自承载一部分锚点）。
+    """
+
+    segment: str | None
+    classification: ProfileSignalClassification | None
+    fragments: tuple[ProfileEvidenceFragment, ...] = ()
+    fragment_segments: tuple[str, ...] = ()
+
+    @property
+    def anchor_text(self) -> str:
+        parts = [self.segment] if self.segment else []
+        parts.extend(self.fragment_segments)
+        return " ".join(parts)
+
+
+#: 候选暂缓哨兵：证据暂不可判定时零写入且不计失败，等价于「这次先不写」。
+_CANDIDATE_DEFERRED = object()
+
+#: 提交内惰性窗口缓存未取值哨兵（``None`` 本身表示读取失败）。
+_WINDOW_UNREAD = object()
+
+
+def _occurrence_count(content: str, quote: str) -> int:
+    """原话在文本中的出现次数（工单 05 消歧判定）。"""
+
+    count = 0
+    start = content.find(quote)
+    while start >= 0:
+        count += 1
+        start = content.find(quote, start + 1)
+    return count
+
+
+def _quote_in_messages(quote: str, messages: list[ProfileNeighborMessage]) -> bool:
+    """原话是否出现在邻近窗口（含助手消息）中（调用时已确认不在当前消息里）。"""
+
+    return any(quote in message.content for message in messages)
+
+
 def _privacy_directive(content: str) -> tuple[str, str | None] | None:
     """解析本 Issue 需要的全局/局部停止记录指令。"""
 
@@ -777,8 +850,10 @@ class GatewayAutomaticProfileExtractor:
     供应商调用证据。
 
     改进工单 17：调用携带运行额度快照（配置提供者存在时）与每次调用版本
-    合同；必要邻近用户原文只作回指线索，不作为事实证据，当前用户消息
-    才是抽取主体。
+    合同；必要前文只作回指线索，不作为事实证据，当前用户消息才是抽取
+    主体。工单 05：窗口含助手消息（跨轮指代需要助手提问等前文）并以
+    消息标识标注，模型可经 ``evidence_fragments`` 为结论附上真实验证的
+    跨轮片段。
     """
 
     version = AUTOMATIC_EXTRACTOR_VERSION
@@ -789,7 +864,7 @@ class GatewayAutomaticProfileExtractor:
         classifier: ProfileSignalClassifier | None = None,
         *,
         model_config_provider: RunModelConfigProvider | None = None,
-        neighbor_reader: Callable[[str, str, str], list[str]] | None = None,
+        neighbor_reader: NeighborWindowReader | None = None,
         memory_reader: Callable[[str, str], list[str]] | None = None,
     ) -> None:
         self._gateway = gateway
@@ -797,7 +872,7 @@ class GatewayAutomaticProfileExtractor:
         # 改进工单 03/04：有配置提供者时按已验证运行额度执行最终载荷硬门；
         # 没有配置的内存/测试组合不伪造额度，只记录调用版本合同。
         self._model_config_provider = model_config_provider
-        # 改进工单 17：邻近用户原文只用于解析「这个专业」等回指。
+        # 改进工单 17 / 工单 05：邻近前文（含助手消息）只用于解析回指。
         self._neighbor_reader = neighbor_reader
         # 工单 04：相关旧记忆只作稳定表述参考（有界、脱敏前原文片段），
         # 绝不作为事实证据。
@@ -819,7 +894,7 @@ class GatewayAutomaticProfileExtractor:
         # （引用/假设/第三方/敏感）在这里保持零写入，不调用模型。
         if classification.category == ProfileSignalCategory.FORBIDDEN:
             return ProfileExtractionOutput(items=[])
-        neighbors: list[str] = []
+        neighbors: list[ProfileNeighborMessage] = []
         if self._neighbor_reader is not None:
             try:
                 neighbors = [
@@ -827,7 +902,7 @@ class GatewayAutomaticProfileExtractor:
                     for neighbor in self._neighbor_reader(
                         account_id, conversation_id, message_id
                     )
-                    if neighbor and neighbor.strip()
+                    if neighbor.content and neighbor.content.strip()
                 ][:PROFILE_EXTRACTION_MAX_NEIGHBORS]
             except Exception:  # noqa: BLE001 - 回指线索失败不阻断抽取
                 neighbors = []
@@ -862,11 +937,13 @@ class GatewayAutomaticProfileExtractor:
                     "只抽取当前用户消息里用户关于自己的稳定事实（自然自述，如"
                     "姓名、宠物、习惯、兴趣、学习与时间约束）。禁止第三方、引用、"
                     "假设、角色扮演、敏感信息与一次性情绪（如「今天好累」）；"
-                    "邻近用户消息只用于理解『这个专业』等回指，已知旧记忆只用于"
-                    "保持表述稳定，两者都不能作为事实依据。"
+                    "邻近消息（含助手消息）只用于理解『这个专业』等回指——助手"
+                    "消息绝不能作为事实证据；已知旧记忆只用于保持表述稳定，"
+                    "两者都不能作为事实依据。"
                     '只输出一个 JSON 对象 {"items": [...]}，不要输出其他顶层字段。'
                     "每个元素的字段名必须且只能是：dimension、normalized_value、"
-                    "fact_text、evidence_ref、evidence_quote、reliability、action、"
+                    "fact_text、evidence_ref、evidence_quote、evidence_fragments、"
+                    "reliability、action、"
                     "evidence_start、evidence_end；出现任何其他字段（如 open_fact、"
                     "category、type）都判为无效输出。"
                     "dimension 是可选解析提示：学业状态填 academic_status，"
@@ -879,6 +956,12 @@ class GatewayAutomaticProfileExtractor:
                     f'evidence_ref 固定填写 "{message_id}"；'
                     "evidence_quote 为支持该候选的当前消息原话片段（精确子串，"
                     "优先提供）；"
+                    "evidence_fragments 为可选数组（最多 3 条）：仅当结论依赖"
+                    "当前消息之前的邻近消息（如『这个专业』的指代对象）时使用，"
+                    "每条只有 evidence_ref 与 evidence_quote 两个字段，"
+                    "evidence_ref 必须是上面列出的邻近消息标识，"
+                    "evidence_quote 必须是该消息里真实出现的原话片段，"
+                    "片段只作补足，结论主体仍必须在当前消息中；"
                     "reliability 为 0 到 1 之间的小数（禁止 high/medium/low 等文字）；"
                     "action 只能是 create/update/observe/ignore 之一；"
                     "evidence_start 与 evidence_end 为整数，是同一支持原话的当前"
@@ -894,8 +977,15 @@ class GatewayAutomaticProfileExtractor:
             messages.append(
                 {
                     "role": "user",
-                    "content": "（仅供回指的邻近用户消息，不得作为事实证据）\n"
-                    + "\n".join(neighbors),
+                    "content": (
+                        "（仅供回指的邻近消息（含助手），不得作为事实证据）\n"
+                        + "\n".join(
+                            f"[{neighbor.message_id}]"
+                            f"{'助手' if neighbor.role == 'assistant' else '用户'}："
+                            f"{neighbor.content}"
+                            for neighbor in neighbors
+                        )
+                    ),
                 }
             )
         if related_memories:
@@ -1547,6 +1637,7 @@ class AutomaticProfileService:
         queue_name: str = PROFILE_EXTRACTION_QUEUE,
         lock_recorder: ModelRunLockRecorder | None = None,
         atomic_profile_service: AtomicProfileService | None = None,
+        neighbor_reader: NeighborWindowReader | None = None,
     ) -> None:
         self._four_dimensions = four_dimension_service
         # 工单 03：原子条目是长期信息的唯一权威；自动抽取直接写入原子
@@ -1564,6 +1655,9 @@ class AutomaticProfileService:
         self._extractor = extractor or RuleBasedAutomaticProfileExtractor(self._classifier)
         self._slice_repository = slice_repository
         self._message_reader = message_reader
+        # 工单 05：提交期按同一窗口读取跨轮片段证据；未接线的组合只核验
+        # 当前消息内的主引用，不伪造窗口。
+        self._neighbor_reader = neighbor_reader
         self._observability = observability_service
         self._queue_name = queue_name
         # Issue 13：仅 qwen_model 分支持久化模型运行锁；缺 recorder 的
@@ -2961,6 +3055,14 @@ class AutomaticProfileService:
                     task, run, "profile_extraction_privacy_blocked"
                 )
         source_at = getattr(current_message, "created_at", None)
+        # 工单 05：抽取与提交都携带真实会话标识（跨轮窗口按会话读取，评价
+        # 证据以真实会话核对）；未接线消息读取的旧组合没有会话可指，传空串
+        # 而不是伪装成字面量。
+        conversation_id = (
+            str(getattr(current_message, "conversation_id", "") or "")
+            if current_message is not None
+            else ""
+        )
         task.status = ProfileExtractionStatus.RUNNING
         task.attempts = attempt
         task.updated_at = _now()
@@ -3039,7 +3141,7 @@ class AutomaticProfileService:
                 # 许可、墓碑、版本与用户编辑权威。
                 output = self._extract_once(
                     account_id=task.account_id,
-                    conversation_id="retry",
+                    conversation_id=conversation_id,
                     message_id=task.message_id,
                     content=content,
                     run_id=run.extraction_id,
@@ -3060,7 +3162,7 @@ class AutomaticProfileService:
                         )
                     record_ids, observed_count = self._commit_output(
                         task.account_id,
-                        conversation_id="retry",
+                        conversation_id=conversation_id,
                         message_id=task.message_id,
                         content=content,
                         mode="companion",
@@ -3268,14 +3370,36 @@ class AutomaticProfileService:
         audit_version = _signal_audit_version(
             self.extractor_version, signal_classification, source
         )
+        window_cache: list[ProfileNeighborMessage] | None | object = _WINDOW_UNREAD
+
+        def neighbor_window() -> list[ProfileNeighborMessage] | None:
+            nonlocal window_cache
+            if window_cache is _WINDOW_UNREAD:
+                window_cache = self._evidence_window(
+                    account_id, conversation_id, message_id
+                )
+            return window_cache  # type: ignore[return-value]
+
         for item in output.items:
             if self._repository.is_message_tombstoned(account_id, message_id):
                 continue
-            action = self._resolve_candidate_action(
+            resolved = self._resolve_candidate_evidence(
                 item,
+                account_id=account_id,
                 message_id=message_id,
                 content=content,
+                window=neighbor_window,
+            )
+            if resolved is _CANDIDATE_DEFERRED:
+                # 工单 05：证据暂缓（原话重复无消歧、落在邻句/助手消息等）
+                # 零写入且不计失败，同一条消息的其他候选照常处理。
+                continue
+            assert isinstance(resolved, _ResolvedCandidateEvidence)
+            action = self._resolve_candidate_action(
+                item,
+                content=content,
                 signal_classification=signal_classification,
+                evidence=resolved,
             )
             if action == ProfileExtractionAction.IGNORE:
                 continue
@@ -3286,7 +3410,7 @@ class AutomaticProfileService:
             explicit_self_statement = self._is_explicit_self_statement(
                 content, signal_classification
             ) or self._candidate_supported_by_evidence(
-                item, content, signal_classification
+                item, content, signal_classification, evidence=resolved
             )
             if item.dimension is None:
                 # 工单 04：开放事实（无维度提示）不进入四维观察晋升阶梯；
@@ -3299,8 +3423,9 @@ class AutomaticProfileService:
                         text=item.fact_text or item.normalized_value,
                         dimension=None,
                         confidence=FourDimensionConfidence.MEDIUM,
-                        evidence_quote=self._candidate_evidence_quote(item, content),
+                        evidence_quote=self._candidate_evidence_quote(item, content, resolved),
                         evidence_message_id=message_id,
+                        evidence_fragments=resolved.fragments,
                     )
                 )
                 continue
@@ -3369,8 +3494,9 @@ class AutomaticProfileService:
                     # 主题只组织浏览，不参与事实身份与去重。
                     topics=default_topics_for_dimension(item.dimension),
                     confidence=confidence,
-                    evidence_quote=self._candidate_evidence_quote(item, content),
+                    evidence_quote=self._candidate_evidence_quote(item, content, resolved),
                     evidence_message_id=message_id,
+                    evidence_fragments=resolved.fragments,
                 )
             )
         # 工单 03：开放事实直接写入原子条目（唯一权威路径），四维记录不再
@@ -3387,19 +3513,52 @@ class AutomaticProfileService:
             observed_count,
         )
 
-    def _candidate_evidence_span(
-        self, item: Any, content: str
-    ) -> tuple[str, ProfileSignalClassification] | None:
-        """解析候选的精确证据区间（工单 04：原话优先，区间兜底）。
+    def _evidence_window(
+        self, account_id: str, conversation_id: str, message_id: str
+    ) -> list[ProfileNeighborMessage] | None:
+        """提交时读取当前消息之前的邻近窗口（工单 05）。
 
-        - 提供 ``evidence_quote`` 时按原话在消息中定位（多次出现取首个，
-          多来源消歧由工单 05 扩展）；定位不到、过长或为空都按合同错误
-          失败关闭，绝不凭区间或整句兜底。
-        - 只提供区间时校验区间有效性；两者都缺时返回 ``None``（旧合同
-          的整消息证据检查）。
+        返回空列表表示没有可用窗口（未接线或会话缺少更早消息）；返回
+        ``None`` 表示窗口读取失败、本次无法判定，调用方按暂缓处理而不是
+        把读不到窗口当成证据失败。会话标识为空串时交给读取器裁决（真实
+        读取器按空会话查不到任何消息，测试替身可以忽略标识）。
         """
 
+        if self._neighbor_reader is None:
+            return []
+        try:
+            return list(
+                self._neighbor_reader(account_id, conversation_id, message_id)
+            )
+        except Exception:  # noqa: BLE001 - 读取失败降级为不可判定
+            return None
+
+    def _resolve_candidate_evidence(
+        self,
+        item: Any,
+        *,
+        account_id: str,
+        message_id: str,
+        content: str,
+        window: Callable[[], list[ProfileNeighborMessage] | None],
+    ) -> _ResolvedCandidateEvidence | object:
+        """解析并核验候选的主证据与跨轮片段（工单 04 / 05）。
+
+        - 主引用必须指向当前消息；指向邻近消息或未知消息时候选暂缓
+          （零写入，等待再次抽取），不按失败关闭。
+        - 原话在本消息唯一出现时直接定位；重复出现且区间未精确消歧时
+          暂缓；只出现在邻近消息（含助手消息）时暂缓；本消息与整个窗口
+          都找不到、区间无效或为空时按合同错误失败关闭（工单 04 语义）。
+        - 跨轮片段必须引用当前消息或窗口内用户消息、原话唯一可定位，且
+          通过硬禁止、自述主体与取值核验；助手消息、窗口外引用与歧义
+          一律暂缓。只有片段没有主引用的候选也暂缓：结论主体必须以当前
+          消息为准，邻近消息只作补足（工单 05 边界）。
+        """
+
+        if getattr(item, "evidence_ref", None) != message_id:
+            return _CANDIDATE_DEFERRED
         quote = getattr(item, "evidence_quote", None)
+        fragments = tuple(getattr(item, "evidence_fragments", None) or ())
         if isinstance(quote, str) and quote.strip():
             if len(quote) > _MAX_EVIDENCE_QUOTE_LENGTH:
                 raise AutomaticProfileError(
@@ -3407,25 +3566,71 @@ class AutomaticProfileService:
                     "画像抽取证据原话超出精确证据长度",
                     retryable=False,
                 )
-            start = content.find(quote)
-            if start < 0:
+            occurrences = _occurrence_count(content, quote)
+            if occurrences == 1:
+                start = content.find(quote)
+                segment: str | None = content[start : start + len(quote)]
+            elif occurrences > 1:
+                if not self._span_matches_quote(item, content, quote):
+                    return _CANDIDATE_DEFERRED
+                segment = quote
+            else:
+                messages = window()
+                if messages is None or _quote_in_messages(quote, messages):
+                    # 无法判定（窗口读取失败）或原话只出现在邻近消息：
+                    # 暂缓，绝不把邻句原话当成当前消息的证据。
+                    return _CANDIDATE_DEFERRED
                 raise AutomaticProfileError(
                     "profile_extraction_evidence_mismatch",
                     "画像抽取证据原话未出现在当前消息中",
                     retryable=False,
                 )
-            segment = content[start : start + len(quote)]
-            return segment, self._classifier.classify(segment)
+            classification: ProfileSignalClassification | None = (
+                self._classifier.classify(segment)
+                if segment is not None
+                else None
+            )
+        else:
+            segment = self._validated_span_segment(item, content)
+            classification = (
+                self._classifier.classify(segment) if segment is not None else None
+            )
+        stored_fragments: list[ProfileEvidenceFragment] = []
+        fragment_segments: list[str] = []
+        if fragments:
+            if segment is None:
+                return _CANDIDATE_DEFERRED
+            messages = window()
+            if messages is None:
+                return _CANDIDATE_DEFERRED
+            for fragment in fragments:
+                verified = self._verify_fragment(
+                    fragment,
+                    item,
+                    messages,
+                    message_id=message_id,
+                    content=content,
+                )
+                if verified is None:
+                    return _CANDIDATE_DEFERRED
+                stored, raw = verified
+                stored_fragments.append(stored)
+                fragment_segments.append(raw)
+        return _ResolvedCandidateEvidence(
+            segment=segment,
+            classification=classification,
+            fragments=tuple(stored_fragments),
+            fragment_segments=tuple(fragment_segments),
+        )
+
+    def _validated_span_segment(self, item: Any, content: str) -> str | None:
+        """校验只提供区间的主引用；无效按合同错误失败关闭（工单 04）。"""
+
         start = item.evidence_start
         end = item.evidence_end
         if start is None and end is None:
             return None
-        if (
-            start is None
-            or end is None
-            or start >= end
-            or end > len(content)
-        ):
+        if start is None or end is None or start >= end or end > len(content):
             raise AutomaticProfileError(
                 "profile_extraction_evidence_mismatch",
                 "画像抽取证据区间无效",
@@ -3444,16 +3649,72 @@ class AutomaticProfileService:
                 "画像抽取证据区间超出精确证据长度",
                 retryable=False,
             )
-        return segment, self._classifier.classify(segment)
+        return segment
 
-    def _candidate_evidence_quote(self, item: Any, content: str) -> str:
+    def _verify_fragment(
+        self,
+        fragment: ProfileEvidenceFragment,
+        item: Any,
+        window: list[ProfileNeighborMessage],
+        *,
+        message_id: str,
+        content: str,
+    ) -> tuple[ProfileEvidenceFragment, str] | None:
+        """核验一条跨轮片段；返回（写入用遮敏片段, 原文片段）或 None 暂缓。
+
+        片段必须落在当前消息或窗口内用户消息里且原话唯一可定位；助手
+        消息与窗口外引用按暂缓处理（零写入），原话复现不过关的片段绝不
+        被写入或用于锚定。
+        """
+
+        reference = getattr(fragment, "evidence_ref", "")
+        quote = getattr(fragment, "evidence_quote", "").strip()
+        if not quote or len(quote) > _MAX_EVIDENCE_QUOTE_LENGTH:
+            return None
+        if reference == message_id:
+            target = content
+        else:
+            message = next(
+                (entry for entry in window if entry.message_id == reference), None
+            )
+            if message is None or message.role != "user":
+                # 助手消息或窗口外消息不能作为事实证据（工单 05/06）。
+                return None
+            target = message.content
+        if _occurrence_count(target, quote) != 1:
+            return None
+        start = target.find(quote)
+        raw = target[start : start + len(quote)]
+        classification = self._classifier.classify(raw)
+        if classification.reason_code in HARD_FORBIDDEN_REASONS:
+            return None
+        if not classification.is_self_statement and not (
+            self._span_in_self_statement_clause(target, raw)
+        ):
+            return None
+        if not self._evidence_supports_candidate(raw, item):
+            return None
+        stored = ProfileEvidenceFragment(message_id=reference, quote=_redact(raw))
+        return stored, raw
+
+    @staticmethod
+    def _span_matches_quote(item: Any, content: str, quote: str) -> bool:
+        """原话重复出现时，候选提供的区间是否精确消歧到同一原话。"""
+
+        start = getattr(item, "evidence_start", None)
+        end = getattr(item, "evidence_end", None)
+        if start is None or end is None or start >= end or end > len(content):
+            return False
+        return content[start:end] == quote
+
+    def _candidate_evidence_quote(
+        self, item: Any, content: str, evidence: _ResolvedCandidateEvidence
+    ) -> str:
         """写入事实的原话依据：有精确区间时原样使用该区间，否则沿用旧截断。"""
 
-        evidence = self._candidate_evidence_span(item, content)
-        if evidence is None:
+        if evidence.segment is None:
             return _evidence_quote(content, item.normalized_value)
-        segment, _classification = evidence
-        return _redact(segment)
+        return _redact(evidence.segment)
 
     def _evidence_supports_candidate(
         self, segment: str, item: Any
@@ -3503,9 +3764,9 @@ class AutomaticProfileService:
         self,
         item: ProfileExtractionItem,
         *,
-        message_id: str,
         content: str,
         signal_classification: ProfileSignalClassification,
+        evidence: _ResolvedCandidateEvidence,
     ) -> ProfileExtractionAction:
         """逐候选证据验证并给出实际动作（改进工单 17 / 04）。
 
@@ -3515,28 +3776,27 @@ class AutomaticProfileService:
         - 模糊/行为片段降级为观察，不自动晋升长期事实；
         - 短期情绪与无可记信号片段零写入；
         - 抽取器凭空发明禁止值仍失败关闭，原话本身即敏感内容则零写入。
+
+        引用归属与精确证据已在 ``_resolve_candidate_evidence`` 解析核验
+        （工单 05），这里只消费解析结果与整条消息分类。
         """
 
-        if item.evidence_ref != message_id:
-            raise AutomaticProfileError(
-                "profile_extraction_evidence_mismatch",
-                "画像抽取证据引用不匹配",
-                retryable=False,
-            )
         if item.action == ProfileExtractionAction.IGNORE:
             return ProfileExtractionAction.IGNORE
-        evidence = self._candidate_evidence_span(item, content)
-        if evidence is None:
+        if evidence.segment is None:
             segment = content
             segment_classification = signal_classification
         else:
-            segment, segment_classification = evidence
+            segment = evidence.segment
+            segment_classification = (
+                evidence.classification or signal_classification
+            )
             if segment_classification.reason_code in HARD_FORBIDDEN_REASONS:
                 return ProfileExtractionAction.IGNORE
         candidate_text = f"{item.fact_text or ''} {item.normalized_value}"
         value_classification = self._classifier.classify(candidate_text)
         if value_classification.category == ProfileSignalCategory.FORBIDDEN:
-            if evidence is not None and item.normalized_value in segment:
+            if evidence.segment is not None and item.normalized_value in segment:
                 # 原话本身就是引用/第三方/敏感内容：该候选零写入，不影响
                 # 同一条消息里的其他合规片段。
                 return ProfileExtractionAction.IGNORE
@@ -3568,7 +3828,7 @@ class AutomaticProfileService:
                 )
             return ProfileExtractionAction.OBSERVE
         if self._candidate_supported_by_evidence(
-            item, content, signal_classification
+            item, content, signal_classification, evidence=evidence
         ):
             return item.action
         if segment_classification.category in {
@@ -3587,13 +3847,16 @@ class AutomaticProfileService:
         item: ProfileExtractionItem,
         content: str,
         signal_classification: ProfileSignalClassification,
+        *,
+        evidence: _ResolvedCandidateEvidence,
     ) -> bool:
-        """候选是否在证据上构成可提交的稳定事实（工单 04）。
+        """候选是否在证据上构成可提交的稳定事实（工单 04 / 05）。
 
         要求主体为自述：片段自身是自述，或其所在分句是自述（片段单独
         分类为 no_signal 或否定分句时常见）；硬禁止片段（引用/假设/第三方/
         敏感）与短期情绪直接失败。其余按主体/否定/时间/条件核验与取值
-        锚定；模型候选与本地候选共用同一条核验路径。
+        锚定；工单 05 起跨轮片段与主片段一起构成锚定文本，结论可以依赖
+        两部分证据的并集；模型候选与本地候选共用同一条核验路径。
         """
 
         if item.action not in {
@@ -3601,16 +3864,16 @@ class AutomaticProfileService:
             ProfileExtractionAction.UPDATE,
         }:
             return False
-        evidence = self._candidate_evidence_span(item, content)
-        if evidence is None:
+        if evidence.segment is None:
             segment = content
             classification = signal_classification
         else:
-            segment, classification = evidence
+            segment = evidence.segment
+            classification = evidence.classification or signal_classification
         if classification.is_self_statement:
             subject_ok = True
         elif (
-            evidence is not None
+            evidence.segment is not None
             and classification.reason_code not in HARD_FORBIDDEN_REASONS
             and classification.reason_code != "transient_state"
         ):
@@ -3624,8 +3887,14 @@ class AutomaticProfileService:
         if not self._evidence_supports_candidate(segment, item):
             return False
         # 精确证据必须锚定将要写入的规范值；无区间候选沿用旧合同
-        # （内部抽取器可信，生产网关提示词强制提供原话或区间）。
-        return evidence is None or self._value_supported_by_span(segment, item)
+        # （内部抽取器可信，生产网关提示词强制提供原话或区间）。跨轮
+        # 片段纳入锚定文本：锚点可以分布在主片段与片段证据之间。
+        if evidence.segment is None:
+            return True
+        anchor_text = evidence.anchor_text
+        if anchor_text == segment:
+            return self._value_supported_by_span(segment, item)
+        return self._value_supported_by_span(anchor_text, item)
 
     def _span_in_self_statement_clause(self, content: str, segment: str) -> bool:
         """证据片段所在的分句是否构成用户自述（工单 04 主体守卫）。"""

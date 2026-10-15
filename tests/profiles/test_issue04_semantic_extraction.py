@@ -281,7 +281,9 @@ def test_one_message_supports_multiple_facts() -> None:
     assert texts == {"我叫小林", "我养了一只猫叫团子"}
 
 
-def test_repeated_quote_uses_first_occurrence() -> None:
+def test_repeated_quote_without_disambiguation_is_deferred() -> None:
+    """工单 05：原话重复且无消歧区间时暂缓（零写入、不失败、不随意取位置）。"""
+
     content = "我叫小林。我叫小林。"
 
     def responder(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -294,10 +296,9 @@ def test_repeated_quote_uses_first_occurrence() -> None:
 
     run = _run_once(service, "message-1", content)
 
-    assert run.outcome == ProfileExtractionOutcome.SUCCEEDED_WRITTEN
-    items = atomic.list_items(ACCOUNT)
-    assert len(items) == 1
-    assert items[0].evidence_quote == "我叫小林。"
+    assert run.status == ProfileExtractionStatus.SUCCEEDED
+    assert run.outcome == ProfileExtractionOutcome.SUCCEEDED_EMPTY
+    assert atomic.list_items(ACCOUNT) == []
 
 
 def test_dimension_is_an_optional_hint_in_contract() -> None:

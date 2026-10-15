@@ -79,12 +79,26 @@ class ProfileCommitParticipant(Protocol):
 
 
 @dataclass(frozen=True)
+class ProfileEvidenceFragment:
+    """一条跨轮附属证据片段（工单 05；只引用真实来源，绝不伪造）。
+
+    调用方已按来源消息完成定位与主体、否定、时间、条件核验；本对象只
+    承载「来源消息标识 + 该消息中真实出现的原话片段」。
+    """
+
+    message_id: str
+    quote: str
+
+
+@dataclass(frozen=True)
 class ProfileFactSubmission:
     """一条待写入的开放事实提案（唯一写入合同）。
 
     字段与原子服务的事实写入一一对应：主体/关系/对象/范围由原子服务的
     确定性规则从 ``text`` 解析（``dimension`` 只作解析提示），主题由调用方
     以开放词汇提供（可空、多选、可扩展），证据只引用真实来源，绝不伪造。
+    工单 05：``evidence_fragments`` 是跨轮多片段证据，一并并入来源与
+    逐来源原话记录。
     """
 
     text: str
@@ -98,6 +112,8 @@ class ProfileFactSubmission:
     evidence_quote: str | None = None
     #: 证据来源消息标识；缺失时条目没有来源定位。
     evidence_message_id: str | None = None
+    #: 跨轮附属证据片段（已核验）；通常引用当前消息之前的用户消息。
+    evidence_fragments: tuple[ProfileEvidenceFragment, ...] = ()
 
 
 class SourceWithdrawalStatus(Enum):

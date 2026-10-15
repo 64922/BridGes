@@ -466,20 +466,38 @@ export function AtomicProfileCenter() {
             <ul className={styles.sourceList}>
               {sources.map((source) => (
                 <li key={source.message_id} className={styles.sourceItem}>
-                  <span>{sourceStatusText(source)}</span>
-                  {source.status === "available" && source.conversation_id ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        router.push(
-                          `/chat/${encodeURIComponent(
-                            source.conversation_id as string
-                          )}?message=${encodeURIComponent(source.message_id)}`
-                        )
-                      }
+                  <div className={styles.sourceRow}>
+                    <span>{sourceStatusText(source)}</span>
+                    {source.status === "available" && source.conversation_id ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(
+                            `/chat/${encodeURIComponent(
+                              source.conversation_id as string
+                            )}?message=${encodeURIComponent(source.message_id)}`
+                          )
+                        }
+                      >
+                        查看原文
+                      </button>
+                    ) : null}
+                  </div>
+                  {source.quote && source.quote !== data.evidence_quote ? (
+                    <blockquote
+                      className={styles.sourceQuote}
+                      data-testid="atomic-source-quote"
                     >
-                      查看原文
-                    </button>
+                      {source.quote}
+                    </blockquote>
+                  ) : null}
+                  {source.quote_status === "source_unavailable" ? (
+                    <span
+                      className={styles.sourceQuoteNote}
+                      data-testid="atomic-source-quote-invalidated"
+                    >
+                      该来源保存的片段已不可核对。
+                    </span>
                   ) : null}
                 </li>
               ))}

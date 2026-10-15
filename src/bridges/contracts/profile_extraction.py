@@ -34,14 +34,16 @@ PROFILE_SOURCE_LABELS: dict[ProfileExtractionSource, str] = {
     ProfileExtractionSource.QWEN_MODEL: "Qwen 辅助识别",
 }
 
-#: 输出载荷合同版本：工单 04 起 dimension 可选、允许开放事实与相关记忆。
-PROFILE_EXTRACTION_OUTPUT_SCHEMA_VERSION = "profile-extraction-v3"
+#: 输出载荷合同版本：工单 04 起 dimension 可选、允许开放事实与相关记忆；
+#: 工单 05 起允许 ``evidence_fragments``（跨轮多片段证据）。
+PROFILE_EXTRACTION_OUTPUT_SCHEMA_VERSION = "profile-extraction-v4"
 #: 网关适配器识别为画像专属合同错误的输出合同版本（历史版本继续识别，
 #: 新增版本必须同步加入，否则合同错误码会漂移为通用结构化输出错误）。
 PROFILE_EXTRACTION_CONTRACT_VERSIONS = frozenset(
     {
         "profile-extraction-v1",
         "profile-extraction-v2",
+        "profile-extraction-v3",
         PROFILE_EXTRACTION_OUTPUT_SCHEMA_VERSION,
     }
 )
@@ -143,13 +145,43 @@ class ProfileCorrectionResult(BaseModel):
         }
 
 
+class ProfileExtractionFragment(BaseModel):
+    """跨轮多片段证据的一条附属引用（工单 05）。
+
+    模型引用窗口内某条消息的原话片段来补足当前消息无法单独支撑的结论
+    （如「这个专业」的指代对象在上一轮出现）。片段只是候选证据：服务端
+    仍按来源消息定位原话、核验主体/否定/时间/条件，定位失败、重复无法
+    消歧、引用助手消息或第三人称片段都不写入。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    evidence_ref: StrictStr = Field(
+        min_length=1, max_length=200, description="窗口内消息标识。"
+    )
+    evidence_quote: StrictStr = Field(
+        min_length=1,
+        max_length=300,
+        description="该消息中支持结论的原话片段（精确子串）。",
+    )
+
+    @field_validator("evidence_ref", "evidence_quote", mode="before")
+    @classmethod
+    def _require_string(cls, value: object) -> object:
+        if not isinstance(value, str):
+            raise ValueError("profile extraction text fields must be strings")
+        return value
+
+
 class ProfileExtractionItem(BaseModel):
     """单条抽取结果；额外字段直接拒绝，防止合同漂移。
 
     改进工单 04：``dimension`` 是可选解析提示（``None`` 表示开放事实，
     如姓名、宠物、习惯），不再是写入资格或能力上限；``evidence_quote``
     是服务端定位证据的首选字段，事实正文按规范化表述写入但仍须通过证据
-    核验（主体、否定、时间、条件与语义锚点）。
+    核验（主体、否定、时间、条件与语义锚点）。工单 05：
+    ``evidence_fragments`` 是跨轮多片段证据（最多 3 条），主引用仍是当前
+    消息，片段只补足指代对象等无法在单条消息内闭合的含义。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -207,6 +239,15 @@ class ProfileExtractionItem(BaseModel):
         default=None,
         ge=0,
         description="精确原话区间终点（半开区间，与 evidence_start 成对出现）。",
+    )
+    evidence_fragments: list[ProfileExtractionFragment] | None = Field(
+        default=None,
+        max_length=3,
+        description=(
+            "工单 05：补充当前消息结论的窗口内多片段证据（最多 3 条）。"
+            "每条给出消息标识与原话片段；服务端按来源定位并核验，"
+            "不可定位、重复无法消歧或引用助手消息的候选零写入。"
+        ),
     )
 
     @field_validator("normalized_value", "evidence_ref", mode="before")

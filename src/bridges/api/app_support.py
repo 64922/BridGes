@@ -34,6 +34,7 @@ from bridges.profiles import (
     PROFILE_EXTRACTION_MAX_NEIGHBORS,
     PROFILE_EXTRACTION_MAX_RELATED_MEMORIES,
     AtomicProfileService,
+    ProfileNeighborMessage,
     ProfileSourceMessage,
 )
 from bridges.workflows import WorkflowService
@@ -259,20 +260,41 @@ def _paper_metadata_client() -> httpx.Client:
 
 def _profile_neighbor_reader(
     repository: ConversationRepository,
-) -> Callable[[str, str, str], list[str]]:
-    """读取当前消息之前的邻近用户原文，仅供画像抽取解析回指。"""
+) -> Callable[[str, str, str], list[ProfileNeighborMessage]]:
+    """读取当前消息之前的有界邻近窗口，仅供画像抽取解析回指（工单 05）。
 
-    def read(account_id: str, conversation_id: str, message_id: str) -> list[str]:
-        neighbors: list[str] = []
-        for message in reversed(repository.list_messages(account_id, conversation_id)):
-            if message.message_id == message_id:
-                break
-            role = getattr(message.role, "value", message.role)
-            if role == "user" and message.content.strip():
-                neighbors.append(message.content)
-            if len(neighbors) >= PROFILE_EXTRACTION_MAX_NEIGHBORS:
-                break
-        return list(reversed(neighbors))
+    按会话语序取当前消息之前最多 ``PROFILE_EXTRACTION_MAX_NEIGHBORS`` 条
+    消息（含助手消息——跨轮指代需要助手提问等前文），严格不读未来；
+    返回结构化消息，提交期片段核验复用同一读取器。
+    """
+
+    def read(
+        account_id: str, conversation_id: str, message_id: str
+    ) -> list[ProfileNeighborMessage]:
+        messages = list(repository.list_messages(account_id, conversation_id))
+        index = next(
+            (
+                position
+                for position, message in enumerate(messages)
+                if message.message_id == message_id
+            ),
+            None,
+        )
+        if index is None:
+            return []
+        window: list[ProfileNeighborMessage] = []
+        for message in messages[:index]:
+            role = str(getattr(message.role, "value", message.role))
+            if role not in {"user", "assistant"} or not message.content.strip():
+                continue
+            window.append(
+                ProfileNeighborMessage(
+                    message_id=message.message_id,
+                    role=role,
+                    content=message.content,
+                )
+            )
+        return window[-PROFILE_EXTRACTION_MAX_NEIGHBORS:]
 
     return read
 

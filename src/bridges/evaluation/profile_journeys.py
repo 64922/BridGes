@@ -47,7 +47,8 @@ SCENARIOS_BY_ID: dict[str, ProfileScenario] = {
 
 #: 六类已知问题旅程 + 写入正向对照 + 召回对照；经实际服务入口可重放。
 #: 工单 04 落地后 T01–T03 与 T02 均通过（自然自述走语义分支并由证据核验
-#: 提交），旅程基线观测同步更新；T04（邻居范围）与召回对照仍为已知失败。
+#: 提交）；工单 05 修复 T04（真实会话标识 + 按位置的有界窗口，含助手）；
+#: 召回对照（切片采用）仍为已知失败。
 BASELINE_JOURNEYS: tuple[BaselineJourney, ...] = (
     BaselineJourney(
         journey_id="t01-name",
@@ -127,10 +128,10 @@ BASELINE_JOURNEYS: tuple[BaselineJourney, ...] = (
             "以后先给我结论，再展开解释。",
         ),
         target="网关抽取收到真实会话的邻近用户消息（非空），并据此解析指代。",
-        baseline_status="known_failing",
+        baseline_status="pass",
         baseline_observation=(
-            "网关抽取调用 project_id=retry，邻近消息为空；真实会话的邻居读取"
-            "也因逆序遇当前消息即退出而返回空。"
+            "工单 05：抽取携带真实会话标识，窗口按位置取当前消息之前的有界"
+            "前文（含助手消息）并随载荷传入；应用级探测呈现同一窗口。"
         ),
         evidence_note="对照 PRD 3.1 与 T04；责任票 05。",
     ),

@@ -25,6 +25,7 @@ from bridges.profiles.automatic import (
     AutomaticProfileService,
     GatewayAutomaticProfileExtractor,
     InMemoryAutomaticProfileRepository,
+    ProfileNeighborMessage,
     RuleBasedAutomaticProfileExtractor,
     SqliteAutomaticProfileRepository,
 )
@@ -78,6 +79,7 @@ __all__ = [
     "AutomaticProfileService",
     "GatewayAutomaticProfileExtractor",
     "InMemoryAutomaticProfileRepository",
+    "ProfileNeighborMessage",
     "RuleBasedAutomaticProfileExtractor",
     "SqliteAutomaticProfileRepository",
     "ATOMIC_PROFILE_MIGRATION_VERSION",
