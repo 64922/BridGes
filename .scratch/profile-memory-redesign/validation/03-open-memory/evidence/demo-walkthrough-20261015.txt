@@ -1,0 +1,18 @@
+[1] 记住：聊天说出「记住，我养了一只猫叫团子」（库 C:\Users\33755\AppData\Local\Temp\issue03-demo-bysszdv6\open-memory.db）
+    outcome=succeeded_memory_directive
+    items=[('我养了一只猫叫团子', 'active', 'user', '[]', 1)]
+    counts={'profile_items': 1, 'profile_four_dimension_records': 0}
+[2] 页面编辑为「我养了一只猫叫圆子」
+    version=2 user_edited=True
+    items=[('', 'withdrawn', 'user', '[]', 1), ('我养了一只猫叫圆子', 'active', 'user', '[]', 2)]
+[3] 下一轮相关提问采用修改后的内容（query=圆子）
+    adopted=['我养了一只猫叫圆子']
+[4] 删除（乐观锁确认）
+    items=[('', 'withdrawn', 'user', '[]', 1), ('', 'withdrawn', 'user', '[]', 3)]
+    adopted_after_delete=[]
+[5] 重启后一致性
+    items=[('', 'withdrawn', 'user', '[]', 1), ('', 'withdrawn', 'user', '[]', 3)]
+    replay_after_delete_writes=False
+    isolation bob=[]
+    counts={'profile_items': 2, 'profile_four_dimension_records': 0}
+[6] schema_version=80
