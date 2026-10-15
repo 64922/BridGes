@@ -4,7 +4,7 @@
 
 **Blocked by:** 无；可开始。
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **发布状态：** 2026-10-15 用户已确认拆分与依赖，正式发布；尚未实施。
 
@@ -42,3 +42,54 @@
 ## Comments
 
 2026-10-15：用户回复「按此发布」，确认本次拆分与依赖。已发布为 ready-for-agent，尚无实施记录。
+
+### 2026-10-15 实施与基线交付（完成）
+
+**验证版本：** commit `924b0888`（分支 `codex/issue-01-baseline-and-journeys`）；
+评测代码身份锚点见运行锁 `evaluation_sha256=86abbe5b…`、
+`pipeline_snapshot_sha256=0f94e9e4…`，语料 `profile-loop-corpus-v1`（`3b97aa9a…`）。
+stub 与真实（`qwen3.7-plus-2026-05-26`）分开标记。
+
+**交付物：**
+- 语料与旅程：`profile_journey_types/scenarios_baseline/scenarios_planned/profile_journeys`
+  （T01–T20，含否定、混合主体、同义与独立留出变体；八条可运行旅程 = 六类问题
+  + 写入正向对照 + 召回对照）。
+- 运行器与检查：`profile_journey_runner/evidence` 与
+  `scripts/run_issue01_profile_baseline.py`（`--mode deterministic|real|both`、
+  `--journeys` 抽跑、`--proxy`、凭据缺失时 inconclusive + 退出码 2）。
+- 测试：`tests/evaluation/test_profile_journeys.py`（9）+ 
+  `test_profile_baseline_journey_runner.py`（8），17 项通过。
+- 证据与文档：`validation/01-baseline/`（双模式全量 `061452` + 抽跑 `061538`
+  的 baseline/run-lock、`measurement-method.md`、`capability-inventory.md`、
+  `baseline-report.md`）。
+
+**验收标准核对：**
+- [x] T01–T20 均有固定输入、预期与负责票；未支持项标 `planned` 且含「不记为现有缺陷」。
+- [x] 六类问题有入口级实际结果：姓名/宠物/习惯无提取；心理学被敏感规则误拦截；
+      线性代数提取但时间约束丢失；跨轮网关调用 `project_id=retry`、邻居为空，
+      真实会话探测同样为空。
+- [x] 运行锁固定语料摘要、代码摘要、合同版本、预算常量与凭据来源；stub/real 分开。
+- [x] 已知失败单独记录（六类 + 召回对照），无跳过、无改预期、无整体标红。
+- [x] 指标覆盖准确、遗漏、误归属、修订、召回、回答收益、错误复发、成本与延迟
+      （见 `measurement-method.md` 第 6 节；真实模式实测 10 次调用、4251/720 token）。
+- [x] 无真实私人原文、凭据或生产库入库；语料为合成数据，每条旅程独立账户。
+- [x] 抽跑一个已通过（`positive-academic-control`）与一个已知失败（`t01-name`）
+      的完整旅程，结论与全量一致（`061538` 证据）。
+
+**检查记录：**
+- 完整 pytest：分支 346 failed / 5536 passed / 39 skipped，main 345 / 5522 / 37
+  （两侧均忽略 4 个 main 上也存在的 career_plan 收集错误）。失败清单归一化比对：
+  分支多 3 项（架构扫描因一个新增文件带 UTF-8 BOM 失败——已去除 BOM 并定向复验
+  31/33 通过，余 2 项 main 同失败）；main 多 2 项（`tests/closeout/test_api_boot.py`
+  依赖 `D:\BridGes\.venv` 且该 venv 缺 `bridges`，属主检出环境差异，分支同测试通过）。
+  `tests/evaluation` 整目录失败清单两侧逐条一致（各 12 项既有失败）。
+- 新增范围：ruff 干净；mypy 6 个新源文件 0 条（同命令 84 条均散布在其他既有文件，
+  与 main 基线一致）；`pip check` 通过；新增源码/脚本/测试均 < 500 行。
+- 额外基线观察（已记入报告）：问句被规则抽取器误判为自述，产出杂项条目
+  `什么专业吗` 并 supersede 真事实（04/05 范围）；supersede 触发
+  「画像撤回传播失效摘要失败」嵌套事务告警（main 既有，best-effort 传播被吞并，
+  建议 11/18 复核）。
+
+**剩余限制：** 真实模式「回答收益」的因果归因需 18 的复核（回答正确与会话历史
+可见无法区分）；召回对照当前失败已并入基线期望，责任票（11/15）修复后按同一
+对照复验。Status 改为 `ready-for-human`。
