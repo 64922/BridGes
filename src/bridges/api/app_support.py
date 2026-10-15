@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from bridges.api import commute as commute_api
 from bridges.chat import ConversationRepository
 from bridges.config import Settings
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord, CapabilityStatus
+from bridges.contracts.atomic_profile import AtomicProfileItemStatus
 from bridges.contracts.workflows import WorkflowRunStatus
 from bridges.credentials.global_credential import is_global_qwen_key_configured
 from bridges.credentials.store import CredentialStorePort, build_credential_store
@@ -28,7 +30,12 @@ from bridges.domain import (
 )
 from bridges.invalidation import AffectedDownstream, InvalidationService
 from bridges.paper.sources import ENRICH_TIMEOUT_SECONDS
-from bridges.profiles import PROFILE_EXTRACTION_MAX_NEIGHBORS, ProfileSourceMessage
+from bridges.profiles import (
+    PROFILE_EXTRACTION_MAX_NEIGHBORS,
+    PROFILE_EXTRACTION_MAX_RELATED_MEMORIES,
+    AtomicProfileService,
+    ProfileSourceMessage,
+)
 from bridges.workflows import WorkflowService
 
 RETIRED_EXPRESSION_CAPABILITY = "expression_draft_generation"
@@ -266,6 +273,41 @@ def _profile_neighbor_reader(
             if len(neighbors) >= PROFILE_EXTRACTION_MAX_NEIGHBORS:
                 break
         return list(reversed(neighbors))
+
+    return read
+
+
+def _profile_memory_reader(
+    service: AtomicProfileService,
+) -> Callable[[str, str], list[str]]:
+    """读取与当前消息词面相关的既有原子条目，仅供画像抽取稳定表述。
+
+    工单 04：相关旧记忆只作语义参考（有界、同账户、脱敏前用户原文），
+    绝不作为事实证据；读取失败不阻断抽取。
+    """
+
+    def read(account_id: str, content: str) -> list[str]:
+        probe = re.sub(r"\s+", "", content)
+        if not probe:
+            return []
+        try:
+            items = service.list_items(account_id)
+        except Exception:  # noqa: BLE001 - 线索读取失败不阻断抽取
+            return []
+        matches: list[str] = []
+        for item in items[:50]:
+            text = item.text.strip()
+            if not text or item.status != AtomicProfileItemStatus.ACTIVE:
+                continue
+            collapsed = re.sub(r"\s+", "", text)
+            if any(
+                collapsed[index : index + 2] in probe
+                for index in range(max(len(collapsed) - 1, 0))
+            ):
+                matches.append(text)
+            if len(matches) >= PROFILE_EXTRACTION_MAX_RELATED_MEMORIES:
+                break
+        return matches
 
     return read
 

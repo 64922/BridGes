@@ -34,14 +34,30 @@ PROFILE_SOURCE_LABELS: dict[ProfileExtractionSource, str] = {
     ProfileExtractionSource.QWEN_MODEL: "Qwen 辅助识别",
 }
 
+#: 输出载荷合同版本：工单 04 起 dimension 可选、允许开放事实与相关记忆。
+PROFILE_EXTRACTION_OUTPUT_SCHEMA_VERSION = "profile-extraction-v3"
+#: 网关适配器识别为画像专属合同错误的输出合同版本（历史版本继续识别，
+#: 新增版本必须同步加入，否则合同错误码会漂移为通用结构化输出错误）。
+PROFILE_EXTRACTION_CONTRACT_VERSIONS = frozenset(
+    {
+        "profile-extraction-v1",
+        "profile-extraction-v2",
+        PROFILE_EXTRACTION_OUTPUT_SCHEMA_VERSION,
+    }
+)
+
 #: 画像页面/首次说明使用的诚实混合策略说明；禁止夸大为"全部由 Qwen
-#: 生成"或"完全不使用模型"。改进工单 17：普通提取只在回答正常完成后异步
-#: 入队，模型调用在写事务外进行；每次真实调用保留运行锁与调用版本合同，
-#: 成本与调用计数按有界重试记录在既有审计里。
+#: 生成"或"完全不使用模型"。改进工单 04：自然自述与含义明确的表达统一由
+#: 全局配置的 Qwen 语义识别提出候选，本机规则只做证据与边界复核（第三方、
+#: 引用、假设、敏感信息与一次性情绪不写入）；更正与本轮控制指令仍由本机
+#: 确定性规则即时处理，不调用模型。普通提取只在回答正常完成后异步入队，
+#: 模型调用在写事务外进行；每次真实调用保留运行锁与调用版本合同，成本与
+#: 调用计数按有界重试记录在既有审计里。
 PROFILE_HYBRID_EXPLANATION = (
-    "自动画像采用混合整理：明确的自我描述、学习目标、行为观察与更正由本机"
-    "规则识别，不会调用模型；含义不够明确的表述可能使用全局配置的 Qwen "
-    "辅助识别。普通整理只在回答正常完成后异步进行，调用在写事务外完成，"
+    "自动画像采用语义整理：你关于自己的稳定信息由全局配置的 Qwen 语义"
+    "识别提出候选，本机规则复核证据与边界（第三方、引用、假设、敏感自述"
+    "和一次性情绪不会自动长期保存）；明确的更正与本轮控制指令由本机规则"
+    "即时处理。普通整理只在回答正常完成后异步进行，调用在写事务外完成，"
     "每次真实调用保留可审计的运行锁与调用版本。你可以随时查看、修改、"
     "撤回或关闭自动记录。"
 )
@@ -57,7 +73,14 @@ class ProfileExtractionStatus(StrEnum):
 
 
 class ProfileExtractionOutcome(StrEnum):
-    """独立于队列生命周期状态的稳定内部结果。"""
+    """独立于队列生命周期状态的稳定内部结果。
+
+    工单 04 的四个用户可见档位与这些取值的对应关系：
+    「无可记事实」= NO_SIGNAL / SUCCEEDED_EMPTY；「已提交」=
+    SUCCEEDED_WRITTEN 及各成功变更档；「暂缓」= SUCCEEDED_OBSERVED
+    （候选已记为观察、在晋升窗口内等待更多证据，尚未长期化）；「失败」=
+    CORRECTION_FAILED / PENDING_RETRY / PERMANENT_FAILURE。
+    """
 
     NO_SIGNAL = "no_signal"
     SUCCEEDED_EMPTY = "succeeded_empty"
@@ -121,13 +144,30 @@ class ProfileCorrectionResult(BaseModel):
 
 
 class ProfileExtractionItem(BaseModel):
-    """单条抽取结果；额外字段直接拒绝，防止合同漂移。"""
+    """单条抽取结果；额外字段直接拒绝，防止合同漂移。
+
+    改进工单 04：``dimension`` 是可选解析提示（``None`` 表示开放事实，
+    如姓名、宠物、习惯），不再是写入资格或能力上限；``evidence_quote``
+    是服务端定位证据的首选字段，事实正文按规范化表述写入但仍须通过证据
+    核验（主体、否定、时间、条件与语义锚点）。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    dimension: FourDimension = Field(description="四维画像枚举。")
+    dimension: FourDimension | None = Field(
+        default=None,
+        description=(
+            "四维解析提示（可选）；帮助裸值解析事实身份（如「考研」）。"
+            "开放事实（姓名、宠物、习惯等）为空，不要求伪造类别。"
+        ),
+    )
     normalized_value: StrictStr = Field(
-        min_length=1, max_length=200, description="规范化画像值。"
+        min_length=1,
+        max_length=200,
+        description=(
+            "规范值锚点，必须是证据原话中真实出现的连续片段；事实正文可"
+            "规范化改写，但该锚点供服务端确定性核验。"
+        ),
     )
     evidence_ref: StrictStr = Field(
         min_length=1, max_length=200, description="内部消息证据引用。"
@@ -140,18 +180,27 @@ class ProfileExtractionItem(BaseModel):
         default=None,
         max_length=500,
         description=(
-            "完整事实正文（可选）。关系会从 normalized_value 中丢失时，本地规则"
-            "用原句片段补齐；模型候选按 17 提供完整事实。缺失时沿用以来源记录"
-            "正文为事实正文的旧行为，不伪造原话。"
+            "完整事实正文（可选）。允许规范化改写（不要求逐字原文子串），"
+            "但不得引入原话没有的主体、时间、条件或对象；缺失时沿用以来源"
+            "记录正文为事实正文的旧行为，不伪造原话。"
+        ),
+    )
+    evidence_quote: str | None = Field(
+        default=None,
+        max_length=300,
+        description=(
+            "改进工单 04：支持该候选的当前消息原话片段（精确子串）。服务端"
+            "按原文定位并核验主体、否定、时间与条件；与 evidence_start/end "
+            "同时提供且不一致时以定位结果为准。"
         ),
     )
     evidence_start: int | None = Field(
         default=None,
         ge=0,
         description=(
-            "改进工单 17：支持原话在用户消息中的 Unicode 码点半开区间起点"
+            "支持原话在用户消息中的 Unicode 码点半开区间起点"
             "[start, end)。有区间时按精确证据验证主体、关系、否定与时间；"
-            "缺失时退回旧的整消息证据检查。"
+            "缺失时退回整消息证据检查（旧合同行为）。"
         ),
     )
     evidence_end: int | None = Field(
@@ -176,11 +225,15 @@ class ProfileExtractionItem(BaseModel):
 
 
 class ProfileExtractionOutput(BaseModel):
-    """抽取器唯一允许返回的结构化载荷。"""
+    """抽取器唯一允许返回的结构化载荷。
+
+    改进工单 04：一条消息允许多项事实（最多 6 条）；超出按合同错误处理，
+    由提示词约束模型自行控制在界内。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    items: list[ProfileExtractionItem] = Field(max_length=4)
+    items: list[ProfileExtractionItem] = Field(max_length=6)
 
 
 class ProfileExtractionRun(BaseModel):

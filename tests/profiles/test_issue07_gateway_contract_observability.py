@@ -461,7 +461,9 @@ def test_profile_status_is_account_scoped_and_distinguishes_empty_and_failed() -
         mode="companion",
     )
 
-    assert result.run.outcome == ProfileExtractionOutcome.NO_SIGNAL
+    # 工单 04：非硬禁止消息进入抽取队列（本组合为本地规则抽取器）：
+    # 「今天天气不错」照常零写入，记「无可记事实」的成功空结果。
+    assert result.run.outcome == ProfileExtractionOutcome.SUCCEEDED_EMPTY
     assert service.profile_status("account-1").status == "empty"
     assert service.profile_status("account-2").status == "empty"
 

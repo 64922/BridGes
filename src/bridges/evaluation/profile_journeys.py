@@ -45,7 +45,9 @@ SCENARIOS_BY_ID: dict[str, ProfileScenario] = {
     scenario.scenario_id: scenario for scenario in SCENARIOS
 }
 
-#: 六类已知问题旅程 + 写入正向对照 + 召回对照（当前失败）；经实际服务入口可重放。
+#: 六类已知问题旅程 + 写入正向对照 + 召回对照；经实际服务入口可重放。
+#: 工单 04 落地后 T01–T03 与 T02 均通过（自然自述走语义分支并由证据核验
+#: 提交），旅程基线观测同步更新；T04（邻居范围）与召回对照仍为已知失败。
 BASELINE_JOURNEYS: tuple[BaselineJourney, ...] = (
     BaselineJourney(
         journey_id="t01-name",
@@ -54,10 +56,10 @@ BASELINE_JOURNEYS: tuple[BaselineJourney, ...] = (
         title="明确姓名自述不应漏提取",
         user_turns=("我叫小林。",),
         target="提取「称呼为小林」并在后续回答中使用。",
-        baseline_status="known_failing",
+        baseline_status="pass",
         baseline_observation=(
-            "无提取运行、无记录、无条目；称呼只出现在当前轮回复（模型直接"
-            "复述输入），不进入画像。"
+            "自然自述经语义分支提出候选（deterministic 基线为回声提案替身），"
+            "生产证据核验通过后原子条目写入「我叫小林」；04 之前无提取运行。"
         ),
         evidence_note="对照 PRD 3.1 与 T01；责任票 03/04。",
     ),
@@ -68,8 +70,10 @@ BASELINE_JOURNEYS: tuple[BaselineJourney, ...] = (
         title="宠物自述不应漏提取",
         user_turns=("我养了一只猫叫团子。",),
         target="提取「养了一只叫团子的猫」并在后续回答中使用。",
-        baseline_status="known_failing",
-        baseline_observation="无提取运行、无记录、无条目。",
+        baseline_status="pass",
+        baseline_observation=(
+            "同上：召回替身提案 → 证据核验 → 原子条目写入「我养了一只猫叫团子」。"
+        ),
         evidence_note="对照 PRD 3.1 与 T01；责任票 03/04。",
     ),
     BaselineJourney(
@@ -79,8 +83,10 @@ BASELINE_JOURNEYS: tuple[BaselineJourney, ...] = (
         title="习惯自述不应漏提取",
         user_turns=("周末一般会去爬山。",),
         target="提取「周末一般去爬山」并在周末相关回答中使用。",
-        baseline_status="known_failing",
-        baseline_observation="无提取运行、无记录、无条目。",
+        baseline_status="pass",
+        baseline_observation=(
+            "习惯表达（一般会…）属于自然自述，写入原子条目「周末一般会去爬山」。"
+        ),
         evidence_note="对照 PRD 3.1 与 T01；责任票 03/04。",
     ),
     BaselineJourney(
@@ -90,8 +96,11 @@ BASELINE_JOURNEYS: tuple[BaselineJourney, ...] = (
         title="学科兴趣不应被敏感词误拦截",
         user_turns=("我喜欢心理学。",),
         target="提取学科兴趣「心理学」，不产生心理推断。",
-        baseline_status="known_failing",
-        baseline_observation="分类为 forbidden/sensitive_content，不产生提取运行。",
+        baseline_status="pass",
+        baseline_observation=(
+            "「心理学」不再被 心理 关键词误判为敏感内容；语义分支提取成功并"
+            "写入原子条目，不产生心理推断。"
+        ),
         evidence_note="对照 PRD 3.1 与 T02；责任票 04/09。",
     ),
     BaselineJourney(
@@ -101,8 +110,11 @@ BASELINE_JOURNEYS: tuple[BaselineJourney, ...] = (
         title="学习内容与时间限制应同时保留",
         user_turns=("我在学线性代数，每晚只能抽出半小时。",),
         target="提取「正在学线性代数」与「每晚约半小时」。",
-        baseline_status="known_failing",
-        baseline_observation="仅提取 knowledge_interest=线性代数，时间约束丢失。",
+        baseline_status="pass",
+        baseline_observation=(
+            "语义分支提取整句事实（含学习内容与每晚半小时的时间限定），"
+            "证据核验保留时间限定后写入原子条目；04 之前时间约束丢失。"
+        ),
         evidence_note="对照 PRD 3.1 与 T03；责任票 04/11。",
     ),
     BaselineJourney(
@@ -126,13 +138,14 @@ BASELINE_JOURNEYS: tuple[BaselineJourney, ...] = (
         journey_id="positive-academic-control",
         scenario_id="T03",
         problem_class="positive_control",
-        title="正向对照：明确学业自述走通提取与成对写入",
+        title="正向对照：明确学业自述走通提取与原子写入",
         user_turns=("我是计算机专业的大二学生。",),
-        target="高置信学业自述被规则抽取成功，四维记录与原子条目成对写入。",
+        target="高置信学业自述经语义分支（回声替身/真实模型）成功提交原子条目。",
         baseline_status="pass",
         baseline_observation=(
-            "提取运行 succeeded_written，四维记录与原子条目成对出现，条目保持"
-            " active。采用/召回不在本旅程检查范围（见 recall-academic-control）。"
+            "提取运行 succeeded_written，原子条目写入且保持 active（03 起原子"
+            "条目是长期信息唯一权威，四维记录不再参与写入）。采用/召回不在本"
+            "旅程检查范围（见 recall-academic-control）。"
         ),
         evidence_note="当前可用写入路径的正向对照；后续票不得破坏。",
     ),

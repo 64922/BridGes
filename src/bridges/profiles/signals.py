@@ -1,4 +1,18 @@
-"""统一的四维画像消息信号分类。"""
+"""统一的画像消息信号分类。
+
+改进工单 04：本地规则不再否决自然自述，也不再代替语义补提取。分类结果
+改为承担三件事：
+
+- **调度预检**：只有空消息与确定性的硬禁止消息（引用/转述、假设扮演、
+  第三方、敏感内容，且无任何合规片段）不进入语义提取；其余消息交给
+  语义抽取提出候选（``ProfileExtractionSource.QWEN_MODEL``），本地规则
+  只对行为观察与明确更正保留确定性分支。
+- **证据片段核验**：语义候选引用的原话片段按本地规则判定主体归属
+  （自述/模糊/行为/禁止）、否定与一次性状态，服务端据此决定提交、
+  降级观察或拒绝。
+- **自然自述识别**：第一人称陈述句、习惯/频率表达与可复用偏好约束被
+  识别为自然自述（``natural_self_description``），不再依赖固定句式。
+"""
 
 from __future__ import annotations
 
@@ -9,7 +23,7 @@ from enum import StrEnum
 from bridges.contracts.profiles import FourDimension
 
 
-PROFILE_SIGNAL_CLASSIFIER_VERSION = "profile-signal-v2"
+PROFILE_SIGNAL_CLASSIFIER_VERSION = "profile-signal-v3"
 
 
 class ProfileSignalCategory(StrEnum):
@@ -105,10 +119,19 @@ _REUSABLE_PREFERENCE = re.compile(
     r"|(?:先|再)(?:给|讲|说|写|列|画|用)"
 )
 _SENSITIVE = re.compile(
-    r"(?:焦虑|抑郁|情绪|健康|疾病|病史|诊断|人格|心理|性格|政治|宗教|"
+    r"(?:焦虑|抑郁|情绪|健康|疾病|病史|诊断|人格|心理(?!学)|性格|政治|宗教|"
     r"佛教|基督教|伊斯兰教|道教|天主教|犹太教|糖尿病|癌症|高血压|"
     r"身份证|身份信息|财务|密码|密钥|邮箱|手机号|住址|地址|精确位置|"
     r"私信|私人通信)"
+)
+#: 改进工单 04：短期情绪与临时状态不构成长期事实（「今天好累」）。
+#: 分类为 NO_SIGNAL 但保留独立原因码，供抽取与审计区分「无可记事实」的
+#: 具体理由；显式敏感词（焦虑/抑郁等）仍按 FORBIDDEN 处理，更严格。
+_TRANSIENT_STATE = re.compile(
+    r"(?:今天|现在|刚刚|刚才|这会儿|最近|这两天)[^。！？!?；;]{0,10}?"
+    r"(?:好累|累死|累了|有点累|好烦|烦躁|郁闷|难受|难过|心情|开心|"
+    r"不高兴|生气|紧张|压力)"
+    r"|(?:心情|情绪)(?:不太|有点|很)?(?:好|差|低|糟)"
 )
 
 _EXPLICIT_PROFILE = re.compile(
@@ -171,6 +194,20 @@ _QUESTION_LIKE = re.compile(
     r"(?:是|为|：|:)?\s*"
     r"(?:如何|怎么|为什么|什么|能否|请问|是否|有没有))"
 )
+#: 改进工单 04：第一人称疑问不进入自然自述（「我该怎么学」「要不要继续」
+#: 「这样对吗」）；它们保持行为观察语义，不产生长期事实。
+_NATURAL_QUESTION = re.compile(
+    r"^我(?:现在|目前)?(?:该|应该|需要|要不要|是否|能不能|可不可以|"
+    r"如何|怎么|为什么|想请问|想问一下)"
+    r"|(?:吗|呢)[？?]?$"
+)
+#: 改进工单 04：自然自述的通用判定（不依赖具体谓词词表）。第一人称
+#: 主语的陈述句（可带并列/转折连接词），或带习惯与频率标记的省略主语
+#: 陈述，视为自然自述候选；是否构成稳定事实由语义抽取提出、服务端核验。
+_NATURAL_SELF = re.compile(
+    r"^(?:但|但是|不过|然后|而且|另外|还有)?(?:我|我家|我的)"
+    r"|(?:一般|平常|通常|总是|经常|习惯|平时|偶尔|每(?:天|周|晚|次|轮))"
+)
 _BEHAVIOR_PREFIX = re.compile(
     r"^(?:找|搜索|查找|检索|查|看|阅读|推荐|了解|介绍|什么是|"
     r"如何|怎么|为什么|能否|请问)\s*\S+"
@@ -217,6 +254,11 @@ class ProfileSignalClassifier:
                 correction_intent=correction_intent,
             )
 
+        if _TRANSIENT_STATE.search(text):
+            return self._result(
+                ProfileSignalCategory.NO_SIGNAL, "transient_state", 0.9
+            )
+
         if self._has_ambiguous_profile_expression(text):
             return self._result(
                 ProfileSignalCategory.AMBIGUOUS,
@@ -228,6 +270,12 @@ class ProfileSignalClassifier:
             return self._result(
                 ProfileSignalCategory.BEHAVIOR_OBSERVATION,
                 "course_or_profile_question",
+                0.9,
+            )
+        if _NATURAL_QUESTION.search(text):
+            return self._result(
+                ProfileSignalCategory.BEHAVIOR_OBSERVATION,
+                "natural_question",
                 0.9,
             )
 
@@ -255,6 +303,16 @@ class ProfileSignalClassifier:
                 ProfileSignalCategory.HIGH_CONFIDENCE_SELF,
                 "subject_omitted_learning_statement",
                 0.95,
+            )
+
+        # 改进工单 04：自然自述不再依赖固定句式（「我叫小林」「我养了一只
+        # 猫叫团子」「周末一般会去爬山」）；关键词规则只做主体归属与调度
+        # 预检，稳定事实由语义提取提出并复核。
+        if _NATURAL_SELF.search(text) or _REUSABLE_PREFERENCE.search(text):
+            return self._result(
+                ProfileSignalCategory.EXPLICIT_SELF,
+                "natural_self_description",
+                0.8,
             )
 
         if _BEHAVIOR_PREFIX.search(text):
@@ -318,9 +376,9 @@ class ProfileSignalClassifier:
     def has_reusable_signal(self, content: str) -> bool:
         """本地预检：消息是否含任何可复用画像信号（允许混合内容）。
 
-        整消息分类可处理、任一片段可处理，或出现本地规则覆盖不到的明确
-        偏好/约束表达时为真；纯问候、纯工具命令、仅第三方/引用/敏感内容
-        仍可整条跳过，不要求每条消息调用模型。
+        整消息分类可处理、任一片段可处理，或出现明确偏好/约束表达时为真。
+        工单 04 之后自然自述属于可处理信号；本方法只用于审计与兼容读取，
+        抽取调度以 :meth:`is_schedulable` 为准（规则不再否决自然自述）。
         """
 
         if self.classify(content).should_process:
@@ -331,6 +389,24 @@ class ProfileSignalClassifier:
         ):
             return True
         return bool(_REUSABLE_PREFERENCE.search(content))
+
+    def is_schedulable(
+        self,
+        content: str,
+        classification: ProfileSignalClassification | None = None,
+    ) -> bool:
+        """语义提取调度预检（工单 04）。
+
+        关键词规则不再否决自然自述：只有空消息与确定性的硬禁止消息
+        （整消息及所有片段都被引用/假设/第三方/敏感规则否决）不进入
+        语义提取队列；其余消息交给语义抽取提出候选，由证据核验与提交
+        边界决定写不写。
+        """
+
+        if not content.strip():
+            return False
+        effective = classification or self.extraction_classification(content)
+        return effective.category != ProfileSignalCategory.FORBIDDEN
 
     def extraction_classification(self, content: str) -> ProfileSignalClassification:
         """给出抽取实际使用的有效分类（整消息优先，其次合规片段）。

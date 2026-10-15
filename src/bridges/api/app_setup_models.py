@@ -11,6 +11,7 @@ from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.ai.startup_check import log_qwen_startup_connectivity_warnings
 from bridges.ai.stream_script_fixture import ScriptedChatStreamAdapter
 from bridges.api.app_support import (
+    _profile_memory_reader,
     _profile_neighbor_reader,
 )
 from bridges.chat.turn import CHAT_CAPABILITY_NAME
@@ -115,6 +116,8 @@ def configure_model_services(app: FastAPI) -> None:
                 if profile_conversation_repository is not None
                 else None
             ),
+            # 改进工单 04：相关旧记忆只作稳定表述参考，绝不作为事实证据。
+            memory_reader=_profile_memory_reader(app.state.atomic_profile_service),
         )
     )
     app.state.automatic_profile_service = AutomaticProfileService(

@@ -11,7 +11,8 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 #: 评测语料版本：任何场景文本、预期或变体改动都必须提升版本。
-PROFILE_JOURNEY_CORPUS_VERSION = "profile-loop-corpus-v1"
+#: v2（工单 04）：T01–T03/T02 基线观测从 known_failing 更新为 pass。
+PROFILE_JOURNEY_CORPUS_VERSION = "profile-loop-corpus-v2"
 
 #: 合成对话的发生日期（写入证据，提示数据不是真实用户对话）。
 SYNTHETIC_CONVERSATION_DATE = "2026-10-15（合成）"

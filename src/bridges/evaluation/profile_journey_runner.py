@@ -18,7 +18,9 @@
 from __future__ import annotations
 
 import json
+import re
 import time
+from collections.abc import Callable
 from typing import Any
 
 from bridges.ai.adapters import AdapterResult
@@ -40,22 +42,67 @@ RESPONSE_MODE_REAL = "real"
 
 _PROFILE_EXTRACTION_CAPABILITY = ("qwen_profile_extraction", "1")
 _NEIGHBOR_HINT_MARKER = "仅供回指的邻近用户消息"
+_RELATED_MEMORY_MARKER = "已知的相关旧记忆"
+_EVIDENCE_REF_IN_PROMPT = re.compile(r'evidence_ref 固定填写 "([^"]+)"')
+_TRAILING_PUNCTUATION = "，。！？!?,.;；：:、 \t\r\n"
 
 
 def _rows(database: Any, sql: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
     return [dict(row) for row in database.connection.execute(sql, params).fetchall()]
 
 
-class RecordingProfileExtractionAdapter:
-    """确定性替身：录制最终载荷并返回固定合同输出。
+def echo_profile_proposal(payload: dict[str, Any]) -> dict[str, Any]:
+    """确定性回声提案替身：把当前消息整体作为一条候选事实提出。
 
-    只用于 deterministic 模式在真实入口路径上复现「邻近消息/会话标识」
-    问题；``output`` 是替身响应，不是真实模型结果，不得用于质量结论。
+    只用于 deterministic 基线的机制复现：声称支持的原话就是整条消息，
+    取值锚点为去尾标点后的消息正文。候选仍要经过生产证据核验与提交
+    边界；替身不冒充真实模型语义，也不能用来得出质量结论。
     """
 
-    def __init__(self, output: dict[str, Any] | None = None) -> None:
+    messages = payload.get("messages") or []
+    current = str(messages[-1].get("content") or "").strip() if messages else ""
+    message_id = ""
+    for message in messages:
+        if str(message.get("role")) != "system":
+            continue
+        match = _EVIDENCE_REF_IN_PROMPT.search(str(message.get("content") or ""))
+        if match is not None:
+            message_id = match.group(1)
+            break
+    value = current.strip(_TRAILING_PUNCTUATION)
+    if not message_id or not value:
+        return {"items": []}
+    return {
+        "items": [
+            {
+                "normalized_value": value,
+                "fact_text": value,
+                "evidence_ref": message_id,
+                "evidence_quote": current,
+                "reliability": 0.99,
+                "action": "create",
+            }
+        ]
+    }
+
+
+class RecordingProfileExtractionAdapter:
+    """确定性替身：录制最终载荷并按响应策略返回合同输出。
+
+    只用于 deterministic 模式在真实入口路径上复现「邻近消息/会话标识」与
+    「证据核验」机制；``responder`` 生成的是替身响应，不是真实模型结果，
+    不得用于质量结论。
+    """
+
+    def __init__(
+        self,
+        output: dict[str, Any] | None = None,
+        *,
+        responder: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    ) -> None:
         self.calls: list[dict[str, Any]] = []
         self._output = output or {"items": []}
+        self._responder = responder
 
     def call(
         self, capability: Any, run_context: Any, payload: dict[str, Any]
@@ -66,6 +113,11 @@ class RecordingProfileExtractionAdapter:
             for message in messages
             if _NEIGHBOR_HINT_MARKER in str(message.get("content") or "")
         ]
+        related_memory_hints = [
+            str(message.get("content") or "")
+            for message in messages
+            if _RELATED_MEMORY_MARKER in str(message.get("content") or "")
+        ]
         self.calls.append(
             {
                 "run_id": run_context.run_id,
@@ -73,14 +125,17 @@ class RecordingProfileExtractionAdapter:
                 "message_count": len(messages),
                 "neighbor_hint_present": bool(neighbor_hints),
                 "neighbor_hint_content": neighbor_hints,
+                "related_memory_hint_present": bool(related_memory_hints),
+                "related_memory_hint_content": related_memory_hints,
                 "current_message_content": (
                     str(messages[-1].get("content") or "") if messages else ""
                 ),
             }
         )
+        output = self._responder(payload) if self._responder is not None else self._output
         return AdapterResult(
             actual_model_id=capability.model_id,
-            output=self._output,
+            output=output,
             usage={"prompt_tokens": 0, "completion_tokens": 0},
         )
 
@@ -91,14 +146,15 @@ def install_deterministic_profile_extractor(
     """把 test 环境的规则抽取器替换为生产接线的网关抽取器 + 录制替身。
 
     邻居读取函数与生产装配完全相同（``_profile_neighbor_reader``）；网关
-    抽取器的模型适配器是录制替身。仅用于确定性基线，替身响应不冒充真实
-    模型输出。
+    抽取器的模型适配器是录制替身，默认响应策略是回声提案（工单 04 起：
+    自然自述经语义分支提出候选，再由生产证据核验决定写入）。仅用于确定性
+    基线，替身响应不冒充真实模型输出。
     """
 
     from bridges.api.app_support import _profile_neighbor_reader
     from bridges.profiles import GatewayAutomaticProfileExtractor
 
-    adapter = RecordingProfileExtractionAdapter()
+    adapter = RecordingProfileExtractionAdapter(responder=echo_profile_proposal)
     app.state.model_gateway.register_adapter(*_PROFILE_EXTRACTION_CAPABILITY, adapter)
     conversation_repository = getattr(app.state, "profile_conversation_repository", None)
     extractor = GatewayAutomaticProfileExtractor(

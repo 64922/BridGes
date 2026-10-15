@@ -29,7 +29,7 @@ _VALID_STATUSES = {SCENARIO_STATUS_BASELINE_DEFECT, SCENARIO_STATUS_PLANNED}
 
 
 def test_corpus_version_is_frozen_label() -> None:
-    assert PROFILE_JOURNEY_CORPUS_VERSION == "profile-loop-corpus-v1"
+    assert PROFILE_JOURNEY_CORPUS_VERSION == "profile-loop-corpus-v2"
 
 
 def test_scenarios_cover_t01_to_t20_in_order() -> None:

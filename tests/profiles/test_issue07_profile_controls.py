@@ -299,13 +299,17 @@ def test_set_account_controls_requires_at_least_one_field() -> None:
 
 
 def test_this_turn_only_request_never_writes_long_term_preference() -> None:
-    """本次临时要求只影响当前轮，不改写长期偏好（验收标准 4）。"""
+    """本次临时要求只影响当前轮，不改写长期偏好（验收标准 4）。
+
+    工单 04：非硬禁止消息进入语义提取队列（本组合为本地规则抽取器），
+    无可记事实记 SUCCEEDED_EMPTY，与 NO_SIGNAL 同属「无可记事实」档位。
+    """
     atomic, automatic = _make_service(InMemoryAutomaticProfileRepository())
 
     result = _ingest(automatic, 1, "这次直接给详细推导")
 
     assert result.run is not None
-    assert result.run.outcome == ProfileExtractionOutcome.NO_SIGNAL
+    assert result.run.outcome == ProfileExtractionOutcome.SUCCEEDED_EMPTY
     assert atomic.list_items(ACCOUNT) == []
 
 

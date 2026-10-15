@@ -26,6 +26,7 @@ from bridges.ai.adapters import (
 from bridges.ai.qwen_client import QwenApiClient, first_choice
 from bridges.contracts.ai import CapabilityRecord, StructuredOutputFormat
 from bridges.contracts.profile_extraction import (
+    PROFILE_EXTRACTION_CONTRACT_VERSIONS,
     ProfileExtractionAction,
     ProfileExtractionOutput,
 )
@@ -213,8 +214,7 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
         message = choice.get("message")
         contract_error_code = (
             "profile_extraction_contract_invalid"
-            if payload.get("output_contract")
-            in {"profile-extraction-v1", "profile-extraction-v2"}
+            if payload.get("output_contract") in PROFILE_EXTRACTION_CONTRACT_VERSIONS
             else "structured_output_contract_invalid"
         )
         if choice.get("finish_reason") in {"content_filter", "safety"}:

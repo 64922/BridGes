@@ -119,41 +119,53 @@ def test_deterministic_extractor_replaces_rule_extractor_with_gateway_wiring(
     )
 
 
-def test_name_pet_and_habit_statements_produce_no_extraction_run(
+def test_name_pet_and_habit_statements_extract_through_semantic_branch(
     baseline_env: Any,
 ) -> None:
+    """工单 04：自然自述经语义分支提出候选、证据核验后写入原子条目。"""
+
     journeys = _run_all_journeys(baseline_env, "personal-facts")
-    for journey_id in ("t01-name", "t01-pet", "t01-habit"):
+    needle_by_journey = {
+        "t01-name": "小林",
+        "t01-pet": "团子",
+        "t01-habit": "爬山",
+    }
+    for journey_id, needle in needle_by_journey.items():
         journey = journeys[journey_id]
-        assert journey["profile_snapshot"]["extraction_runs"] == [], journey_id
-        assert journey["profile_snapshot"]["four_dimensions"] == [], journey_id
-        assert journey["profile_snapshot"]["items"] == [], journey_id
-        assert journey["evaluation"]["observed_status"] == "known_failing", journey_id
+        runs = journey["profile_snapshot"]["extraction_runs"]
+        assert [run["status"] for run in runs] == ["succeeded"], journey_id
+        assert all(run["source"] == "qwen_model" for run in runs), journey_id
+        item_texts = [
+            item["text"] for item in journey["profile_snapshot"]["items"]
+        ]
+        assert any(needle in text for text in item_texts), (journey_id, item_texts)
+        assert journey["evaluation"]["observed_status"] == "pass", journey_id
         assert journey["evaluation"]["baseline_match"] is True, journey_id
 
 
-def test_psychology_interest_is_blocked_as_sensitive_by_rule(baseline_env: Any) -> None:
-    journeys = _run_all_journeys(baseline_env, "sensitive-keyword")
-    journey = journeys["t02-psychology"]
-    assert journey["profile_snapshot"]["extraction_runs"] == []
-    assert journey["evaluation"]["observed_status"] == "known_failing"
-
-
-def test_time_limit_is_dropped_while_learning_content_survives(
+def test_psychology_interest_is_extracted_not_blocked_by_sensitive_keyword(
     baseline_env: Any,
 ) -> None:
+    journeys = _run_all_journeys(baseline_env, "sensitive-keyword")
+    journey = journeys["t02-psychology"]
+    runs = journey["profile_snapshot"]["extraction_runs"]
+    assert [run["status"] for run in runs] == ["succeeded"]
+    assert any(
+        "心理学" in item["text"] for item in journey["profile_snapshot"]["items"]
+    )
+    assert journey["evaluation"]["observed_status"] == "pass"
+    assert journey["evaluation"]["baseline_match"] is True
+
+
+def test_time_limit_and_learning_content_both_survive(baseline_env: Any) -> None:
     journeys = _run_all_journeys(baseline_env, "time-limit")
     journey = journeys["t03-time-limit"]
     runs = journey["profile_snapshot"]["extraction_runs"]
     assert [run["status"] for run in runs] == ["succeeded"]
-    values = {
-        observation["normalized_value"]
-        for observation in journey["profile_snapshot"]["observations"]
-    }
-    assert "线性代数" in values
-    assert all("半小时" not in value for value in values)
-    # 检查项：内容捕获通过、时间约束未通过 → partial（已知失败的细化记录）。
-    assert journey["evaluation"]["observed_status"] == "partial"
+    item_texts = [item["text"] for item in journey["profile_snapshot"]["items"]]
+    assert any("线性代数" in text for text in item_texts)
+    assert any("半小时" in text for text in item_texts)
+    assert journey["evaluation"]["observed_status"] == "pass"
     assert journey["evaluation"]["baseline_match"] is True
 
 
@@ -177,7 +189,7 @@ def test_positive_academic_control_passes_through_real_entry(baseline_env: Any) 
     evaluation = journey["evaluation"]
     assert evaluation["observed_status"] == "pass"
     assert all(check["passed"] for check in evaluation["checks"])
-    assert journey["profile_snapshot"]["four_dimensions"]
+    # 工单 03 起原子条目是唯一写入权威；四维记录不再参与写入。
     assert journey["profile_snapshot"]["items"]
 
 
@@ -219,7 +231,7 @@ def test_run_lock_freezes_corpus_code_and_response_mode(baseline_env: Any) -> No
         stub_profile_extraction=True,
         stub_chat=True,
     )
-    assert lock["corpus_version"] == "profile-loop-corpus-v1"
+    assert lock["corpus_version"] == "profile-loop-corpus-v2"
     assert lock["corpus_sha256"] == corpus_digest()
     assert lock["response_mode"] == RESPONSE_MODE_STUB
     assert lock["injected_models_overridden"] is True

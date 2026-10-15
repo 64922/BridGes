@@ -59,6 +59,7 @@ from bridges.profiles import (
     SqliteAutomaticProfileRepository,
     SqliteFourDimensionProfileRepository,
 )
+from bridges.profiles.commit import ProfileFactSubmission
 from bridges.storage import BridgesDatabase
 
 _AMBIGUOUS_CONTENT = "我可能想学习 Transformer"
@@ -225,7 +226,7 @@ def test_sqlite_source_fields_survive_restart_and_replay_keeps_source(tmp_path) 
         "account-alice",
         conversation_id="conversation-1",
         message_id="message-local",
-        content="我的目标是今年通过雅思考试",
+        content="找Transformer论文",
         run_id="run-local",
         mode="companion",
     )
@@ -274,10 +275,11 @@ def test_sqlite_source_fields_survive_restart_and_replay_keeps_source(tmp_path) 
         "Transformer",
         since=datetime.now(UTC) - timedelta(days=1),
     )
-    assert all(
-        observation.source == ProfileExtractionSource.QWEN_MODEL
-        for observation in observations
-    )
+    # 行为观察（local_rule）与语义观察（qwen_model）都能跨重启按来源读回。
+    assert {observation.source for observation in observations} == {
+        ProfileExtractionSource.LOCAL_RULE,
+        ProfileExtractionSource.QWEN_MODEL,
+    }
     # 锁跨重启可查：qwen run 一条锁，local run 零条锁。
     qwen_run = next(run for run in runs if run.message_id == "message-1")
     local_run = next(run for run in runs if run.message_id == "message-local")
@@ -406,11 +408,12 @@ def test_sqlite_local_branch_never_persists_any_model_lock(tmp_path) -> None:
     recorder = SqliteModelRunLockRecorder(database)
     service = _sqlite_service(database, gateway, recorder=recorder)
 
+    # 工单 04 之后的确定性本机分支：行为观察与明确更正（无活动条目时
+    # 也保持本机路径）。自然自述/学习目标不再在此列（改走语义分支）。
     for index, content in enumerate(
         (
-            "我的目标是今年通过雅思考试",
-            "想学习Transformer",
             "找Transformer论文",
+            "我的关注点换成 CNN",
         ),
         start=1,
     ):
@@ -532,7 +535,7 @@ def test_profile_status_projection_counts_sources_and_explains_hybrid_strategy()
         "account-alice",
         conversation_id="conversation-1",
         message_id="message-local",
-        content="我的目标是今年通过雅思考试",
+        content="找Transformer论文",
         run_id="run-local",
         mode="companion",
     )
@@ -551,9 +554,11 @@ def test_profile_status_projection_counts_sources_and_explains_hybrid_strategy()
         "qwen_model": 1,
     }
     assert projection.source_explanation == PROFILE_HYBRID_EXPLANATION
-    # 诚实披露：既不夸大为"全部由 Qwen 生成"，也不声称"完全不使用模型"。
+    # 诚实披露：既不夸大为"全部由 Qwen 生成"，也不声称"完全不使用模型"；
+    # 工单 04 起如实说明自然自述由语义识别提出候选、本机规则复核边界。
     assert "本机规则" in projection.source_explanation
     assert "Qwen" in projection.source_explanation
+    assert "语义" in projection.source_explanation
     assert "所有画像均由 Qwen" not in projection.source_explanation
     assert "完全不使用模型" not in projection.source_explanation
     # 不包含画像正文、消息正文或凭据细节。
@@ -615,7 +620,7 @@ def test_source_metrics_enable_gray_period_comparison() -> None:
         "account-alice",
         conversation_id="conversation-1",
         message_id="message-local",
-        content="我的目标是今年通过雅思考试",
+        content="找Transformer论文",
         run_id="run-local",
         mode="companion",
     )
@@ -629,7 +634,7 @@ def test_source_metrics_enable_gray_period_comparison() -> None:
     )
 
     metrics = observability.profile_metrics_snapshot()
-    assert metrics["profile_extraction_source_total:local_rule:succeeded_written"] == 1
+    assert metrics["profile_extraction_source_total:local_rule:succeeded_observed"] == 1
     assert metrics["profile_extraction_source_total:qwen_model:succeeded_observed"] == 1
     assert gateway.calls == 1
     # 守卫指标在正常路径下为 0。
@@ -748,17 +753,26 @@ def test_qwen_unavailable_fails_closed_while_local_branch_stays_pure(tmp_path) -
     # 失败关闭：绝不伪造本地规则输出来冒充等价语义。
     assert atomic.list_items("account-alice") == []
 
+    # 明确更正仍走本机确定性分支，不依赖 Qwen 可用性。
+    atomic.commit_fact(
+        "account-alice",
+        ProfileFactSubmission(
+            text="想学习旧的知识兴趣",
+            dimension=FourDimension.KNOWLEDGE_INTEREST,
+        ),
+    )
     local = service.preprocess_message(
         "account-alice",
         conversation_id="conversation-1",
         message_id="message-local",
-        content="我的目标是今年通过雅思考试",
+        content="我的关注点换成 CNN",
         run_id="run-local",
         mode="companion",
     )
     assert local.run.status == ProfileExtractionStatus.SUCCEEDED
     assert local.run.source == ProfileExtractionSource.LOCAL_RULE
-    assert atomic.list_items("account-alice")
+    assert local.run.outcome == ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN
+    assert any("CNN" in item.text for item in atomic.list_items("account-alice"))
     # 真实失败的 Qwen 尝试也留下不可变失败锁（no_adapter 属于网关阻断）。
     locks = recorder.list_locks_by_run("account-alice", ambiguous.run.extraction_id)
     assert len(locks) == 1

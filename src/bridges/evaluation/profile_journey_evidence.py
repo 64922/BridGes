@@ -124,11 +124,8 @@ def evaluate_journey(journey: BaselineJourney, evidence: dict[str, Any]) -> dict
         )
     elif journey.journey_id == "positive-academic-control":
         add("extraction_succeeded", "succeeded" in statuses, f"statuses={statuses}")
-        add(
-            "four_dimension_written",
-            bool(evidence["profile_snapshot"]["four_dimensions"]),
-            "",
-        )
+        # 工单 03 起原子条目是长期信息唯一权威：四维记录不再参与写入，
+        # 该检查项随 03 落地移除（写入证据改由 atomic_item_written 承担）。
         add("atomic_item_written", bool(evidence["profile_snapshot"]["items"]), "")
         add(
             "fact_active_in_snapshot",

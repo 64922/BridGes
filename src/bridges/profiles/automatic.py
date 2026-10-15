@@ -34,6 +34,7 @@ from bridges.contracts.atomic_profile import (
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profile_extraction import (
     PROFILE_CONTROLS_VERSION,
+    PROFILE_EXTRACTION_OUTPUT_SCHEMA_VERSION,
     PROFILE_HYBRID_EXPLANATION,
     AutomaticProfileObservation,
     ProfileAccountControlsProjection,
@@ -69,6 +70,7 @@ from bridges.profiles.atomic import (
     AtomicProfileService,
     GoalLifecycleOutcome,
     MemoryDirective,
+    parse_fact_identity,
     parse_goal_lifecycle_signal,
     parse_memory_directive,
 )
@@ -91,32 +93,45 @@ from bridges.runtime.queue import RetryKind, TaskQueue
 from bridges.storage.database import BridgesDatabase
 
 AUTOMATIC_EXTRACTOR_VERSION = "profile-auto-v2"
-AUTOMATIC_PRIVACY_NOTICE_VERSION = "profile-privacy-v2"
-#: 首次自动记录说明：诚实披露混合策略（Issue 13）。明确自述、学习目标、
-#: 行为观察与更正由本机规则处理；含义不够明确的表述可能使用全局配置的
-#: Qwen 辅助识别。禁止用模糊的"AI 自动提取"覆盖两种来源。
+AUTOMATIC_PRIVACY_NOTICE_VERSION = "profile-privacy-v3"
+#: 首次自动记录说明：诚实披露语义优先策略（工单 04）。自然自述与含义明确
+#: 的表达统一由全局配置的 Qwen 语义识别提出候选，本机规则复核证据与边界
+#: （第三方、引用、假设、敏感自述和一次性情绪不会自动长期保存）；明确
+#: 更正与本轮控制指令由本机规则即时处理。禁止用模糊的"AI 自动提取"覆盖
+#: 两种来源，也禁止继续宣称"明确自述不调用模型"。
 AUTOMATIC_PRIVACY_NOTICE_TEXT = (
-    "BridGes 会默认从你明确介绍自己的稳定信息中整理四维画像，"
-    "仅用于后续相关回答。整理采用混合策略：明确的自我描述、学习目标、"
-    "行为观察和更正由本机规则识别，不会调用模型；含义不够明确的表述"
-    "可能使用全局配置的 Qwen 辅助识别。第三方、假设、敏感信息和一次性"
-    "情绪不会写入。你可以随时查看、修改、撤回或关闭自动记录。"
+    "BridGes 会默认从你的自我描述中整理稳定信息，仅用于后续相关回答。"
+    "整理采用语义策略：你关于自己的稳定信息由全局配置的 Qwen 语义识别"
+    "提出候选，本机规则复核证据与边界；明确的更正与本轮控制指令由本机"
+    "规则即时处理。第三方、假设、敏感自述和一次性情绪不会自动写入。"
+    "你可以随时查看、修改、撤回或关闭自动记录。"
 )
 PROFILE_EXTRACTION_QUEUE = "profile-extraction"
 PROFILE_REPLAY_QUEUE = "profile-replay-v2"
 PROFILE_REPLAY_SOURCE_HASH_PREFIX = ":replay-v1:"
 PROFILE_CORRECTION_RULES_VERSION = "profile_correction_v1"
 PROFILE_EXTRACTION_MAX_RETRIES = 3
+#: 工单 04：账户级待处理（PENDING/RUNNING）任务上限；超过只跳过新消息的
+#: 调度与入队，不改写既有任务的推进。普通提取是后台整理，积压时宁可让
+#: 新消息不进入队列，也不让单账户无界占用模型与存储资源。
+PROFILE_EXTRACTION_MAX_PENDING_PER_ACCOUNT = 32
 #: 改进工单 17：每次真实模型调用的版本合同（Issue 03 接缝）。提示词与
-#: 输入合同按精确证据区间升级；输出 Schema 保持 v2 的向后兼容可选字段。
-#: 工单 41 真实探针发现模型不遵守字段枚举与 evidence_ref 约定（合同失败
-#: 关闭），提示词升级 v4：显式给出字段/枚举/类型与 evidence_ref 取值。
-PROFILE_EXTRACTION_PROMPT_VERSION = "profile-extraction-prompt-v4"
+#: 输入合同按精确证据区间与开放事实升级；输出 Schema 保持向后兼容的可选
+#: 字段。工单 41 真实探针发现模型不遵守字段枚举与 evidence_ref 约定（合同
+#: 失败关闭），提示词升级 v4：显式给出字段/枚举/类型与 evidence_ref 取值。
+#: 工单 04 升级 v5：开放事实（姓名/宠物/习惯）不再要求四维维度，dimension
+#: 作为可选解析提示；一条消息最多 6 项；要求模型优先给出原话片段
+#: evidence_quote；明确排除短期情绪与第三方内容。
+PROFILE_EXTRACTION_PROMPT_VERSION = "profile-extraction-prompt-v5"
 PROFILE_EXTRACTION_RECIPE_VERSION = "profile-extraction-recipe-v1"
 PROFILE_EXTRACTION_CONTEXT_VERSION = "profile-extraction-context-v1"
 PROFILE_EXTRACTION_QUALITY_POLICY_VERSION = "profile-extraction-quality-v1"
+#: 输入载荷合同版本：工单 04 起包含相关旧记忆线索（只作参考，不作证据）。
+PROFILE_EXTRACTION_INPUT_SCHEMA_VERSION = "profile-message-v3"
 #: 邻近用户原文的最大条数：只用于解析回指，按实测预算可调。
 PROFILE_EXTRACTION_MAX_NEIGHBORS = 2
+#: 工单 04：相关旧记忆线索的最大条数（只作稳定表述参考，不得作为证据）。
+PROFILE_EXTRACTION_MAX_RELATED_MEMORIES = 5
 #: 改进工单 07：账户级画像控制表（长期画像使用开关的持久状态）。
 PROFILE_CONTROLS_TABLE = "profile_account_controls"
 #: 控制更新请求两个字段都缺省时的统一错误文案（服务层与 API 层共用）。
@@ -140,6 +155,8 @@ PROFILE_GUARD_LOCAL_UNEXPECTED_MODEL_CALL = "profile_local_unexpected_model_call
 PROFILE_GUARD_QWEN_MISSING_RUN_LOCK = "profile_qwen_missing_run_lock"
 PROFILE_GUARD_SOURCE_MISMATCH = "profile_source_mismatch"
 PROFILE_GUARD_LOCK_PERSIST_FAILED = "profile_lock_persist_failed"
+#: 工单 04：账户级待处理任务达到上限时跳过新消息调度（只计数，不失败）。
+PROFILE_GUARD_SCHEDULING_BACKPRESSURE = "profile_scheduling_backpressure"
 _TRANSIENT_PROFILE_ERROR_CODES = frozenset(
     {
         "network_error",
@@ -193,6 +210,24 @@ _TIME_EXPRESSIONS = re.compile(
     r"|每天|每周|每月|每年|每次|每轮|以后|之后|下次|今后|今晚|明天|明年"
     r"|\d+\s*(?:分钟|小时|天|周|个月|年)"
 )
+#: 改进工单 04：候选必须保留原话中的条件限定（如果/只有/除非/只要），
+#: 不允许把条件性安排写成无条件事实。
+_CONDITION_MARKERS = re.compile(r"(?:如果|只有|除非|只要)")
+#: 改进工单 04：时长表达等价换算（「半小时」与「30 分钟」视为同一限定）。
+_DURATION_TOKEN = re.compile(r"\d+\s*(?:分钟|小时|天|周|个月|年)|半\s*(?:小时|天)")
+_DURATION_MINUTES = {"分钟": 1, "小时": 60, "天": 1440, "周": 10080, "个月": 43200, "年": 525600}
+
+
+def _parse_duration_minutes(token: str) -> int | None:
+    """把时长表达折算为分钟；无法解析返回 ``None``（不做模糊匹配）。"""
+
+    half = re.fullmatch(r"半\s*(小时|天)", token)
+    if half is not None:
+        return _DURATION_MINUTES[half.group(1)] // 2
+    match = re.fullmatch(r"(\d+)\s*(分钟|小时|天|周|个月|年)", token)
+    if match is None:
+        return None
+    return int(match.group(1)) * _DURATION_MINUTES[match.group(2)]
 
 _CONFIRMATION_SIGNAL = re.compile(
     r"(?:^|[，。；：\s])(?:对|是的|没错|确实)[，,：:]?\s*我"
@@ -755,6 +790,7 @@ class GatewayAutomaticProfileExtractor:
         *,
         model_config_provider: RunModelConfigProvider | None = None,
         neighbor_reader: Callable[[str, str, str], list[str]] | None = None,
+        memory_reader: Callable[[str, str], list[str]] | None = None,
     ) -> None:
         self._gateway = gateway
         self._classifier = classifier or ProfileSignalClassifier()
@@ -763,6 +799,9 @@ class GatewayAutomaticProfileExtractor:
         self._model_config_provider = model_config_provider
         # 改进工单 17：邻近用户原文只用于解析「这个专业」等回指。
         self._neighbor_reader = neighbor_reader
+        # 工单 04：相关旧记忆只作稳定表述参考（有界、脱敏前原文片段），
+        # 绝不作为事实证据。
+        self._memory_reader = memory_reader
 
     def extract(
         self,
@@ -776,7 +815,9 @@ class GatewayAutomaticProfileExtractor:
         lock_sink: Callable[[ModelRunLock], None] | None = None,
     ) -> ProfileExtractionOutput:
         classification = signal_classification or self._classifier.classify(content)
-        if not classification.should_process:
+        # 工单 04：关键词分类不再否决自然自述与无可记信号；只有硬禁止内容
+        # （引用/假设/第三方/敏感）在这里保持零写入，不调用模型。
+        if classification.category == ProfileSignalCategory.FORBIDDEN:
             return ProfileExtractionOutput(items=[])
         neighbors: list[str] = []
         if self._neighbor_reader is not None:
@@ -790,6 +831,16 @@ class GatewayAutomaticProfileExtractor:
                 ][:PROFILE_EXTRACTION_MAX_NEIGHBORS]
             except Exception:  # noqa: BLE001 - 回指线索失败不阻断抽取
                 neighbors = []
+        related_memories: list[str] = []
+        if self._memory_reader is not None:
+            try:
+                related_memories = [
+                    memory
+                    for memory in self._memory_reader(account_id, content)
+                    if memory and memory.strip()
+                ][:PROFILE_EXTRACTION_MAX_RELATED_MEMORIES]
+            except Exception:  # noqa: BLE001 - 相关记忆线索失败不阻断抽取
+                related_memories = []
         quota = (
             build_run_model_quota(self._model_config_provider.snapshot())
             if self._model_config_provider is not None
@@ -808,22 +859,32 @@ class GatewayAutomaticProfileExtractor:
             {
                 "role": "system",
                 "content": (
-                    "只抽取当前用户消息里用户关于自己的明确稳定信号。禁止第三方、"
-                    "引用、假设、角色扮演、敏感信息与一次性情绪；邻近用户消息只用于"
-                    "理解『这个专业』等回指，不能作为事实依据。"
+                    "只抽取当前用户消息里用户关于自己的稳定事实（自然自述，如"
+                    "姓名、宠物、习惯、兴趣、学习与时间约束）。禁止第三方、引用、"
+                    "假设、角色扮演、敏感信息与一次性情绪（如「今天好累」）；"
+                    "邻近用户消息只用于理解『这个专业』等回指，已知旧记忆只用于"
+                    "保持表述稳定，两者都不能作为事实依据。"
                     '只输出一个 JSON 对象 {"items": [...]}，不要输出其他顶层字段。'
-                    "每个元素必须且只能严格包含以下字段："
-                    "dimension 只能是 academic_status/knowledge_interest/hobby/"
-                    "stage_goal 之一；normalized_value 为字符串；fact_text 为字符串，"
-                    "使用用户原话或原句片段（保留关系、否定、范围与原文明示时间），"
-                    "不要以『用户』开头；"
+                    "每个元素的字段名必须且只能是：dimension、normalized_value、"
+                    "fact_text、evidence_ref、evidence_quote、reliability、action、"
+                    "evidence_start、evidence_end；出现任何其他字段（如 open_fact、"
+                    "category、type）都判为无效输出。"
+                    "dimension 是可选解析提示：学业状态填 academic_status，"
+                    "学科兴趣填 knowledge_interest，爱好填 hobby，阶段目标填 "
+                    "stage_goal；姓名、宠物、习惯等其他开放事实一律填 null；"
+                    "normalized_value 为字符串，是证据原话中真实出现的连续片段；"
+                    "fact_text 为字符串，是完整的第一人称或无主语句式事实表述"
+                    "（保留关系、否定、范围与原文明示的时间/条件），如「我叫"
+                    "小林」；禁止以『用户』开头；"
                     f'evidence_ref 固定填写 "{message_id}"；'
+                    "evidence_quote 为支持该候选的当前消息原话片段（精确子串，"
+                    "优先提供）；"
                     "reliability 为 0 到 1 之间的小数（禁止 high/medium/low 等文字）；"
                     "action 只能是 create/update/observe/ignore 之一；"
-                    "evidence_start 与 evidence_end 为整数，是支持该候选的当前消息 "
-                    "Unicode 码点半开区间 [start, end)（区间原话必须真实支持事实；"
-                    "模糊或行为线索用 observe）。"
-                    '没有可抽取信号时输出 {"items": []}。'
+                    "evidence_start 与 evidence_end 为整数，是同一支持原话的当前"
+                    "消息 Unicode 码点半开区间 [start, end)（区间原话必须真实"
+                    "支持事实；模糊或行为线索用 observe，不要用 create）。"
+                    "一条消息最多 6 项；没有可抽取信号时输出 {\"items\": []}。"
                     f"本条消息的确定性分类为 {classification.category.value}，"
                     f"原因码为 {classification.reason_code}。"
                 ),
@@ -837,6 +898,14 @@ class GatewayAutomaticProfileExtractor:
                     + "\n".join(neighbors),
                 }
             )
+        if related_memories:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "（已知的相关旧记忆，仅供参考，不得作为事实证据）\n"
+                    + "\n".join(related_memories),
+                }
+            )
         messages.append({"role": "user", "content": content})
         result = self._gateway.invoke(
             "qwen_profile_extraction",
@@ -844,7 +913,7 @@ class GatewayAutomaticProfileExtractor:
             context,
             payload={
                 "messages": messages,
-                "output_contract": "profile-extraction-v2",
+                "output_contract": PROFILE_EXTRACTION_OUTPUT_SCHEMA_VERSION,
                 "response_format": {"type": "json_object"},
                 "temperature": 0,
                 "max_tokens": 512,
@@ -852,8 +921,8 @@ class GatewayAutomaticProfileExtractor:
             model_quota=quota,
             call_contract=CallContractVersions(
                 prompt_version=PROFILE_EXTRACTION_PROMPT_VERSION,
-                input_schema_version="profile-message-v2",
-                output_schema_version="profile-extraction-v2",
+                input_schema_version=PROFILE_EXTRACTION_INPUT_SCHEMA_VERSION,
+                output_schema_version=PROFILE_EXTRACTION_OUTPUT_SCHEMA_VERSION,
                 recipe_version=PROFILE_EXTRACTION_RECIPE_VERSION,
                 context_compile_version=PROFILE_EXTRACTION_CONTEXT_VERSION,
                 quality_policy_version=PROFILE_EXTRACTION_QUALITY_POLICY_VERSION,
@@ -1687,21 +1756,25 @@ class AutomaticProfileService:
     def _decide_source(
         self, signal_classification: ProfileSignalClassification
     ) -> ProfileExtractionSource:
-        """把分类结果映射为稳定抽取来源（Issue 13）。
+        """把分类结果映射为稳定抽取来源（Issue 13 / 工单 04）。
 
-        - ``should_process=False``（no_signal/forbidden）与 ``is_local``
-          高置信信号永远走本地规则，绝不调用网关；
-        - 只有网关抽取器 + 非本地（歧义）信号才进入 ``qwen_model``。
+        - 网关组合下，语义分支（自然自述、明确表达、歧义与无可记信号）
+          统一交给语义提取提出候选（``qwen_model``），本机规则只保留两类
+          确定性分支：本轮更正（CORRECTION）与行为观察
+          （BEHAVIOR_OBSERVATION，只记录观察，不产生长期事实）；
+        - 无网关组合全部走本地规则，不伪造模型分支；
+        - 硬禁止内容（引用/假设/第三方/敏感）保持本地、零写入。
         """
 
-        if not signal_classification.should_process:
+        if not isinstance(self._extractor, GatewayAutomaticProfileExtractor):
             return ProfileExtractionSource.LOCAL_RULE
-        if (
-            isinstance(self._extractor, GatewayAutomaticProfileExtractor)
-            and not signal_classification.is_local
-        ):
-            return ProfileExtractionSource.QWEN_MODEL
-        return ProfileExtractionSource.LOCAL_RULE
+        if signal_classification.category in {
+            ProfileSignalCategory.CORRECTION,
+            ProfileSignalCategory.BEHAVIOR_OBSERVATION,
+            ProfileSignalCategory.FORBIDDEN,
+        }:
+            return ProfileExtractionSource.LOCAL_RULE
+        return ProfileExtractionSource.QWEN_MODEL
 
     def _gateway_attempted(
         self, signal_classification: ProfileSignalClassification
@@ -1716,6 +1789,16 @@ class AutomaticProfileService:
         if self._observability is None:
             return
         self._observability.record_profile_source_guard(guard)
+
+    def _backlog_exceeded(self, account_id: str) -> bool:
+        """账户级背压：待处理（PENDING/RUNNING）任务是否已达上限（工单 04）。"""
+
+        pending = sum(
+            task.status
+            in {ProfileExtractionStatus.PENDING, ProfileExtractionStatus.RUNNING}
+            for task in self._repository.list_tasks(account_id)
+        )
+        return pending >= PROFILE_EXTRACTION_MAX_PENDING_PER_ACCOUNT
 
     def _enforce_source_evidence(
         self,
@@ -2132,9 +2215,14 @@ class AutomaticProfileService:
                 None,
             )
         classification = self._classifier.extraction_classification(content)
-        if not classification.should_process or not self._classifier.has_reusable_signal(
-            content
-        ):
+        # 工单 04：关键词规则不再否决自然自述；只有空消息与确定性的硬禁止
+        # 消息（整条及所有片段都被引用/假设/第三方/敏感规则否决）不进入
+        # 语义提取队列。候选是否写入由证据核验与提交边界决定。
+        if not self._classifier.is_schedulable(content, classification):
+            return None, None
+        if atomic_scheduling and self._backlog_exceeded(account_id):
+            # 账户级背压：既有任务照常推进，只跳过新消息的普通调度。
+            self._record_source_guard(PROFILE_GUARD_SCHEDULING_BACKPRESSURE)
             return None, None
         notice = self._repository.claim_privacy_notice(account_id, now)
         source = self._decide_source(classification)
@@ -2224,9 +2312,7 @@ class AutomaticProfileService:
                     existing, self._classifier.classify(content)
                 ),
             )
-        if not classification.should_process or not self._classifier.has_reusable_signal(
-            content
-        ):
+        if not self._classifier.is_schedulable(content, classification):
             no_signal_run = existing or self._new_run(
                 account_id=account_id,
                 message_id=message_id,
@@ -2645,10 +2731,13 @@ class AutomaticProfileService:
         **kwargs: Any,
     ) -> ProfileExtractionOutput:
         extractor = self._extractor
-        if (
-            isinstance(extractor, GatewayAutomaticProfileExtractor)
-            and signal_classification.is_local
+        if isinstance(
+            extractor, GatewayAutomaticProfileExtractor
+        ) and self._decide_source(signal_classification) == (
+            ProfileExtractionSource.LOCAL_RULE
         ):
+            # Issue 13 / 工单 04：确定性分支（更正、行为观察、硬禁止）绝不
+            # 调用网关；语义分支（自述/歧义/无可记信号）一律交给语义提取。
             extractor = RuleBasedAutomaticProfileExtractor(self._classifier)
         try:
             output = extractor.extract(
@@ -3194,6 +3283,27 @@ class AutomaticProfileService:
                 account_id, item.normalized_value
             ):
                 continue
+            explicit_self_statement = self._is_explicit_self_statement(
+                content, signal_classification
+            ) or self._candidate_supported_by_evidence(
+                item, content, signal_classification
+            )
+            if item.dimension is None:
+                # 工单 04：开放事实（无维度提示）不进入四维观察晋升阶梯；
+                # 明确自述的稳定事实直接提交，其余线索等更多证据后再来
+                # （观察身份需要维度归属，这里不伪造维度）。
+                if not explicit_self_statement:
+                    continue
+                submissions.append(
+                    ProfileFactSubmission(
+                        text=item.fact_text or item.normalized_value,
+                        dimension=None,
+                        confidence=FourDimensionConfidence.MEDIUM,
+                        evidence_quote=self._candidate_evidence_quote(item, content),
+                        evidence_message_id=message_id,
+                    )
+                )
+                continue
             observation = AutomaticProfileObservation(
                 observation_id=_stable_id(
                     "profile-observation",
@@ -3241,9 +3351,6 @@ class AutomaticProfileService:
                     in entry.extractor_version
                 )
             }
-            explicit_self_statement = self._is_explicit_self_statement(
-                content, signal_classification
-            ) or self._candidate_is_explicit_fact(item, content)
             if not explicit_self_statement and len(unique_messages) < 2:
                 continue
             if self._repository.is_message_tombstoned(account_id, message_id):
@@ -3283,8 +3390,32 @@ class AutomaticProfileService:
     def _candidate_evidence_span(
         self, item: Any, content: str
     ) -> tuple[str, ProfileSignalClassification] | None:
-        """解析候选的精确证据区间；无效区间按合同错误失败关闭。"""
+        """解析候选的精确证据区间（工单 04：原话优先，区间兜底）。
 
+        - 提供 ``evidence_quote`` 时按原话在消息中定位（多次出现取首个，
+          多来源消歧由工单 05 扩展）；定位不到、过长或为空都按合同错误
+          失败关闭，绝不凭区间或整句兜底。
+        - 只提供区间时校验区间有效性；两者都缺时返回 ``None``（旧合同
+          的整消息证据检查）。
+        """
+
+        quote = getattr(item, "evidence_quote", None)
+        if isinstance(quote, str) and quote.strip():
+            if len(quote) > _MAX_EVIDENCE_QUOTE_LENGTH:
+                raise AutomaticProfileError(
+                    "profile_extraction_evidence_mismatch",
+                    "画像抽取证据原话超出精确证据长度",
+                    retryable=False,
+                )
+            start = content.find(quote)
+            if start < 0:
+                raise AutomaticProfileError(
+                    "profile_extraction_evidence_mismatch",
+                    "画像抽取证据原话未出现在当前消息中",
+                    retryable=False,
+                )
+            segment = content[start : start + len(quote)]
+            return segment, self._classifier.classify(segment)
         start = item.evidence_start
         end = item.evidence_end
         if start is None and end is None:
@@ -3327,21 +3458,46 @@ class AutomaticProfileService:
     def _evidence_supports_candidate(
         self, segment: str, item: Any
     ) -> bool:
-        """核对片段确实支持主体关系、否定与时间，而非仅字符串存在。"""
+        """核对片段确实支持主体关系、否定、时间与条件，而非仅字符串存在。
+
+        工单 04 的核验规则（双向、允许等价表达）：
+        - 否定：片段与否任一侧出现否定标记而另一侧没有即拒绝（不允许把
+          肯定改写成否定，也不允许丢掉原文否定）；
+        - 时间：片段中每个时间限定必须被候选保留；时长表达按分钟等价
+          （「半小时」与「30 分钟」视为同一限定）；
+        - 条件：如果/只有/除非/只要等条件限定必须保留。
+        """
 
         if not str(item.normalized_value).strip():
             return False
         candidate_text = f"{item.fact_text or ''} {item.normalized_value}"
-        if _NEGATION_MARKERS.search(segment) and not _NEGATION_MARKERS.search(
-            candidate_text
+        if bool(_NEGATION_MARKERS.search(segment)) != bool(
+            _NEGATION_MARKERS.search(candidate_text)
         ):
-            # 片段是否定表述而候选丢掉了否定：不作为肯定事实写入。
+            # 任一侧丢否定或凭空加否定：不作为肯定事实写入。
             return False
         for match in _TIME_EXPRESSIONS.finditer(segment):
-            if match.group(0) not in candidate_text:
+            if not self._time_expression_supported(match.group(0), candidate_text):
                 # 原文明示时间未保留：不写入，避免把限时信息当成长期事实。
                 return False
+        for match in _CONDITION_MARKERS.finditer(segment):
+            if match.group(0) not in candidate_text:
+                return False
         return True
+
+    @staticmethod
+    def _time_expression_supported(token: str, candidate_text: str) -> bool:
+        """时间限定是否被候选保留（时长允许等价换算，如半小时=30 分钟）。"""
+
+        if token in candidate_text:
+            return True
+        minutes = _parse_duration_minutes(token)
+        if minutes is None:
+            return False
+        return any(
+            _parse_duration_minutes(candidate) == minutes
+            for candidate in _DURATION_TOKEN.findall(candidate_text)
+        )
 
     def _resolve_candidate_action(
         self,
@@ -3351,11 +3507,13 @@ class AutomaticProfileService:
         content: str,
         signal_classification: ProfileSignalClassification,
     ) -> ProfileExtractionAction:
-        """逐候选证据验证并给出实际动作（改进工单 17 第 8 条）。
+        """逐候选证据验证并给出实际动作（改进工单 17 / 04）。
 
-        - 有精确区间时以片段自身分类判断是否明确自述；模糊/行为候选只保留
-          观察，不再被整消息的旧分类整批否决；
-        - 硬禁止片段（引用/假设/第三方/敏感）零写入；
+        - 证据优先按原话定位；硬禁止片段（引用/假设/第三方/敏感）零写入；
+        - 片段自身或整条消息构成自述，且通过主体、否定、时间、条件与取值
+          校验的稳定事实可以提交（工单 04 不再要求固定句式）；
+        - 模糊/行为片段降级为观察，不自动晋升长期事实；
+        - 短期情绪与无可记信号片段零写入；
         - 抽取器凭空发明禁止值仍失败关闭，原话本身即敏感内容则零写入。
         """
 
@@ -3400,53 +3558,43 @@ class AutomaticProfileService:
                     ProfileSignalCategory.AMBIGUOUS,
                 }
             ):
+                if segment_classification.category == ProfileSignalCategory.NO_SIGNAL:
+                    # 无可记信号（含短期情绪）：零写入，不报错也不重试。
+                    return ProfileExtractionAction.IGNORE
                 raise AutomaticProfileError(
                     "profile_extraction_observation_classification_invalid",
                     "内部观察缺少行为观察分类",
                     retryable=False,
                 )
             return ProfileExtractionAction.OBSERVE
-        if segment_classification.is_self_statement:
-            if not self._evidence_supports_candidate(segment, item):
-                return ProfileExtractionAction.IGNORE
-            if evidence is not None and not self._value_supported_by_span(
-                segment, item
-            ):
-                # 精确区间必须支持将要写入的规范值：防止把「摄影」挂到
-                # 「我喜欢跑步」这样的无关原话区间上（任务 4）。
-                return ProfileExtractionAction.IGNORE
+        if self._candidate_supported_by_evidence(
+            item, content, signal_classification
+        ):
             return item.action
         if segment_classification.category in {
             ProfileSignalCategory.BEHAVIOR_OBSERVATION,
             ProfileSignalCategory.AMBIGUOUS,
         }:
-            # 模糊/行为候选保留观察：不自动晋升偏好或能力。
+            # 模糊/行为候选保留观察：不自动晋升偏好或能力（观察需要维度
+            # 归属；开放事实的模糊线索不进观察阶梯）。
+            if item.dimension is None:
+                return ProfileExtractionAction.IGNORE
             return ProfileExtractionAction.OBSERVE
-        # 改进工单 17 第 8 条：本地词表未命中的明确偏好/约束（「以后先给
-        # 结论」「每天 30 分钟」）由语义模型提候选；候选在精确区间上通过
-        # 主体、否定、时间与取值校验即可提交，不被旧的 no_signal 分类
-        # 整批否决。候选文本自身必须是可复用偏好/约束，避免把无关片段
-        # 的模型猜测写成用户事实。
-        if self._semantic_candidate_is_explicit(segment, item):
-            return item.action
         return ProfileExtractionAction.IGNORE
 
-    def _semantic_candidate_is_explicit(
-        self, segment: str, item: ProfileExtractionItem
+    def _candidate_supported_by_evidence(
+        self,
+        item: ProfileExtractionItem,
+        content: str,
+        signal_classification: ProfileSignalClassification,
     ) -> bool:
-        """模型候选在精确区间上是否构成明确偏好/约束（工单 17 第 8 条）。"""
+        """候选是否在证据上构成可提交的稳定事实（工单 04）。
 
-        candidate_text = f"{item.fact_text or ''} {item.normalized_value}"
-        if not self._classifier.has_reusable_signal(candidate_text):
-            return False
-        if not self._evidence_supports_candidate(segment, item):
-            return False
-        return self._value_supported_by_span(segment, item)
-
-    def _candidate_is_explicit_fact(
-        self, item: ProfileExtractionItem, content: str
-    ) -> bool:
-        """有精确区间的语义创建候选按明确事实计入写入阶梯（工单 17）。"""
+        要求主体为自述：片段自身是自述，或其所在分句是自述（片段单独
+        分类为 no_signal 或否定分句时常见）；硬禁止片段（引用/假设/第三方/
+        敏感）与短期情绪直接失败。其余按主体/否定/时间/条件核验与取值
+        锚定；模型候选与本地候选共用同一条核验路径。
+        """
 
         if item.action not in {
             ProfileExtractionAction.CREATE,
@@ -3455,24 +3603,60 @@ class AutomaticProfileService:
             return False
         evidence = self._candidate_evidence_span(item, content)
         if evidence is None:
+            segment = content
+            classification = signal_classification
+        else:
+            segment, classification = evidence
+        if classification.is_self_statement:
+            subject_ok = True
+        elif (
+            evidence is not None
+            and classification.reason_code not in HARD_FORBIDDEN_REASONS
+            and classification.reason_code != "transient_state"
+        ):
+            # 子片段自身无法单独分类（no_signal）或是软禁止的否定分句时，
+            # 要求它所在的分句是自述：第三方/无关分句零写入。
+            subject_ok = self._span_in_self_statement_clause(content, segment)
+        else:
+            subject_ok = False
+        if not subject_ok:
             return False
-        segment, classification = evidence
-        if classification.reason_code in HARD_FORBIDDEN_REASONS:
+        if not self._evidence_supports_candidate(segment, item):
             return False
-        if classification.category in {
-            ProfileSignalCategory.BEHAVIOR_OBSERVATION,
-            ProfileSignalCategory.AMBIGUOUS,
-        }:
-            return False
-        return self._semantic_candidate_is_explicit(segment, item)
+        # 精确证据必须锚定将要写入的规范值；无区间候选沿用旧合同
+        # （内部抽取器可信，生产网关提示词强制提供原话或区间）。
+        return evidence is None or self._value_supported_by_span(segment, item)
+
+    def _span_in_self_statement_clause(self, content: str, segment: str) -> bool:
+        """证据片段所在的分句是否构成用户自述（工单 04 主体守卫）。"""
+
+        for clause in self._classifier.classify_segments(content):
+            if segment in clause.text:
+                return clause.classification.is_self_statement
+        return False
 
     @staticmethod
     def _value_supported_by_span(segment: str, item: ProfileExtractionItem) -> bool:
-        """将要写入的规范值是否真实出现在精确证据区间里。"""
+        """将要写入的规范值是否被精确证据锚定（工单 04 放宽）。
+
+        判定顺序：去空白后严格子串；否则按解析身份取对象并要求对象出现在
+        片段中（如 value「考研」与片段「准备考研」）；再退化为至少 2 个
+        连续字符的公共子串（如「打羽毛球」与片段「羽毛球」）。空值失败。
+        """
 
         collapsed_segment = re.sub(r"\s+", "", segment)
         collapsed_value = re.sub(r"\s+", "", str(item.normalized_value))
-        return not collapsed_value or collapsed_value in collapsed_segment
+        if not collapsed_value:
+            return False
+        if collapsed_value in collapsed_segment:
+            return True
+        parsed = parse_fact_identity(collapsed_value)
+        if parsed.object and parsed.object in collapsed_segment:
+            return True
+        return any(
+            collapsed_value[index : index + 2] in collapsed_segment
+            for index in range(len(collapsed_value) - 1)
+        )
 
     def _is_explicit_self_statement(
         self,

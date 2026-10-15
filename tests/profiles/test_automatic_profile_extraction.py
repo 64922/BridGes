@@ -39,6 +39,7 @@ from bridges.profiles import (
     SqliteFourDimensionProfileRepository,
 )
 from bridges.profiles.atomic import MAX_SLICE_ITEMS
+from bridges.profiles.commit import ProfileFactSubmission
 from bridges.profiles.signals import (
     PROFILE_SIGNAL_CLASSIFIER_VERSION,
     ProfileSignalCategory,
@@ -732,25 +733,12 @@ def test_submission_validation_reuses_precheck_classification() -> None:
     assert atomic_service.list_items("account-alice") == []
 
 
-def test_gateway_configuration_keeps_deterministic_signals_local() -> None:
-    class _CountingGateway:
-        def __init__(self) -> None:
-            self.calls = 0
+def test_gateway_configuration_routes_semantic_branch_and_keeps_corrections_local() -> None:
+    """工单 04：自然自述/学习目标走语义分支；明确更正仍走确定性本机分支。"""
 
-        def invoke(self, *args: object, **kwargs: object) -> SimpleNamespace:
-            del args, kwargs
-            self.calls += 1
-            return SimpleNamespace(
-                status=ModelCallStatus.SUCCESS,
-                output={"items": []},
-                error_code=None,
-                error_message=None,
-            )
-
-    gateway = _CountingGateway()
-    service, target_service, atomic_service = _stack(
-        GatewayAutomaticProfileExtractor(cast(ModelGateway, gateway)),
-    )
+    gateway = _LockAwareCountingGateway()
+    recorder = _RecordingLockRecorder()
+    service, _, atomic_service = _hybrid_service(gateway, recorder=recorder)
 
     result = service.preprocess_message(
         "account-alice",
@@ -762,10 +750,33 @@ def test_gateway_configuration_keeps_deterministic_signals_local() -> None:
     )
 
     assert result.run.status == "succeeded"
-    assert gateway.calls == 0
-    assert [item.text for item in atomic_service.list_items("account-alice")] == [
-        "想学习 CNN"
-    ]
+    assert result.run.source == ProfileExtractionSource.QWEN_MODEL
+    assert gateway.calls == 1
+    assert len(recorder.records) == 1
+    assert atomic_service.list_items("account-alice") == []
+
+    # 更正：seed 一条活动条目后更正它，全程不调用网关、无模型锁。
+    seeded = atomic_service.commit_fact(
+        "account-alice",
+        ProfileFactSubmission(
+            text="想学习旧的知识兴趣",
+            dimension=FourDimension.KNOWLEDGE_INTEREST,
+        ),
+    )
+    assert seeded is not None
+    corrected = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-correction",
+        message_id="message-correction",
+        content="我的关注点换成 CNN",
+        run_id="run-correction",
+        mode="companion",
+    )
+    assert corrected.run.status == "succeeded"
+    assert corrected.run.outcome == ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN
+    assert corrected.run.source == ProfileExtractionSource.LOCAL_RULE
+    assert gateway.calls == 1
+    assert len(recorder.records) == 1
 
 
 def test_learning_request_is_committed_as_knowledge_interest_on_first_message() -> None:
@@ -1288,34 +1299,51 @@ def _hybrid_service(
     return service, target_service, atomic_service
 
 
-@pytest.mark.parametrize(
-    ("content", "expected_outcome"),
-    [
-        ("我的目标是今年通过雅思考试", ProfileExtractionOutcome.SUCCEEDED_WRITTEN),
-        ("想学习Transformer", ProfileExtractionOutcome.SUCCEEDED_WRITTEN),
-        ("找Transformer论文", ProfileExtractionOutcome.SUCCEEDED_OBSERVED),
-        ("我的关注点换成 CNN", ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN),
-    ],
-)
-def test_local_rule_cases_never_call_gateway_and_mark_source(
-    content: str, expected_outcome: ProfileExtractionOutcome
-) -> None:
-    """明确自述、学习目标、清晰观察、更正代表性用例：source=local_rule、
-    网关 0 调用、模型锁 0 条（Issue 13 AC）。"""
+def test_behavior_observation_stays_local_and_marks_source() -> None:
+    """行为观察是本机确定性分支：source=local_rule、网关 0 调用、锁 0 条。
+
+    工单 04：明确自述、学习目标不再走规则分支（改由语义抽取提出候选），
+    只有行为观察与本轮更正保留确定性本机路径。
+    """
     gateway = _LockAwareCountingGateway()
     recorder = _RecordingLockRecorder()
     service, _, atomic_service = _hybrid_service(gateway, recorder=recorder)
-    if content == "我的关注点换成 CNN":
-        # 工单 03：更正只改写原子条目；先经明确学习写入同提示的活动条目。
-        seeded = service.preprocess_message(
-            "account-alice",
-            conversation_id="conversation-seed",
-            message_id="message-seed",
-            content="我想学习旧的知识兴趣",
-            run_id="run-seed",
-            mode="companion",
-        )
-        assert seeded.run.status == "succeeded"
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="找Transformer论文",
+        run_id="run-1",
+        mode="companion",
+    )
+
+    assert result.run.status == ProfileExtractionStatus.SUCCEEDED
+    assert result.run.outcome == ProfileExtractionOutcome.SUCCEEDED_OBSERVED
+    assert result.run.source == ProfileExtractionSource.LOCAL_RULE
+    assert gateway.calls == 0
+    assert recorder.records == []
+    assert result.observed_count == 1
+    assert atomic_service.list_items("account-alice") == []
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "我的目标是今年通过雅思考试",
+        "想学习Transformer",
+        "把我的阶段目标撤回",
+    ],
+)
+def test_explicit_and_learning_statements_use_semantic_branch(content: str) -> None:
+    """工单 04：自然自述/学习目标/未识别管理意图交语义分支，入口不再否决。
+
+    替身返回空候选：运行成功但无可记事实（SUCCEEDED_EMPTY），零写入；
+    候选是否落库由证据核验与提交边界决定（见语义提取集成测试）。
+    """
+    gateway = _LockAwareCountingGateway()
+    recorder = _RecordingLockRecorder()
+    service, _, atomic_service = _hybrid_service(gateway, recorder=recorder)
 
     result = service.preprocess_message(
         "account-alice",
@@ -1327,37 +1355,15 @@ def test_local_rule_cases_never_call_gateway_and_mark_source(
     )
 
     assert result.run.status == ProfileExtractionStatus.SUCCEEDED
-    assert result.run.outcome == expected_outcome
-    assert result.run.source == ProfileExtractionSource.LOCAL_RULE
-    assert gateway.calls == 0
-    assert recorder.records == []
-    if content == "找Transformer论文":
-        return
-    assert result.committed_record_ids
-    assert atomic_service.list_items("account-alice")
+    assert result.run.outcome == ProfileExtractionOutcome.SUCCEEDED_EMPTY
+    assert result.run.source == ProfileExtractionSource.QWEN_MODEL
+    assert gateway.calls == 1
+    assert len(recorder.records) == 1
+    assert atomic_service.list_items("account-alice") == []
 
 
-@pytest.mark.parametrize(
-    ("content", "expected_status", "expected_outcome"),
-    [
-        (
-            "把我的阶段目标撤回",
-            ProfileExtractionStatus.SUCCEEDED,
-            ProfileExtractionOutcome.NO_SIGNAL,
-        ),
-        (
-            "不要记录",
-            ProfileExtractionStatus.EXHAUSTED,
-            ProfileExtractionOutcome.NO_SIGNAL,
-        ),
-    ],
-)
-def test_withdraw_and_privacy_blocked_never_call_gateway(
-    content: str,
-    expected_status: ProfileExtractionStatus,
-    expected_outcome: ProfileExtractionOutcome,
-) -> None:
-    """撤回/隐私阻断代表用例同样不调用 Qwen，来源保持 local_rule。"""
+def test_privacy_blocked_never_call_gateway() -> None:
+    """隐私阻断代表用例不调用 Qwen，来源保持 local_rule。"""
     gateway = _LockAwareCountingGateway()
     service, _, _ = _hybrid_service(gateway)
 
@@ -1365,15 +1371,15 @@ def test_withdraw_and_privacy_blocked_never_call_gateway(
         "account-alice",
         conversation_id="conversation-1",
         message_id="message-1",
-        content=content,
+        content="不要记录",
         run_id="run-1",
         mode="companion",
     )
 
     assert gateway.calls == 0
     assert result.run.source == ProfileExtractionSource.LOCAL_RULE
-    assert result.run.status == expected_status
-    assert result.run.outcome == expected_outcome
+    assert result.run.status == ProfileExtractionStatus.EXHAUSTED
+    assert result.run.outcome == ProfileExtractionOutcome.NO_SIGNAL
 
 
 def test_ambiguous_signal_uses_qwen_branch_with_one_lock() -> None:
