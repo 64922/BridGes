@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 81
+SCHEMA_VERSION = 82
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3658,6 +3658,20 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         ALTER TABLE profile_items
         ADD COLUMN source_quotes_json TEXT NOT NULL DEFAULT '{}'
+        """,
+    ],
+    # 画像工单 06：修订原因与冲突状态。retired_reason 记录被替代版本是
+    # 用户更正（correction）还是状态变化（state_change）；conflict_state
+    # 标记含义不明、确认前不作为确定事实使用的条目。既有行取默认值
+    # （无修订原因、无冲突）。
+    82: [
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN retired_reason TEXT
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN conflict_state TEXT NOT NULL DEFAULT 'none'
         """,
     ],
 }

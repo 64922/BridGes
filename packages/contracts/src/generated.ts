@@ -7557,6 +7557,16 @@ export interface components {
             person_id: string;
         };
         /**
+         * AtomicProfileConflictState
+         * @description 条目上的未解决冲突标记（画像工单 06）。
+         *
+         *     ``UNRESOLVED`` 表示同一单值属性槽存在含义不明的新旧说法：双方各自
+         *     保留依据，争议部分不作为确定事实采用，只在相关任务确实依赖该属性
+         *     时澄清。用户编辑、明确更正或明确变化后清除。
+         * @enum {string}
+         */
+        AtomicProfileConflictState: "none" | "unresolved";
+        /**
          * AtomicProfileEvidenceQuoteStatus
          * @description 原话引用状态：只有 ``RECORDED`` 才展示正文，绝不伪造引语。
          *
@@ -7891,6 +7901,11 @@ export interface components {
              * @default active
              */
             goal_state: components["schemas"]["AtomicProfileGoalState"];
+            /**
+             * @description 未解决冲突标记：unresolved 表示与同一属性的另一条说法矛盾、确认前不作为确定事实使用。
+             * @default none
+             */
+            conflict_state: components["schemas"]["AtomicProfileConflictState"];
         };
         /**
          * AtomicProfileMigrationReport

@@ -43,6 +43,8 @@ from pathlib import Path
 from typing import Protocol
 
 from bridges.contracts.atomic_profile import (
+    AtomicProfileConflict,
+    AtomicProfileConflictState,
     AtomicProfileEvidenceQuoteStatus,
     AtomicProfileEvidenceSource,
     AtomicProfileEvidenceSourceStatus,
@@ -67,6 +69,7 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileMigrationStatus,
     AtomicProfileReconciliationEntry,
     AtomicProfileReconciliationOutcome,
+    AtomicProfileRevisionKind,
     AtomicProfileTombstoneEntry,
     AtomicProfileValidityStatus,
     AtomicProfileWriteOrigin,
@@ -115,6 +118,7 @@ from bridges.profiles.purpose import (
     is_resource_constraint,
     task_topic_matches,
 )
+from bridges.profiles.signals import CORRECTION_MARKER
 from bridges.profiles.transactions import joined_transaction
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
@@ -229,9 +233,9 @@ def identity_key(account_id: str, text: str) -> str:
 #: 事实主体：当前账户用户。事实身份不描述其他人的事实。
 FACT_SUBJECT_USER = "user"
 #: 单值属性槽中年级的取值形状；对象归一化为年级 token 本身，让
-#: 「大二学生」与「大二」合并为同一事实。
+#: 「大二学生」与「大二」合并为同一事实；「升大四/升入大四」同指当前年级。
 _GRADE_TOKEN_RE = re.compile(
-    r"(?:我)?(?:现在|目前)?(?:是|在读|就读)?"
+    r"(?:我)?(?:现在|目前)?(?:是|在读|就读|升到?|升入)?"
     r"(?P<grade>大[一二三四五六]|研[一二三]|高[一二三四]|初[一二三四]|博[一二三四]|本[一二三四])"
     r"(?:的?学生|年级)?(?:了)?[。！!]?"
 )
@@ -260,6 +264,33 @@ _REPLACEMENT_TAIL_RE = re.compile(
     r"(?:改(?:为|成|做)?|转(?:为|向)?|换(?:成|为)?|准备|打算)\s*"
     r"(?P<obj>[^，。；;！!？?]+)$"
 )
+#: 状态/时间变化的标记（画像工单 06）：旧值是真实历史而非错误记录。
+#: 「现在/目前」只有在带「了」的变化句里才算标记（「我现在大二」是普通
+#: 陈述，「我现在升大四了」才是变化），避免旧消息重放被误判为新表态。
+_STATE_CHANGE_MARKER = re.compile(
+    r"(?:现在已经|已经|不再是|变成|改为|转为|转到|转成|转了|"
+    r"升级|升到|升入|升[一二三四五六大高初研博本]|跳级|搬出|搬到|搬走|"
+    r"不住了|换了|(?:现在|目前|后来|如今)[^，。；！？]{0,12}了)"
+)
+
+
+def _classify_revision_kind(*texts: str | None) -> AtomicProfileRevisionKind | None:
+    """按用户原话判定修订原因；无标记时返回 ``None``（含义待定）。
+
+    ``CORRECTION``（明确认错/「不是 A 而是 B」/「改了这句」）优先于
+    ``STATE_CHANGE``（「现在…了/已经转…了」）：标记可能出现在证据引语而
+    不是规范化正文里，因此对全部候选文本一起判定。无标记时不猜测原因，
+    由调用方按单值槽矛盾走冲突路径。
+    """
+
+    joined = " ".join(text for text in texts if text)
+    if not joined:
+        return None
+    if CORRECTION_MARKER.search(joined):
+        return AtomicProfileRevisionKind.CORRECTION
+    if _STATE_CHANGE_MARKER.search(joined):
+        return AtomicProfileRevisionKind.STATE_CHANGE
+    return None
 
 
 def parse_fact_identity(
@@ -793,6 +824,42 @@ def _item_matches_question(text: str, current_question: str | None) -> bool:
     )
 
 
+#: 冲突澄清问句里单值槽的中文称谓（工单 06）。
+_RELATION_QUESTION_LABEL = {
+    AtomicProfileFactRelation.GRADE: "年级",
+    AtomicProfileFactRelation.MAJOR: "专业",
+    AtomicProfileFactRelation.IDENTITY: "身份信息",
+}
+#: 问题本身依赖该槽的确定性关键词（问题没有提到条目正文时的兜底）。
+_RELATION_QUESTION_KEYWORDS = {
+    AtomicProfileFactRelation.GRADE: re.compile(r"(?:年级|大几|几年级)"),
+    AtomicProfileFactRelation.MAJOR: re.compile(r"(?:专业|院系|学院|主修)"),
+    AtomicProfileFactRelation.IDENTITY: re.compile(r"(?:身份|职业|岗位|称呼)"),
+}
+
+
+def _conflict_question(
+    relation: AtomicProfileFactRelation, items: list[AtomicProfileItem]
+) -> str:
+    """确定性生成冲突澄清问句（含双方原话与「以哪个为准」）。"""
+
+    label = _RELATION_QUESTION_LABEL.get(relation, "这条信息")
+    quotes = "、".join(f"「{item.text}」" for item in items)
+    count = "两种" if len(items) == 2 else "几种"
+    return f"关于你的{label}，我记下了{count}说法：{quotes}，以哪个为准？"
+
+
+def _conflict_matches_question(
+    conflict: AtomicProfileConflict, question: str
+) -> bool:
+    """问题是否依赖该冲突槽：先说关系关键词，再退回逐条正文词面匹配。"""
+
+    keyword = _RELATION_QUESTION_KEYWORDS.get(conflict.relation)
+    if keyword is not None and keyword.search(question):
+        return True
+    return any(_item_matches_question(item.text, question) for item in conflict.items)
+
+
 def _is_same_turn_extraction(
     item: AtomicProfileItem, current_user_message_id: str | None
 ) -> bool:
@@ -807,18 +874,23 @@ def _is_same_turn_extraction(
 
 #: 可靠度门禁的稳定排除原因：聊天侧据此决定是否提示「需要确认」。
 RECALL_LOW_CONFIDENCE_REASON = "可靠程度不足，暂不用于当前回答"
+#: 冲突门禁的稳定排除原因：双方说法矛盾且未确认，争议部分不作确定事实。
+RECALL_CONFLICT_REASON = "存在未解决的冲突，暂不作为确定事实使用"
 
 
 def _recall_exclusion(item: AtomicProfileItem, now: datetime) -> str | None:
-    """召回前的有效性检查（工单 18）：返回排除原因或 ``None``。
+    """召回前的有效性检查（工单 18/06）：返回排除原因或 ``None``。
 
     已撤回/被替代、仅适用于当时那轮、目标暂停/完成、过期、可靠度不足（且
     不是用户明确编辑）的条目一律不进入本轮切片。用户编辑的权威独立于自动
-    可靠度：用户改过的条目即使沿用了旧档位也可召回。
+    可靠度：用户改过的条目即使沿用了旧档位也可召回。未解决冲突是独立门禁：
+    条目仍有依据但含义未确认，争议部分不作为确定事实。
     """
 
     if item.status != AtomicProfileItemStatus.ACTIVE:
         return "已撤回或失效，不再用于当前回答"
+    if item.conflict_state == AtomicProfileConflictState.UNRESOLVED:
+        return RECALL_CONFLICT_REASON
     if item.fact_scope == AtomicProfileFactScope.CURRENT:
         return "仅适用于提出时的那一轮，不作为长期信息"
     if item.goal_state == AtomicProfileGoalState.PAUSED:
@@ -1464,6 +1536,14 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 if row["migration_run_id"] is not None  # type: ignore[index]
                 else None
             ),
+            retired_reason=(
+                AtomicProfileRevisionKind(str(row["retired_reason"]))  # type: ignore[index]
+                if row["retired_reason"] is not None  # type: ignore[index]
+                else None
+            ),
+            conflict_state=AtomicProfileConflictState(
+                str(row["conflict_state"])  # type: ignore[index]
+            ),
         )
 
     def save_item(self, item: AtomicProfileItem) -> AtomicProfileItem:
@@ -1475,9 +1555,10 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "supersedes_id, superseded_by_id, source_record_id, "
             "source_message_ids_json, source_quotes_json, topic_hint, topics_json, "
             "status, write_origin, "
-            "confidence, version, created_at, updated_at, user_edited_at, migration_run_id) "
+            "confidence, version, created_at, updated_at, user_edited_at, migration_run_id, "
+            "retired_reason, conflict_state) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-            "?, ?, ?, ?, ?, ?, ?) "
+            "?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(profile_item_id) DO UPDATE SET text = excluded.text, "
             "identity_key = excluded.identity_key, fact_subject = excluded.fact_subject, "
             "fact_relation = excluded.fact_relation, fact_object = excluded.fact_object, "
@@ -1498,7 +1579,9 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "write_origin = excluded.write_origin, confidence = excluded.confidence, "
             "version = excluded.version, created_at = excluded.created_at, "
             "updated_at = excluded.updated_at, user_edited_at = excluded.user_edited_at, "
-            "migration_run_id = excluded.migration_run_id "
+            "migration_run_id = excluded.migration_run_id, "
+            "retired_reason = excluded.retired_reason, "
+            "conflict_state = excluded.conflict_state "
             "WHERE account_id = excluded.account_id",
             (
                 item.profile_item_id,
@@ -1531,6 +1614,8 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 self._iso(item.updated_at),
                 self._iso(item.user_edited_at) if item.user_edited_at else None,
                 item.migration_run_id,
+                item.retired_reason.value if item.retired_reason is not None else None,
+                item.conflict_state.value,
             ),
         )
         return item
@@ -1959,7 +2044,58 @@ class AtomicProfileService:
             valid_until=item.valid_until,
             validity_phrase=item.validity_phrase,
             goal_state=item.goal_state,
+            # 工单 06：未解决冲突在页面标记「待确认」，确认前不作确定事实。
+            conflict_state=item.conflict_state,
         )
+
+    def pending_conflicts(self, account_id: str) -> list[AtomicProfileConflict]:
+        """列出未解决的冲突组（同一单值槽的说法互相矛盾、等待用户确认）。
+
+        只返回活动条目；每组附确定性澄清问句。组内列出该槽全部活动说法：
+        一侧被用户编辑消解自身标记后，澄清问句仍需展示双方当前值，否则
+        只会引用单条却问「以哪个为准」。争议条目本身仍在列表中可见（带
+        unresolved 标记），但不会作为确定事实进入召回。
+        """
+
+        active = self.list_items(account_id)
+        unresolved_slots = {
+            (item.fact_relation, item.fact_scope)
+            for item in active
+            if item.conflict_state == AtomicProfileConflictState.UNRESOLVED
+        }
+        grouped: dict[
+            tuple[AtomicProfileFactRelation, AtomicProfileFactScope],
+            list[AtomicProfileItem],
+        ] = {}
+        for item in active:
+            slot = (item.fact_relation, item.fact_scope)
+            if slot not in unresolved_slots:
+                continue
+            grouped.setdefault(slot, []).append(item)
+        conflicts: list[AtomicProfileConflict] = []
+        for (relation, scope), items in grouped.items():
+            ordered = sorted(items, key=lambda entry: entry.created_at)
+            conflicts.append(
+                AtomicProfileConflict(
+                    account_id=account_id,
+                    relation=relation,
+                    scope=scope,
+                    items=ordered,
+                    question=_conflict_question(relation, ordered),
+                )
+            )
+        return conflicts
+
+    def conflict_clarifications(
+        self, account_id: str, *, question: str
+    ) -> list[AtomicProfileConflict]:
+        """只返回当前问题确实依赖的冲突组（其余冲突等下一条相关消息）。"""
+
+        return [
+            conflict
+            for conflict in self.pending_conflicts(account_id)
+            if _conflict_matches_question(conflict, normalize_text(question))
+        ]
 
     # -- 依据展开与反馈（工单 20） ----------------------------------------
 
@@ -2233,6 +2369,9 @@ class AtomicProfileService:
                 # 聊天里说过。
                 item.evidence_quote = None
                 item.source_quotes = {}
+                # 用户改定本条正文即确认了该条目的说法：未解决冲突消除
+                # （工单 06）。
+                item.conflict_state = AtomicProfileConflictState.NONE
                 # 用户编辑里明示的新期限以本次编辑时间为锚更新；没有时间表达
                 # 时保留原期限（用户改措辞不等于取消期限，也不自动续期）。
                 window = parse_validity_window(text, now)
@@ -2358,7 +2497,7 @@ class AtomicProfileService:
                         existing.version += 1
                         existing.updated_at = now
                         existing = self._repository.save_item(existing)
-                    superseded_items = self._reconcile_explicit_change(
+                    superseded_items, _blocked = self._reconcile_explicit_change(
                         account_id, normalized, existing
                     )
                     saved = existing
@@ -2381,6 +2520,8 @@ class AtomicProfileService:
                     existing.write_origin = AtomicProfileWriteOrigin.USER
                     existing.confidence = FourDimensionConfidence.HIGH
                     existing.user_edited_at = now
+                    # 用户明确写入消除本条目的未解决冲突（工单 06）。
+                    existing.conflict_state = AtomicProfileConflictState.NONE
                     existing.updated_at = now
                     existing.version += 1
                     existing.migration_run_id = None
@@ -2394,7 +2535,7 @@ class AtomicProfileService:
                         existing.source_record_id = record.record_id
                         existing.topic_hint = record.dimension.value
                     saved = self._repository.save_item(existing)
-                    superseded_items = self._reconcile_explicit_change(
+                    superseded_items, _blocked = self._reconcile_explicit_change(
                         account_id, normalized, saved
                     )
             else:
@@ -2426,7 +2567,7 @@ class AtomicProfileService:
                     migration_run_id=None,
                 )
                 saved = self._repository.save_item(item)
-                superseded_items = self._reconcile_explicit_change(
+                superseded_items, _blocked = self._reconcile_explicit_change(
                     account_id, normalized, saved
                 )
         if superseded_items:
@@ -2756,6 +2897,11 @@ class AtomicProfileService:
                     },
                 )
                 return None
+        revision_kind = _classify_revision_kind(
+            text,
+            evidence_quote,
+            *(fragment.quote for fragment in evidence_fragments),
+        )
         superseded_items: list[AtomicProfileItem] = []
         with self._profile_commit.transaction():
             existing = self._repository.find_item_by_fact_key(account_id, fact_key)
@@ -2763,10 +2909,21 @@ class AtomicProfileService:
                 # 同一事实的新说法解析不出原关系时（如旧记录重放），兼容
                 # 旧的正文文本键：同文本认定同一事实，避免产生副本。
                 existing = self._repository.find_item_by_identity(account_id, key)
-            if existing is not None:
-                if existing.status != AtomicProfileItemStatus.ACTIVE:
+            if existing is not None and existing.status != AtomicProfileItemStatus.ACTIVE:
+                if (
+                    revision_kind is None
+                    or source_at is None
+                    or anchor < existing.created_at
+                ):
                     # 同事实/同文本的墓碑或被替代版本：旧消息重放不得复活。
+                    # 重开要求带明确变更标记、且能证明来源时间不早于旧版本
+                    # 退役（缺失来源时间视为无法证明，一律拦截）；同刻按新
+                    # 表态处理，见时钟分辨率下的相等时间戳。
                     return None
+                # 带明确变更标记且来源消息晚于旧版本的新事实是用户的新
+                # 表态，允许重新进入（T07：纠正后「现在升大四了」）。
+                existing = None
+            if existing is not None:
                 if existing.user_edited_at is not None and existing.text != text:
                     # 用户编辑优先：同一事实的自动新说法不改写用户版本。
                     return existing
@@ -2785,7 +2942,20 @@ class AtomicProfileService:
                     anchor=anchor,
                     now=now,
                 )
+                if revision_kind is not None:
+                    superseded_items.extend(
+                        self._apply_marked_revision(
+                            account_id, text, merged, revision_kind
+                        )
+                    )
                 return self._repository.save_item(merged)
+            # 工单 06：单值属性槽出现无标记的新说法时不猜测——双方各自保留
+            # 依据并标记未解决；用户编辑过的一方保持权威，不被标冲突。
+            conflicting = (
+                self._active_slot_conflicts(account_id, identity)
+                if identity.relation.is_single_valued and revision_kind is None
+                else []
+            )
             item = AtomicProfileItem(
                 profile_item_id=_new_item_id(),
                 owner_account_id=account_id,
@@ -2829,9 +2999,36 @@ class AtomicProfileService:
                 updated_at=now,
                 user_edited_at=None,
                 migration_run_id=None,
+                conflict_state=(
+                    AtomicProfileConflictState.UNRESOLVED
+                    if conflicting
+                    else AtomicProfileConflictState.NONE
+                ),
             )
+            if conflicting:
+                for old in conflicting:
+                    if (
+                        old.user_edited_at is not None
+                        or old.conflict_state
+                        == AtomicProfileConflictState.UNRESOLVED
+                    ):
+                        continue
+                    self._repository.save_item(
+                        old.model_copy(
+                            update={
+                                "conflict_state": (
+                                    AtomicProfileConflictState.UNRESOLVED
+                                ),
+                                "version": old.version + 1,
+                                "updated_at": now,
+                            }
+                        )
+                    )
+            if revision_kind is not None:
+                superseded_items.extend(
+                    self._apply_marked_revision(account_id, text, item, revision_kind)
+                )
             saved = self._repository.save_item(item)
-            superseded_items = self._reconcile_explicit_change(account_id, text, saved)
         if superseded_items:
             # 自动写入的明确收回/替代同样是撤回：依赖失效在事务提交后发出，
             # 避免摘要失效各自的事务与本事务嵌套。
@@ -2920,8 +3117,14 @@ class AtomicProfileService:
                     merged.source_quotes = {}
                 merged.confidence = FourDimensionConfidence.HIGH
                 merged.user_edited_at = now
+                # 用户明确更正消除该条目的未解决冲突（工单 06）。
+                merged.conflict_state = AtomicProfileConflictState.NONE
                 saved = self._repository.save_item(merged)
-                self._supersede_item(target, saved.profile_item_id)
+                self._supersede_item(
+                    target,
+                    saved.profile_item_id,
+                    reason=AtomicProfileRevisionKind.CORRECTION,
+                )
                 revoked.append(target.model_copy(update={"source_message_ids": previous_sources}))
             else:
                 target.text = normalized
@@ -2942,6 +3145,8 @@ class AtomicProfileService:
                 target.updated_at = now
                 target.user_edited_at = now
                 target.confidence = FourDimensionConfidence.HIGH
+                # 用户明确更正消除该条目的未解决冲突（工单 06）。
+                target.conflict_state = AtomicProfileConflictState.NONE
                 saved = self._repository.save_item(target)
                 if identity_changed:
                     self._write_suppression(
@@ -2954,7 +3159,12 @@ class AtomicProfileService:
                         saved.model_copy(update={"source_message_ids": previous_sources})
                     )
             revoked.extend(
-                self._reconcile_explicit_change(account_id, normalized, saved)
+                self._reconcile_explicit_change(
+                    account_id,
+                    normalized,
+                    saved,
+                    reason=AtomicProfileRevisionKind.CORRECTION,
+                )[0]
             )
         if revoked:
             # 纠正改变事实身份：依赖旧值的切片与摘要按依赖失效。通知在事务
@@ -3477,6 +3687,7 @@ class AtomicProfileService:
                     "version": item.version + 1,
                     "updated_at": now,
                     "user_edited_at": now,
+                    "conflict_state": AtomicProfileConflictState.NONE,
                 }
             )
         )
@@ -3534,39 +3745,91 @@ class AtomicProfileService:
         )
 
     def _supersede_item(
-        self, item: AtomicProfileItem, superseded_by_id: str | None
+        self,
+        item: AtomicProfileItem,
+        superseded_by_id: str | None,
+        *,
+        reason: AtomicProfileRevisionKind | None = None,
     ) -> None:
-        """把活动条目退休为被替代版本；正文与来源保留供对账。"""
+        """把活动条目退休为被替代版本；正文与来源保留供对账。
+
+        ``reason`` 记录修订语义（工单 06）：更正说明旧值是错误记录；
+        状态变化说明旧值是真实历史，补上截止时间（明示期限优先，不覆盖）。
+        """
 
         now = _now()
-        self._repository.save_item(
-            item.model_copy(
-                update={
-                    "status": AtomicProfileItemStatus.SUPERSEDED,
-                    "superseded_by_id": superseded_by_id,
-                    "version": item.version + 1,
-                    "updated_at": now,
-                }
-            )
+        updates: dict[str, object] = {
+            "status": AtomicProfileItemStatus.SUPERSEDED,
+            "superseded_by_id": superseded_by_id,
+            "version": item.version + 1,
+            "updated_at": now,
+            "retired_reason": reason,
+            "conflict_state": AtomicProfileConflictState.NONE,
+        }
+        if reason == AtomicProfileRevisionKind.STATE_CHANGE and item.valid_until is None:
+            updates["valid_until"] = now
+        self._repository.save_item(item.model_copy(update=updates))
+
+    @staticmethod
+    def _is_user_authoritative(item: AtomicProfileItem) -> bool:
+        """条目正文是否出自用户明确写入（页面编辑、明确「记住」）。"""
+
+        return item.write_origin == AtomicProfileWriteOrigin.USER
+
+    def _apply_marked_revision(
+        self,
+        account_id: str,
+        text: str,
+        item: AtomicProfileItem,
+        revision_kind: AtomicProfileRevisionKind,
+    ) -> list[AtomicProfileItem]:
+        """带标记的明确修订落账：替代相关单值槽旧值（原因如实记录），并
+        消除本条目的未解决冲突；被用户明确写入的旧值挡住时保持未解决，
+        等待用户确认。返回被替代的旧条目。
+        """
+
+        superseded, blocked = self._reconcile_explicit_change(
+            account_id, text, item, reason=revision_kind, protect_user_edited=True
         )
+        item.conflict_state = (
+            AtomicProfileConflictState.UNRESOLVED
+            if blocked
+            else AtomicProfileConflictState.NONE
+        )
+        return superseded
 
     def _reconcile_explicit_change(
-        self, account_id: str, text: str, item: AtomicProfileItem
-    ) -> list[AtomicProfileItem]:
+        self,
+        account_id: str,
+        text: str,
+        item: AtomicProfileItem,
+        *,
+        reason: AtomicProfileRevisionKind | None = None,
+        protect_user_edited: bool = False,
+    ) -> tuple[list[AtomicProfileItem], list[AtomicProfileItem]]:
         """明确变更的对账：单值属性槽换值与「明确收回 + 转向」只替代对应事实。
 
-        返回被替代的旧条目（含正文与来源），供调用方在事务提交后发出撤回
-        通知——通知消费方各自持有事务，在事务内发出会嵌套失败。普通追加
-        （不同对象、不同目标）不经过这里，因此「新增六级不覆盖考研」。被
-        替代版本保留在仓库中，供对账与审计。
+        返回 ``(被替代的旧条目, 被保护的旧条目)``。普通追加（不同对象、不同
+        目标）不经过这里，因此「新增六级不覆盖考研」。被替代版本保留在仓库
+        中，供对账与审计。``protect_user_edited=True`` 用于自动写入路径
+        （工单 06）：用户明确写入的槽值（页面编辑、明确「记住」，正文来源为
+        用户）是最高权威，自动提交不得退休它，只能把本次新值标记为未解决
+        冲突，等用户确认；会话更正的槽值（会话权威）可以被更新的会话明确
+        变更替代（T07：说错纠正后「现在升大四了」保留大三为历史）。
         """
 
         identity = _identity_for_item(item)
         superseded: list[str] = []
         superseded_items: list[AtomicProfileItem] = []
+        blocked_items: list[AtomicProfileItem] = []
         if identity.relation.is_single_valued:
-            for old in self._active_slot_conflicts(account_id, item, identity):
-                self._supersede_item(old, item.profile_item_id)
+            for old in self._active_slot_conflicts(
+                account_id, identity, exclude_item_id=item.profile_item_id
+            ):
+                if protect_user_edited and self._is_user_authoritative(old):
+                    blocked_items.append(old)
+                    continue
+                self._supersede_item(old, item.profile_item_id, reason=reason)
                 superseded.append(old.profile_item_id)
                 superseded_items.append(old)
         negated, _replacement = parse_explicit_change(text)
@@ -3589,26 +3852,30 @@ class AtomicProfileService:
                 if old.profile_item_id == item.profile_item_id:
                     continue
                 if old.fact_key and old.fact_key in targets:
-                    self._supersede_item(old, item.profile_item_id)
+                    if protect_user_edited and self._is_user_authoritative(old):
+                        blocked_items.append(old)
+                        continue
+                    self._supersede_item(old, item.profile_item_id, reason=reason)
                     superseded.append(old.profile_item_id)
                     superseded_items.append(old)
         if superseded and item.supersedes_id is None:
             item.supersedes_id = superseded[0]
             self._repository.save_item(item)
-        return superseded_items
+        return superseded_items, blocked_items
 
     def _active_slot_conflicts(
         self,
         account_id: str,
-        item: AtomicProfileItem,
         identity: AtomicProfileFactIdentity,
+        *,
+        exclude_item_id: str | None = None,
     ) -> list[AtomicProfileItem]:
         """同主体、同关系、同范围的单值槽活动条目（对象不同即冲突）。"""
 
         return [
             old
             for old in self._repository.list_items(account_id)
-            if old.profile_item_id != item.profile_item_id
+            if old.profile_item_id != exclude_item_id
             and old.fact_subject == identity.subject
             and old.fact_relation == identity.relation
             and old.fact_scope == identity.scope

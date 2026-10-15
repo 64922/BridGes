@@ -292,7 +292,12 @@ def test_new_slot_value_supersedes_previous_item(
 
     item = service.commit_fact(
         ALICE,
-        _fact("我大四", dimension=FourDimension.ACADEMIC_STATUS, message_id="msg-2"),
+        _fact(
+            "我大四",
+            dimension=FourDimension.ACADEMIC_STATUS,
+            message_id="msg-2",
+            evidence_quote="我现在升大四了",
+        ),
     )
     assert item is not None
 

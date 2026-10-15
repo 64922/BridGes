@@ -269,6 +269,7 @@ def test_replacement_uses_only_new_value_evidence_messages(
             dimension=FourDimension.ACADEMIC_STATUS,
             message_id="old-message",
             confidence=FourDimensionConfidence.HIGH,
+            evidence_quote="我现在大二",
         ),
     )
     assert first is not None
@@ -279,6 +280,7 @@ def test_replacement_uses_only_new_value_evidence_messages(
             dimension=FourDimension.ACADEMIC_STATUS,
             message_id="new-message",
             confidence=FourDimensionConfidence.HIGH,
+            evidence_quote="我现在升大三了",
         ),
     )
 
@@ -295,6 +297,7 @@ def test_replacement_uses_only_new_value_evidence_messages(
             dimension=FourDimension.ACADEMIC_STATUS,
             message_id="third-message",
             confidence=FourDimensionConfidence.HIGH,
+            evidence_quote="我现在升大四了",
         ),
     )
     assert third is not None

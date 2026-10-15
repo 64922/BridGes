@@ -29678,6 +29678,15 @@
         "title": "AssignRoleRequest",
         "description": "分配独立复核者或平台发行者。"
       },
+      "AtomicProfileConflictState": {
+        "type": "string",
+        "enum": [
+          "none",
+          "unresolved"
+        ],
+        "title": "AtomicProfileConflictState",
+        "description": "条目上的未解决冲突标记（画像工单 06）。\n\n``UNRESOLVED`` 表示同一单值属性槽存在含义不明的新旧说法：双方各自\n保留依据，争议部分不作为确定事实采用，只在相关任务确实依赖该属性\n时澄清。用户编辑、明确更正或明确变化后清除。"
+      },
       "AtomicProfileEvidenceQuoteStatus": {
         "type": "string",
         "enum": [
@@ -30245,6 +30254,11 @@
             "$ref": "#/components/schemas/AtomicProfileGoalState",
             "description": "目标生命周期标记；普通事实恒为 active。",
             "default": "active"
+          },
+          "conflict_state": {
+            "$ref": "#/components/schemas/AtomicProfileConflictState",
+            "description": "未解决冲突标记：unresolved 表示与同一属性的另一条说法矛盾、确认前不作为确定事实使用。",
+            "default": "none"
           }
         },
         "type": "object",

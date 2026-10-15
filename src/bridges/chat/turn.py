@@ -99,6 +99,7 @@ from bridges.chat.task_materials import (
     record_queries,
 )
 from bridges.contracts.ai import CallContractVersions, ModelRunLock
+from bridges.contracts.atomic_profile import AtomicProfileConflict
 from bridges.contracts.career import (
     CareerPlanningProcessState,
     CareerPlanningProjection,
@@ -1580,6 +1581,24 @@ def profile_slice_context(
             break
         used += len(line)
         lines.append(line)
+    return "\n".join(lines)
+
+
+def conflict_clarification_context(
+    conflicts: tuple[AtomicProfileConflict, ...],
+) -> str:
+    """渲染未解决画像冲突的澄清指令（工单 06：仅问题依赖该属性时注入）。
+
+    冲突条目的正文不会进入画像切片（召回门禁已按冲突整条排除）；这里只
+    注入服务生成的澄清问句，让模型先用日常语言向用户确认，澄清前不得把
+    任一说法的值当作确定信息作答。
+    """
+
+    lines = [
+        "以下信息在你此前的说法里互相矛盾，本轮回答需要依赖它，因此先用"
+        "日常语言向用户确认后再作答；确认之前不要把它当作确定信息使用："
+    ]
+    lines.extend(f"- {conflict.question}" for conflict in conflicts)
     return "\n".join(lines)
 
 
@@ -6917,6 +6936,7 @@ class TurnOrchestrator:
                 None,
             )
         atomic_adopted: AdoptedProfileSlice | None = None
+        query: str | None = None
         try:
             if self._atomic_profiles is not None:
                 current_messages = self._repo.list_messages(account_id, conversation_id)
@@ -7055,7 +7075,15 @@ class TurnOrchestrator:
                 None,
             )
         if atomic_adopted is not None:
-            adopted_requires_confirmation = any(
+            # 工单 06：未解决冲突不进切片（召回门禁），仅当本轮问题依赖冲突
+            # 属性时才澄清——注入确定性问句，让模型先用日常语言确认。
+            atomic_service = self._atomic_profiles
+            conflict_clarifications = (
+                atomic_service.conflict_clarifications(account_id, question=query)
+                if query and atomic_service is not None
+                else []
+            )
+            adopted_requires_confirmation = bool(conflict_clarifications) or any(
                 item.exclusion_reason == RECALL_LOW_CONFIDENCE_REASON
                 for item in atomic_adopted.excluded_items
             )
@@ -7071,6 +7099,12 @@ class TurnOrchestrator:
                     remaining_tokens=_remaining_input_tokens(context_budget),
                 )
             )
+            if conflict_clarifications and profile_context is not None:
+                profile_context = (
+                    conflict_clarification_context(tuple(conflict_clarifications))
+                    + "\n"
+                    + profile_context
+                )
             if context_budget is not None and any(
                 item.profile_item_id in required_ids
                 and item.exclusion_reason == "超出本轮模型输入预算，整条不采用"

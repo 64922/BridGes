@@ -77,6 +77,30 @@ class AtomicProfileGoalState(StrEnum):
     COMPLETED = "completed"
 
 
+class AtomicProfileRevisionKind(StrEnum):
+    """被替代旧值的修订原因（画像工单 06）。
+
+    ``CORRECTION`` 是用户明确更正（「说错了/记错了」）：旧值是错误记录，
+    不作为真实经历展示或使用。``STATE_CHANGE`` 是状态/时间变化（「现在
+    升大三了」）：旧值是真实历史，带截止时间保留供追溯。
+    """
+
+    CORRECTION = "correction"
+    STATE_CHANGE = "state_change"
+
+
+class AtomicProfileConflictState(StrEnum):
+    """条目上的未解决冲突标记（画像工单 06）。
+
+    ``UNRESOLVED`` 表示同一单值属性槽存在含义不明的新旧说法：双方各自
+    保留依据，争议部分不作为确定事实采用，只在相关任务确实依赖该属性
+    时澄清。用户编辑、明确更正或明确变化后清除。
+    """
+
+    NONE = "none"
+    UNRESOLVED = "unresolved"
+
+
 class AtomicProfileFactIdentity(BaseModel):
     """一条完整事实的主体/关系/对象/范围身份（内部合同，不进入页面）。"""
 
@@ -235,6 +259,17 @@ class AtomicProfileItem(BaseModel):
     superseded_by_id: str | None = Field(
         default=None, description="本条被哪条新版本替代；活动条目为空。"
     )
+    retired_reason: AtomicProfileRevisionKind | None = Field(
+        default=None,
+        description=(
+            "被替代版本的修订原因：correction 视为错误记录，"
+            "state_change 视为带截止时间的真实历史；活动条目为空。"
+        ),
+    )
+    conflict_state: AtomicProfileConflictState = Field(
+        default=AtomicProfileConflictState.NONE,
+        description="未解决冲突标记；unresolved 时不作为确定事实使用。",
+    )
     valid_from: datetime | None = Field(
         default=None, description="有效期起点；没有明示时间时为空。"
     )
@@ -353,6 +388,31 @@ class AtomicProfileItemProjection(BaseModel):
         default=AtomicProfileGoalState.ACTIVE,
         description="目标生命周期标记；普通事实恒为 active。",
     )
+    conflict_state: AtomicProfileConflictState = Field(
+        default=AtomicProfileConflictState.NONE,
+        description=(
+            "未解决冲突标记：unresolved 表示与同一属性的另一条说法矛盾、"
+            "确认前不作为确定事实使用。"
+        ),
+    )
+
+
+class AtomicProfileConflict(BaseModel):
+    """一组未解决的冲突说法（画像工单 06；澄清接缝的内部合同）。
+
+    同一主体/关系/范围下含义不同的活动条目各自保留依据；``question`` 是
+    确定性生成的澄清问句，只在当前任务确实依赖该属性时返回给上层。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    account_id: str = Field(description="所属账户标识。")
+    relation: AtomicProfileFactRelation = Field(description="冲突所在的关系/属性槽。")
+    scope: AtomicProfileFactScope = Field(description="冲突事实的适用范围。")
+    items: list[AtomicProfileItem] = Field(
+        description="冲突双方的活动条目，按出现时间从早到晚排列。"
+    )
+    question: str = Field(description="确定性生成的澄清问句（含双方说法）。")
 
 
 class AtomicProfileEvidenceSourceStatus(StrEnum):
@@ -654,6 +714,8 @@ class AtomicProfileMigrationReport(BaseModel):
 
 
 __all__ = [
+    "AtomicProfileConflict",
+    "AtomicProfileConflictState",
     "AtomicProfileEvidenceQuoteStatus",
     "AtomicProfileEvidenceSource",
     "AtomicProfileEvidenceSourceStatus",
@@ -680,6 +742,7 @@ __all__ = [
     "AtomicProfileMigrationStatus",
     "AtomicProfileReconciliationEntry",
     "AtomicProfileReconciliationOutcome",
+    "AtomicProfileRevisionKind",
     "AtomicProfileTombstoneEntry",
     "AtomicProfileValidityStatus",
     "AtomicProfileWriteOrigin",

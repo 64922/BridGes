@@ -51,6 +51,17 @@
   overflow-wrap: anywhere;
 }
 
+.conflict {
+  margin: 10px 0 0;
+  border-left: 3px solid var(--color-accent-primary);
+  border-radius: 0 8px 8px 0;
+  padding: 6px 10px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .meta {
   margin: 10px 0 0;
   color: var(--color-text-tertiary);

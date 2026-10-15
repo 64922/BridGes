@@ -560,4 +560,35 @@ describe("AtomicProfileCenter", () => {
       expect(screen.getByTestId("atomic-topics").textContent).toContain("目标与计划")
     );
   });
+
+  it("marks unresolved conflicts as 待确认 and explains they are not definite", async () => {
+    api.listAtomicProfileItems.mockResolvedValue([
+      item({
+        profile_item_id: "item-1",
+        text: "我是软件工程专业",
+        conflict_state: "unresolved",
+      }),
+      item({
+        profile_item_id: "item-2",
+        text: "我是计算机专业",
+        conflict_state: "unresolved",
+      }),
+    ]);
+
+    render(<AtomicProfileCenter />);
+    const badges = await screen.findAllByTestId("atomic-conflict-badge");
+    expect(badges).toHaveLength(2);
+    expect(badges[0].textContent).toContain("待确认");
+    expect(badges[0].textContent).toContain("不会作为确定信息使用");
+  });
+
+  it("does not show the conflict badge on resolved items", async () => {
+    api.listAtomicProfileItems.mockResolvedValue([
+      item({ conflict_state: "none" }),
+    ]);
+
+    render(<AtomicProfileCenter />);
+    await screen.findByText("我在准备雅思考试");
+    expect(screen.queryByTestId("atomic-conflict-badge")).toBeNull();
+  });
 });

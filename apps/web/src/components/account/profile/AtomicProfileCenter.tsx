@@ -684,6 +684,18 @@ export function AtomicProfileCenter() {
                 ) : (
                   <>
                     <p className={styles.text}>{item.text}</p>
+                    {item.conflict_state === "unresolved" ? (
+                      // 冲突标记：与同属性的另一条说法不一致，确认前不作确定
+                      // 信息使用；用户直接修改本条或删除其一即可消除。
+                      <p
+                        className={styles.conflict}
+                        data-testid="atomic-conflict-badge"
+                        role="status"
+                      >
+                        待确认：还有一条说法与此不一致。确认之前，这部分不会作为确定信息使用；
+                        你可以直接修改成正确的说法，或删除不需要的那条。
+                      </p>
+                    ) : null}
                     <p className={styles.meta}>
                       {ORIGIN_LABELS[item.write_origin]}
                       {source ? ` · ${source}` : ""}
