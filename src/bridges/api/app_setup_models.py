@@ -134,6 +134,9 @@ def configure_model_services(app: FastAPI) -> None:
         ),
         atomic_profile_service=app.state.atomic_profile_service,
     )
+    # Issue 02：跨重启恢复是显式启动动作，构造不再启动业务执行；
+    # 恢复时刻与外部可见行为（启动时重新入队中断的抽取）保持不变。
+    app.state.automatic_profile_service.recover_inflight_runs()
 
     # Issue 11: 持久化流式聊天纵向切片。对话/消息/运行锁写入 bridges.db；
     # 未配置持久化数据目录（内存模式，仅测试/E2E）时不挂载聊天服务，

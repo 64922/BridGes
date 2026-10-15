@@ -821,7 +821,7 @@ class ProfileReplayCoordinator:
         ) -> ProfileReplayMessage | None:
             return replay_repository.get_message(account_id, message_id)
 
-        return AutomaticProfileService(
+        service = AutomaticProfileService(
             four_dimension_service=dimensions,
             repository=automatic_repository,
             extractor=actual_extractor,
@@ -829,6 +829,10 @@ class ProfileReplayCoordinator:
             classifier=self._classifier,
             queue_name=PROFILE_REPLAY_QUEUE,
         )
+        # Issue 02：构造不再自动启动恢复；回放编排保持与启动相同的显式恢复
+        # 语义（RUNNING 且缺任务的重放运行重新入队）。
+        service.recover_inflight_runs()
+        return service
 
     def _seed_candidate(
         self,

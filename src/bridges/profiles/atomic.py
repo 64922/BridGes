@@ -1769,6 +1769,11 @@ class AtomicProfileService:
     失败是否越过墓碑保护点、能否重试、恢复后的可见结果由提交 module 定义
     （见 :mod:`bridges.profiles.commit`）：墓碑提交之后的来源撤回失败不回滚
     删除，:meth:`recover_source_withdrawals` 只凭持久墓碑幂等补齐。
+
+    Issue 02：用户权威写入（记住、行内编辑、目标生命周期、删除、忘掉）统一
+    在提交 module 的边界内执行（``self._profile_commit.transaction()``）。
+    本服务不再自行决定哪几个仓库参与一次写入——事务参与只由提交 module
+    声明；条目侧的推进（换键、抑制键、墓碑）仍在同一份实现里。
     """
 
     def __init__(
@@ -2092,7 +2097,7 @@ class AtomicProfileService:
         text = normalize_text(request.text)
         if not text:
             raise AtomicProfileError("画像内容不合法。")
-        with self._repository.transaction():
+        with self._profile_commit.transaction():
             item = self._repository.get_item(account_id, item_id)
             if item.status != AtomicProfileItemStatus.ACTIVE:
                 raise AtomicProfileError("画像条目已删除，不能继续修改。")
@@ -2233,7 +2238,7 @@ class AtomicProfileService:
         key = identity_key(account_id, normalized)
         fact_key = fact_identity_key(account_id, identity)
         window = parse_validity_window(normalized, anchor)
-        with self._repository.transaction():
+        with self._profile_commit.transaction():
             existing = self._repository.find_item_by_identity(account_id, key)
             if existing is None:
                 existing = self._repository.find_item_by_fact_key(account_id, fact_key)
@@ -2423,7 +2428,7 @@ class AtomicProfileService:
             return None
         window = parse_validity_window(text, source_at)
         changed: list[AtomicProfileItem] = []
-        with self._repository.transaction():
+        with self._profile_commit.transaction():
             for item in matched:
                 if signal.kind is GoalLifecycleKind.PAUSE:
                     if item.goal_state == AtomicProfileGoalState.COMPLETED:

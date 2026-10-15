@@ -1505,7 +1505,9 @@ class AutomaticProfileService:
         self._queue = repository.durable_queue()
         if self._queue is not None:
             self._queue.set_lease_seconds(self._queue_name, 60)
-            self._recover_inflight_runs()
+        # Issue 02：跨重启恢复是显式动作，由组合根在启动时调用
+        # ``recover_inflight_runs()``。构造、读取与检查路径都不再启动业务
+        # 执行或写业务记录；恢复正常语义不变（仍在启动时重新入队）。
 
     @property
     def extractor_version(self) -> str:
@@ -1610,8 +1612,15 @@ class AutomaticProfileService:
             )
         )
 
-    def _recover_inflight_runs(self) -> None:
-        """恢复进程中断时尚未落入重试任务的运行记录。"""
+    def recover_inflight_runs(self) -> None:
+        """恢复进程中断时尚未落入重试任务的运行记录（显式启动动作）。
+
+        Issue 02：本方法不再由构造函数触发。仅构造服务、读取状态或做检查
+        不会重新入队任何抽取任务；组合根在启动时显式调用本方法恢复业务
+        执行，语义与原来的构造期恢复完全一致：RUNNING 且没有重试任务的
+        运行重置为 PENDING、补建任务并重新入队。没有跨重启队列（内存
+        组合）时不产生任何写入。
+        """
 
         if self._queue is None:
             return

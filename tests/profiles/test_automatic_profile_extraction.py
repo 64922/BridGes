@@ -1329,6 +1329,20 @@ def test_sqlite_restart_recovers_an_inflight_run_without_a_task(tmp_path) -> Non
         extractor=_BrokenExtractor(),
     )
 
+    # Issue 02：构造不再启动业务执行——中断的运行保持原状，不补任务、不入队。
+    assert second_service.list_retry_tasks("account-alice") == []
+    untouched = second_service._repository.get_run(  # type: ignore[attr-defined]
+        "account-alice",
+        "message-1",
+        run.extractor_version,
+        "source-hash",
+    )
+    assert untouched is not None
+    assert untouched.status == ProfileExtractionStatus.RUNNING
+
+    # 恢复是显式启动动作（组合根在启动时调用），语义与原构造期恢复一致。
+    second_service.recover_inflight_runs()
+
     tasks = second_service.list_retry_tasks("account-alice")
     recovered = second_service._repository.get_run(  # type: ignore[attr-defined]
         "account-alice",
