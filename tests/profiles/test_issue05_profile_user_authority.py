@@ -32,6 +32,7 @@ from bridges.contracts.profile_extraction import (
 )
 from bridges.contracts.profiles import (
     FourDimension,
+    FourDimensionConfidence,
     FourDimensionProfileRecord,
 )
 from bridges.observability.service import ObservabilityService
@@ -50,7 +51,7 @@ from bridges.profiles.automatic import (
     InMemoryAutomaticProfileRepository,
     SqliteAutomaticProfileRepository,
 )
-from bridges.profiles.commit import SourceWithdrawalStatus
+from bridges.profiles.commit import ProfileFactSubmission, SourceWithdrawalStatus
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileRepository,
     FourDimensionProfileService,
@@ -135,8 +136,8 @@ class _WithdrawFailsOnce(FourDimensionProfileService):
         return super().withdraw_record(account_id, record_id, version)
 
 
-class _MirrorFailsOnce(AtomicProfileService):
-    """``fail_at`` 指定第几次镜像写入失败（0 表示不注入故障）。"""
+class _FactWriteFailsOnce(AtomicProfileService):
+    """``fail_at`` 指定第几次事实写入（提取或更正）失败（0 表示不注入故障）。"""
 
     def __init__(
         self,
@@ -147,29 +148,34 @@ class _MirrorFailsOnce(AtomicProfileService):
         self.calls = 0
         self.fail_at = 0
 
-    def mirror_record(
-        self,
-        account_id: str,
-        record: FourDimensionProfileRecord,
-        *,
-        evidence_message_id: str | None = None,
-        fact_text: str | None = None,
-        source_at: datetime | None = None,
-    ) -> AtomicProfileItem | None:
+    def _maybe_fail(self) -> None:
         self.calls += 1
         if self.calls == self.fail_at:
-            raise RuntimeError("镜像写入失败")
-        return super().mirror_record(
-            account_id,
-            record,
-            evidence_message_id=evidence_message_id,
-            fact_text=fact_text,
-            source_at=source_at,
-        )
+            raise RuntimeError("事实写入失败")
+
+    def commit_fact(
+        self,
+        account_id: str,
+        fact: ProfileFactSubmission,
+        *,
+        source_at: datetime | None = None,
+    ) -> AtomicProfileItem | None:
+        self._maybe_fail()
+        return super().commit_fact(account_id, fact, source_at=source_at)
+
+    def correct_fact(
+        self,
+        account_id: str,
+        *,
+        dimension: FourDimension,
+        text: str,
+    ) -> tuple[AtomicProfileItem | None, bool]:
+        self._maybe_fail()
+        return super().correct_fact(account_id, dimension=dimension, text=text)
 
 
 class _Harness:
-    """被测组合：自动抽取 + 四维记录 + 用户可见原子列表。"""
+    """被测组合：自动抽取 + 四维存量来源 + 用户可见原子列表。"""
 
     def __init__(
         self,
@@ -177,13 +183,15 @@ class _Harness:
         service: AutomaticProfileService,
         state: AutomaticProfileRepository,
         dimensions: _WithdrawFailsOnce,
-        atomic: _MirrorFailsOnce,
+        atomic: _FactWriteFailsOnce,
+        repository: AtomicProfileRepository,
         database: BridgesDatabase | None,
     ) -> None:
         self.service = service
         self.state = state
         self.dimensions = dimensions
         self.atomic = atomic
+        self.repository = repository
         self._database = database
 
     def close(self) -> None:
@@ -263,7 +271,7 @@ def _build(flavor: str, tmp_path: Path) -> _Harness:
         state = InMemoryAutomaticProfileRepository()
 
     dimensions = _WithdrawFailsOnce(dimension_repository)
-    atomic = _MirrorFailsOnce(dimensions, atomic_repository)
+    atomic = _FactWriteFailsOnce(dimensions, atomic_repository)
     return _Harness(
         service=AutomaticProfileService(
             four_dimension_service=dimensions,
@@ -275,6 +283,7 @@ def _build(flavor: str, tmp_path: Path) -> _Harness:
         state=state,
         dimensions=dimensions,
         atomic=atomic,
+        repository=atomic_repository,
         database=database,
     )
 
@@ -299,18 +308,38 @@ def _goal_item(harness: _Harness) -> AtomicProfileItem:
 
 
 def _stage_goal_item(harness: _Harness) -> AtomicProfileItem:
-    """按来源记录定位阶段目标条目：更正或编辑改文后仍可寻址。"""
+    """按抽取提示定位阶段目标条目：更正或编辑改文后仍可寻址。"""
 
-    record = next(
-        record
-        for record in harness.records()
-        if record.dimension is FourDimension.STAGE_GOAL
-    )
     return next(
         item
         for item in harness.atomic.list_items(ACCOUNT)
-        if item.source_record_id == record.record_id
+        if item.topic_hint == FourDimension.STAGE_GOAL.value
     )
+
+
+def _link_legacy_sources(harness: _Harness) -> None:
+    """给抽取产生的条目补上工单 03 之前形态的四维来源（存量对账对象）。
+
+    工单 03 起新写入不再产生四维记录，来源撤回的服务对象只剩迁移前的
+    存量条目。测试用这个助手构造存量形态：来源记录活动，条目仍指向它；
+    撤回、恢复与故障隔离的合同因此继续被覆盖。
+    """
+
+    for item in harness.atomic.list_items(ACCOUNT):
+        record = harness.dimensions.upsert_automatic_record(
+            ACCOUNT,
+            dimension=FourDimension(item.topic_hint),
+            content=item.text,
+            action="create",
+            confidence=FourDimensionConfidence.MEDIUM,
+            evidence_message_id=(
+                item.source_message_ids[0] if item.source_message_ids else None
+            ),
+            migration_version="profile-auto-v2",
+        )
+        harness.repository.save_item(
+            item.model_copy(update={"source_record_id": record.record_id})
+        )
 
 
 def _item_by_id(harness: _Harness, item_id: str) -> AtomicProfileItem:
@@ -322,34 +351,22 @@ def _item_by_id(harness: _Harness, item_id: str) -> AtomicProfileItem:
 # -- 聊天更正：首次处理与重试共用同一成对写入 ------------------------------
 
 
-def test_correction_retry_mirrors_the_atomic_item(harness: _Harness) -> None:
-    """首次更正在镜像处失败时，重试补齐记录与条目，不留半更新状态。"""
+def test_correction_retry_writes_the_atomic_item_once(harness: _Harness) -> None:
+    """首次更正在事实写入处失败时，重试补齐条目，不留半更新状态。"""
 
     harness.extract("message-1", TWO_FACT_MESSAGE)
-    # extract 阶段已经消耗了镜像调用；故障注入指向下一次（更正的）镜像。
+    # extract 阶段已经消耗了事实写入调用；故障注入指向下一次（更正的）写入。
     harness.atomic.fail_at = harness.atomic.calls + 1
 
     first = harness.correct("message-correction-1")
     assert first.correction is not None
     assert first.correction.status == ProfileCorrectionStatus.FAILED
-    # 失败整批回滚：四维记录与原子条目都保持原值。
-    goal_record = next(
-        record
-        for record in harness.records()
-        if record.dimension is FourDimension.STAGE_GOAL
-    )
-    assert goal_record.content == GOAL_TEXT
+    # 失败整批回滚：条目保持原值。
     assert _goal_item(harness).text == GOAL_TEXT
 
     harness.retry()
 
-    goal_record = next(
-        record
-        for record in harness.records()
-        if record.dimension is FourDimension.STAGE_GOAL
-    )
-    assert goal_record.content == CORRECTED_TEXT
-    # 重试与首次处理一致：来源已改，用户可见条目同步更新。
+    # 重试与首次处理一致：用户可见条目更新为纠正后的正文。
     assert _stage_goal_item(harness).text == CORRECTED_TEXT
     # 改进工单 17：成功抽取也留有调度任务记账；关键是不残留失败或待处理。
     assert {
@@ -358,7 +375,7 @@ def test_correction_retry_mirrors_the_atomic_item(harness: _Harness) -> None:
 
 
 def test_correction_keeps_user_edited_item(harness: _Harness) -> None:
-    """更正写入四维来源，但用户编辑过的条目保持用户正文。"""
+    """更正仍不改写用户编辑过的条目：用户页面正文是最高权威。"""
 
     harness.extract("message-1", TWO_FACT_MESSAGE)
     goal = _goal_item(harness)
@@ -372,19 +389,13 @@ def test_correction_keeps_user_edited_item(harness: _Harness) -> None:
 
     assert result.correction is not None
     assert result.correction.status == ProfileCorrectionStatus.WRITTEN
-    goal_record = next(
-        record
-        for record in harness.records()
-        if record.dimension is FourDimension.STAGE_GOAL
-    )
-    assert goal_record.content == CORRECTED_TEXT
     assert _stage_goal_item(harness).text == "目标改成明年完成"
 
 
-def test_correction_unresolved_and_protected_results_are_preserved(
+def test_correction_unresolved_and_repeated_corrections_stay_writable(
     harness: _Harness,
 ) -> None:
-    """无法定位与受保护阈值命中的更正保持现行语义，不误写。"""
+    """无法定位的更正保持现行语义；连续更正在新路径不再进入保护阈值。"""
 
     result = harness.correct("message-correction-1", "我改主意了，换成研一")
     assert result.correction is not None
@@ -393,15 +404,12 @@ def test_correction_unresolved_and_protected_results_are_preserved(
     harness.extract("message-1", TWO_FACT_MESSAGE)
     for attempt in range(3):
         harness.correct(f"message-correction-{attempt + 2}")
+    # 工单 03：旧四维纠正的 ``correction_count >= 3`` 保护语义不迁移，
+    # 连续更正仍按用户权威直接改写条目（见工单剩余限制）。
     fourth = harness.correct("message-correction-9")
     assert fourth.correction is not None
-    assert fourth.correction.status == ProfileCorrectionStatus.PROTECTED
-    goal_record = next(
-        record
-        for record in harness.records()
-        if record.dimension is FourDimension.STAGE_GOAL
-    )
-    assert goal_record.correction_count == 3
+    assert fourth.correction.status == ProfileCorrectionStatus.WRITTEN
+    assert _stage_goal_item(harness).text == CORRECTED_TEXT
 
 
 # -- 重放不得改回用户纠正过的内容 ------------------------------------------
@@ -457,34 +465,22 @@ def test_replay_does_not_revert_chat_correction(harness: _Harness) -> None:
 
     harness.retry()
 
-    goal_record = next(
-        record
-        for record in harness.records()
-        if record.dimension is FourDimension.STAGE_GOAL
-    )
-    assert goal_record.content == CORRECTED_TEXT
-    assert goal_record.correction_count == 1
+    # 旧消息重放不改变用户更正后的条目。
     assert _stage_goal_item(harness).text == CORRECTED_TEXT
 
 
-def test_new_message_still_updates_corrected_record_by_evidence_ladder(
+def test_new_message_does_not_revert_corrected_item(
     harness: _Harness,
 ) -> None:
-    """重放保护只作用于重放：新消息的自动写入仍按既有阶梯更新。"""
+    """重放与新消息都不把条目改回旧值：用户更正保持当前版本。"""
 
     harness.extract("message-1", TWO_FACT_MESSAGE)
     harness.correct("message-correction-1")
 
-    # 用户在新消息里再次陈述同一事实：不是重放，按既有证据阶梯覆盖纠正值。
+    # 用户在新消息里再次陈述旧事实：旧值已被抑制，不覆盖更正后的条目。
     harness.extract("message-2", TWO_FACT_MESSAGE)
 
-    goal_record = next(
-        record
-        for record in harness.records()
-        if record.dimension is FourDimension.STAGE_GOAL
-    )
-    assert goal_record.content == GOAL_TEXT
-    assert goal_record.correction_count == 1
+    assert _stage_goal_item(harness).text == CORRECTED_TEXT
 
 
 # -- 删除/忘掉：墓碑保护点与幂等撤回 ----------------------------------------
@@ -496,6 +492,7 @@ def test_delete_tombstone_survives_source_withdrawal_failure(
     """来源撤回失败时墓碑保持有效，条目不可召回，撤回可幂等补做。"""
 
     harness.extract("message-1", TWO_FACT_MESSAGE)
+    _link_legacy_sources(harness)
     goal = _goal_item(harness)
     harness.dimensions.fail_at = 1
 
@@ -537,6 +534,7 @@ def test_forget_partial_source_failure_stays_recoverable(harness: _Harness) -> N
     """多条忘掉的部分来源失败：结果明确、其余条目继续撤回、可幂等恢复。"""
 
     harness.extract("message-1", TWO_FACT_MESSAGE)
+    _link_legacy_sources(harness)
     goal = _goal_item(harness)
     harness.dimensions.fail_at = 1
 
@@ -596,6 +594,7 @@ def test_repeated_withdrawal_does_not_override_new_user_item(
     """删除后用户重新记住同一事实：旧撤回的幂等重跑不影响新条目。"""
 
     harness.extract("message-1", TWO_FACT_MESSAGE)
+    _link_legacy_sources(harness)
     goal = _goal_item(harness)
     harness.atomic.delete_item(ACCOUNT, goal.profile_item_id, goal.version)
 
@@ -720,6 +719,7 @@ def test_source_get_record_storage_fault_is_failure_not_already_withdrawn(
     """
 
     harness.extract("message-1", TWO_FACT_MESSAGE)
+    _link_legacy_sources(harness)
     goal = _goal_item(harness)
     harness.dimensions.fail_get_at = harness.dimensions.get_calls + 1
 
@@ -745,6 +745,7 @@ def test_delete_suppresses_old_text_against_replay(harness: _Harness) -> None:
     """删除后的旧正文不会因旧消息重放复活。"""
 
     harness.extract("message-1", TWO_FACT_MESSAGE)
+    _link_legacy_sources(harness)
     goal = _goal_item(harness)
     harness.atomic.delete_item(ACCOUNT, goal.profile_item_id, goal.version)
 

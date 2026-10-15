@@ -29,6 +29,7 @@ from bridges.contracts.profiles import (
     FourDimensionMigrationStatus,
 )
 from bridges.persistence import PersistenceError, resolve_database_path
+from bridges.profiles.atomic import AtomicProfileService
 from bridges.profiles.automatic import (
     AUTOMATIC_EXTRACTOR_VERSION,
     PROFILE_REPLAY_QUEUE,
@@ -821,6 +822,11 @@ class ProfileReplayCoordinator:
         ) -> ProfileReplayMessage | None:
             return replay_repository.get_message(account_id, message_id)
 
+        # 工单 03：回放是活动写入方，与前台抽取共用同一原子提交入口，
+        # 不再产生四维记录。
+        atoms = AtomicProfileService(
+            dimensions, replay_repository.atomic_repository
+        )
         service = AutomaticProfileService(
             four_dimension_service=dimensions,
             repository=automatic_repository,
@@ -828,6 +834,7 @@ class ProfileReplayCoordinator:
             message_reader=read_message,
             classifier=self._classifier,
             queue_name=PROFILE_REPLAY_QUEUE,
+            atomic_profile_service=atoms,
         )
         # Issue 02：构造不再自动启动恢复；回放编排保持与启动相同的显式恢复
         # 语义（RUNNING 且缺任务的重放运行重新入队）。

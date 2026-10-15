@@ -15,9 +15,11 @@ from bridges.contracts.profile_extraction import (
 )
 from bridges.contracts.profiles import FourDimension
 from bridges.profiles import (
+    AtomicProfileService,
     AutomaticProfileService,
     FourDimensionProfileService,
     GatewayAutomaticProfileExtractor,
+    InMemoryAtomicProfileRepository,
     InMemoryAutomaticProfileRepository,
     InMemoryFourDimensionProfileRepository,
     RuleBasedAutomaticProfileExtractor,
@@ -73,23 +75,27 @@ class _RecordingExtractor:
 
 def _services(
     extractor: Any,
-) -> tuple[FourDimensionProfileService, AutomaticProfileService]:
+) -> tuple[
+    FourDimensionProfileService, AutomaticProfileService, AtomicProfileService
+]:
     dimensions = FourDimensionProfileService(
         source_repository=None,  # type: ignore[arg-type]
         repository=InMemoryFourDimensionProfileRepository(),
     )
+    atomic = AtomicProfileService(dimensions, InMemoryAtomicProfileRepository())
     return dimensions, AutomaticProfileService(
         four_dimension_service=dimensions,
         repository=InMemoryAutomaticProfileRepository(),
         extractor=extractor,
-    )
+        atomic_profile_service=atomic,
+    ), atomic
 
 
 def test_schedule_is_idempotent_and_runs_only_in_the_worker() -> None:
     """登记不调用模型；同键重复登记不重复计数；worker 领取后才执行一次。"""
 
     extractor = _RecordingExtractor(_output([]))
-    _, service = _services(extractor)
+    _, service, _ = _services(extractor)
 
     first = service.schedule_message_extraction(
         ACCOUNT,
@@ -169,10 +175,12 @@ def test_async_span_commit_keeps_exact_clean_fragment_only() -> None:
         source_repository=None,  # type: ignore[arg-type]
         repository=InMemoryFourDimensionProfileRepository(),
     )
+    atomic = AtomicProfileService(dimensions, InMemoryAtomicProfileRepository())
     service = AutomaticProfileService(
         four_dimension_service=dimensions,
         repository=InMemoryAutomaticProfileRepository(),
         extractor=RuleBasedAutomaticProfileExtractor(),
+        atomic_profile_service=atomic,
     )
     content = "我最近焦虑，想学习 Transformer"
     run = service.schedule_message_extraction(
@@ -183,15 +191,15 @@ def test_async_span_commit_keeps_exact_clean_fragment_only() -> None:
         run_id="run-1",
     )
     assert run is not None
-    assert dimensions.list_records(ACCOUNT) == []
+    assert atomic.list_items(ACCOUNT) == []
 
     service.run_retry_tick()
 
-    records = dimensions.list_records(ACCOUNT)
-    assert [(record.dimension, record.content) for record in records] == [
-        (FourDimension.KNOWLEDGE_INTEREST, "Transformer")
+    items = atomic.list_items(ACCOUNT)
+    assert [(item.topic_hint, item.text) for item in items] == [
+        (FourDimension.KNOWLEDGE_INTEREST, "想学习 Transformer")
     ]
-    assert records[0].evidence_quote == "想学习 Transformer"
+    assert items[0].evidence_quote == "想学习 Transformer"
 
 
 def test_mixed_message_keeps_clean_multi_facts_and_negation() -> None:
@@ -201,10 +209,12 @@ def test_mixed_message_keeps_clean_multi_facts_and_negation() -> None:
         source_repository=None,  # type: ignore[arg-type]
         repository=InMemoryFourDimensionProfileRepository(),
     )
+    atomic = AtomicProfileService(dimensions, InMemoryAtomicProfileRepository())
     service = AutomaticProfileService(
         four_dimension_service=dimensions,
         repository=InMemoryAutomaticProfileRepository(),
         extractor=RuleBasedAutomaticProfileExtractor(),
+        atomic_profile_service=atomic,
     )
     content = (
         "我最近焦虑，想学习 Transformer；我喜欢跑步，也喜欢爬山。"
@@ -221,15 +231,15 @@ def test_mixed_message_keeps_clean_multi_facts_and_negation() -> None:
     )
 
     assert result.run.status == ProfileExtractionStatus.SUCCEEDED
-    records = dimensions.list_records(ACCOUNT)
-    written = {(record.dimension, record.content) for record in records}
+    items = atomic.list_items(ACCOUNT)
+    written = {(item.topic_hint, item.text) for item in items}
     assert written == {
-        (FourDimension.HOBBY, "跑步"),
-        (FourDimension.HOBBY, "爬山"),
-        (FourDimension.KNOWLEDGE_INTEREST, "Transformer"),
+        (FourDimension.HOBBY, "我喜欢跑步"),
+        (FourDimension.HOBBY, "也喜欢爬山"),
+        (FourDimension.KNOWLEDGE_INTEREST, "想学习 Transformer"),
         (FourDimension.KNOWLEDGE_INTEREST, "我不喜欢长篇回答"),
     }
-    assert all("焦虑" not in (record.evidence_quote or "") for record in records)
+    assert all("焦虑" not in (item.evidence_quote or "") for item in items)
 
 
 def test_third_party_and_elided_self_continuation_keeps_user_fragment() -> None:
@@ -239,10 +249,12 @@ def test_third_party_and_elided_self_continuation_keeps_user_fragment() -> None:
         source_repository=None,  # type: ignore[arg-type]
         repository=InMemoryFourDimensionProfileRepository(),
     )
+    atomic = AtomicProfileService(dimensions, InMemoryAtomicProfileRepository())
     service = AutomaticProfileService(
         four_dimension_service=dimensions,
         repository=InMemoryAutomaticProfileRepository(),
         extractor=RuleBasedAutomaticProfileExtractor(),
+        atomic_profile_service=atomic,
     )
 
     result = service.preprocess_message(
@@ -255,11 +267,11 @@ def test_third_party_and_elided_self_continuation_keeps_user_fragment() -> None:
     )
 
     assert result.run.status == ProfileExtractionStatus.SUCCEEDED
-    records = dimensions.list_records(ACCOUNT)
-    assert [(record.dimension, record.content) for record in records] == [
-        (FourDimension.HOBBY, "爬山")
+    items = atomic.list_items(ACCOUNT)
+    assert [(item.topic_hint, item.text) for item in items] == [
+        (FourDimension.HOBBY, "我也喜欢爬山")
     ]
-    assert records[0].evidence_quote == "我也喜欢爬山"
+    assert items[0].evidence_quote == "我也喜欢爬山"
 
 
 def test_value_not_supported_by_span_is_not_written() -> None:
@@ -278,7 +290,7 @@ def test_value_not_supported_by_span_is_not_written() -> None:
             ]
         )
     )
-    dimensions, service = _services(extractor)
+    dimensions, service, atomic = _services(extractor)
 
     result = service.preprocess_message(
         ACCOUNT,
@@ -290,7 +302,7 @@ def test_value_not_supported_by_span_is_not_written() -> None:
     )
 
     assert result.run.status == ProfileExtractionStatus.SUCCEEDED
-    assert dimensions.list_records(ACCOUNT) == []
+    assert atomic.list_items(ACCOUNT) == []
 
 
 def test_extractor_version_change_before_commit_drops_late_result() -> None:
@@ -315,7 +327,7 @@ def test_extractor_version_change_before_commit_drops_late_result() -> None:
             )
 
     extractor = _VersionFlipExtractor()
-    dimensions, service = _services(extractor)
+    dimensions, service, atomic = _services(extractor)
     run = service.schedule_message_extraction(
         ACCOUNT,
         conversation_id="conversation-1",
@@ -327,7 +339,7 @@ def test_extractor_version_change_before_commit_drops_late_result() -> None:
 
     service.run_retry_tick()
 
-    assert dimensions.list_records(ACCOUNT) == []
+    assert atomic.list_items(ACCOUNT) == []
     tasks = service.list_retry_tasks(ACCOUNT)
     assert [task.status for task in tasks] == [ProfileExtractionStatus.EXHAUSTED]
     assert tasks[0].last_error == "profile_extraction_source_invalidated"
@@ -349,7 +361,7 @@ def test_negated_span_never_becomes_a_positive_fact() -> None:
             ]
         )
     )
-    dimensions, service = _services(extractor)
+    dimensions, service, atomic = _services(extractor)
 
     result = service.preprocess_message(
         ACCOUNT,
@@ -360,7 +372,7 @@ def test_negated_span_never_becomes_a_positive_fact() -> None:
         mode="companion",
     )
 
-    assert dimensions.list_records(ACCOUNT) == []
+    assert atomic.list_items(ACCOUNT) == []
     assert result.run.status == ProfileExtractionStatus.SUCCEEDED
     assert result.observed_count == 0
 
@@ -381,7 +393,7 @@ def test_dropped_time_constraint_is_not_written_as_a_stable_fact() -> None:
             ]
         )
     )
-    dimensions, service = _services(extractor)
+    dimensions, service, atomic = _services(extractor)
 
     service.preprocess_message(
         ACCOUNT,
@@ -392,7 +404,7 @@ def test_dropped_time_constraint_is_not_written_as_a_stable_fact() -> None:
         mode="companion",
     )
 
-    assert dimensions.list_records(ACCOUNT) == []
+    assert atomic.list_items(ACCOUNT) == []
 
 
 def test_semantic_preference_candidate_is_written_with_precise_span() -> None:
@@ -412,7 +424,7 @@ def test_semantic_preference_candidate_is_written_with_precise_span() -> None:
             ]
         )
     )
-    dimensions, service = _services(extractor)
+    dimensions, service, atomic = _services(extractor)
 
     result = service.preprocess_message(
         ACCOUNT,
@@ -424,11 +436,11 @@ def test_semantic_preference_candidate_is_written_with_precise_span() -> None:
     )
 
     assert result.run.status == ProfileExtractionStatus.SUCCEEDED
-    records = dimensions.list_records(ACCOUNT)
-    assert [(record.dimension, record.content) for record in records] == [
-        (FourDimension.KNOWLEDGE_INTEREST, "先给结论")
+    items = atomic.list_items(ACCOUNT)
+    assert [(item.topic_hint, item.text) for item in items] == [
+        (FourDimension.KNOWLEDGE_INTEREST, "以后先给结论")
     ]
-    assert records[0].evidence_quote == "以后先给结论"
+    assert items[0].evidence_quote == "以后先给结论"
 
 
 def test_semantic_time_constraint_candidate_keeps_explicit_time() -> None:
@@ -448,7 +460,7 @@ def test_semantic_time_constraint_candidate_keeps_explicit_time() -> None:
             ]
         )
     )
-    dimensions, service = _services(extractor)
+    dimensions, service, atomic = _services(extractor)
 
     result = service.preprocess_message(
         ACCOUNT,
@@ -460,7 +472,7 @@ def test_semantic_time_constraint_candidate_keeps_explicit_time() -> None:
     )
 
     assert result.run.status == ProfileExtractionStatus.SUCCEEDED
-    assert [record.content for record in dimensions.list_records(ACCOUNT)] == [
+    assert [item.text for item in atomic.list_items(ACCOUNT)] == [
         "每天学习 30 分钟"
     ]
 
@@ -482,7 +494,7 @@ def test_semantic_candidate_unrelated_value_is_not_written() -> None:
             ]
         )
     )
-    dimensions, service = _services(extractor)
+    dimensions, service, atomic = _services(extractor)
 
     result = service.preprocess_message(
         ACCOUNT,
@@ -494,7 +506,7 @@ def test_semantic_candidate_unrelated_value_is_not_written() -> None:
     )
 
     assert result.run.status == ProfileExtractionStatus.SUCCEEDED
-    assert dimensions.list_records(ACCOUNT) == []
+    assert atomic.list_items(ACCOUNT) == []
 
 
 def test_semantic_candidate_on_unrelated_fragment_is_not_written() -> None:
@@ -516,7 +528,7 @@ def test_semantic_candidate_on_unrelated_fragment_is_not_written() -> None:
             ]
         )
     )
-    dimensions, service = _services(extractor)
+    dimensions, service, atomic = _services(extractor)
 
     result = service.preprocess_message(
         ACCOUNT,
@@ -528,7 +540,7 @@ def test_semantic_candidate_on_unrelated_fragment_is_not_written() -> None:
     )
 
     assert result.run.status == ProfileExtractionStatus.SUCCEEDED
-    assert dimensions.list_records(ACCOUNT) == []
+    assert atomic.list_items(ACCOUNT) == []
 
 
 def test_fabricated_span_is_a_non_retryable_contract_failure() -> None:
@@ -547,7 +559,7 @@ def test_fabricated_span_is_a_non_retryable_contract_failure() -> None:
             ]
         )
     )
-    dimensions, service = _services(extractor)
+    dimensions, service, atomic = _services(extractor)
 
     result = service.preprocess_message(
         ACCOUNT,
@@ -560,7 +572,7 @@ def test_fabricated_span_is_a_non_retryable_contract_failure() -> None:
 
     assert result.run.status == ProfileExtractionStatus.EXHAUSTED
     assert result.run.last_error == "profile_extraction_evidence_mismatch"
-    assert dimensions.list_records(ACCOUNT) == []
+    assert atomic.list_items(ACCOUNT) == []
 
 
 def test_observation_candidate_with_precise_span_stays_observation() -> None:
@@ -580,7 +592,7 @@ def test_observation_candidate_with_precise_span_stays_observation() -> None:
             ]
         )
     )
-    dimensions, service = _services(extractor)
+    dimensions, service, atomic = _services(extractor)
 
     result = service.preprocess_message(
         ACCOUNT,
@@ -593,7 +605,7 @@ def test_observation_candidate_with_precise_span_stays_observation() -> None:
 
     assert result.run.status == ProfileExtractionStatus.SUCCEEDED
     assert result.observed_count == 1
-    assert dimensions.list_records(ACCOUNT) == []
+    assert atomic.list_items(ACCOUNT) == []
 
 
 class _CapturingGateway:

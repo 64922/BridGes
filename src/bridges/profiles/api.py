@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from bridges.api.auth import SubjectDep
 from bridges.contracts.atomic_profile import (
     AtomicProfileFeedbackProjection,
+    AtomicProfileItemCreateRequest,
     AtomicProfileItemDeleteRequest,
     AtomicProfileItemEvidenceProjection,
     AtomicProfileItemFeedbackRequest,
@@ -280,6 +281,33 @@ async def list_atomic_profile_items(
     """列出当前账户的全部原子画像条目（无类别、无分组）。"""
 
     return service.projections(subject.account_id)
+
+
+@router.post(
+    "/items",
+    response_model=AtomicProfileItemProjection,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_409_CONFLICT: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def create_atomic_profile_item(
+    service: AtomicProfileServiceDep,
+    subject: SubjectDep,
+    request: AtomicProfileItemCreateRequest,
+) -> AtomicProfileItemProjection:
+    """手动添加一条信息：与「记住」同一用户权威路径，重复正文幂等合并。
+
+    工单 03：页面上手动添加不再依赖聊天；重复正文合并到既有条目（主题取
+    并集），新增内容立即生效并受用户权威保护。主题可空、多选、可扩展。
+    """
+    try:
+        item = service.add_item(subject.account_id, request)
+    except AtomicProfileError as exc:
+        raise _atomic_error(exc, "atomic_profile_create_failed") from exc
+    return AtomicProfileService.project(item)
 
 
 @router.patch(

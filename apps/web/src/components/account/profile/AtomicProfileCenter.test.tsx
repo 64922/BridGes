@@ -10,6 +10,7 @@ import { AtomicProfileCenter } from "./AtomicProfileCenter";
 
 const api = vi.hoisted(() => ({
   listAtomicProfileItems: vi.fn(),
+  createAtomicProfileItem: vi.fn(),
   modifyAtomicProfileItem: vi.fn(),
   deleteAtomicProfileItem: vi.fn(),
   fetchAtomicProfileItemEvidence: vi.fn(),
@@ -28,6 +29,7 @@ function item(overrides: Partial<AtomicProfileItemProjection> = {}) {
     version: 1,
     updated_at: "2026-09-01T10:00:00Z",
     user_edited_at: null,
+    topics: [],
     source_message_ids: ["message-1"],
     write_origin: "automatic",
     ...overrides,
@@ -67,6 +69,7 @@ function evidence(
 
 beforeEach(() => {
   api.listAtomicProfileItems.mockReset();
+  api.createAtomicProfileItem.mockReset();
   api.modifyAtomicProfileItem.mockReset();
   api.deleteAtomicProfileItem.mockReset();
   api.fetchAtomicProfileItemEvidence.mockReset();
@@ -323,6 +326,7 @@ describe("AtomicProfileCenter", () => {
       expect(api.modifyAtomicProfileItem).toHaveBeenCalledWith("item-1", {
         text: "我每周三晚上跑步",
         version: 1,
+        topics: [],
       })
     );
     await waitFor(() =>
@@ -399,5 +403,113 @@ describe("AtomicProfileCenter", () => {
     const rows = await screen.findAllByTestId("atomic-item");
     expect(rows).toHaveLength(1);
     expect(screen.queryByTestId("atomic-empty")).toBeNull();
+  });
+
+  it("adds an item manually with optional topics and supports cancel", async () => {
+    api.listAtomicProfileItems.mockResolvedValue([]);
+    api.createAtomicProfileItem.mockResolvedValue(
+      item({
+        profile_item_id: "item-new",
+        text: "我养了一只猫叫团子",
+        topics: ["兴趣与喜好", "日常习惯与现实约束"],
+        write_origin: "user",
+        source_message_ids: [],
+      })
+    );
+
+    render(<AtomicProfileCenter />);
+    await screen.findByTestId("atomic-empty");
+
+    fireEvent.click(screen.getByText("添加一条信息"));
+    const textarea = screen.getByLabelText("要添加的长期信息");
+    fireEvent.change(textarea, { target: { value: "我养了一只猫叫团子" } });
+    fireEvent.change(screen.getByLabelText("长期信息主题"), {
+      target: { value: "兴趣与喜好，兴趣与喜好、日常习惯与现实约束" },
+    });
+
+    // 取消不触发保存，表单回到收起态。
+    fireEvent.click(screen.getByText("取消"));
+    expect(api.createAtomicProfileItem).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("要添加的长期信息")).toBeNull();
+
+    fireEvent.click(screen.getByText("添加一条信息"));
+    fireEvent.change(screen.getByLabelText("要添加的长期信息"), {
+      target: { value: "我养了一只猫叫团子" },
+    });
+    fireEvent.change(screen.getByLabelText("长期信息主题"), {
+      target: { value: "兴趣与喜好，兴趣与喜好、日常习惯与现实约束" },
+    });
+    fireEvent.click(screen.getByText("添加"));
+
+    await waitFor(() =>
+      expect(api.createAtomicProfileItem).toHaveBeenCalledWith({
+        text: "我养了一只猫叫团子",
+        topics: ["兴趣与喜好", "日常习惯与现实约束"],
+      })
+    );
+    const row = await screen.findByTestId("atomic-item");
+    expect(row.textContent).toContain("我养了一只猫叫团子");
+    // 表单已收起，添加的主题进入条目主题。
+    expect(screen.queryByLabelText("要添加的长期信息")).toBeNull();
+    expect(screen.getByTestId("atomic-topics").textContent).toContain(
+      "兴趣与喜好"
+    );
+  });
+
+  it("keeps the add form open with a retryable error when saving fails", async () => {
+    api.listAtomicProfileItems.mockResolvedValue([]);
+    api.createAtomicProfileItem.mockRejectedValue(new Error("添加失败，请重试。"));
+
+    render(<AtomicProfileCenter />);
+    fireEvent.click(await screen.findByText("添加一条信息"));
+    fireEvent.change(screen.getByLabelText("要添加的长期信息"), {
+      target: { value: "我养了一只猫叫团子" },
+    });
+    fireEvent.click(screen.getByText("添加"));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("添加失败");
+    // 草稿保留，用户可以在原表单上重试。
+    expect(
+      (screen.getByLabelText("要添加的长期信息") as HTMLTextAreaElement).value
+    ).toBe("我养了一只猫叫团子");
+  });
+
+  it("renders topics as plain chips and edits them without changing identity", async () => {
+    api.listAtomicProfileItems.mockResolvedValue([
+      item({ topics: ["兴趣与喜好", "日常习惯与现实约束"] }),
+    ]);
+    api.modifyAtomicProfileItem.mockResolvedValue(
+      item({
+        version: 2,
+        write_origin: "user",
+        text: "我在准备雅思考试",
+        topics: ["目标与计划"],
+      })
+    );
+
+    render(<AtomicProfileCenter />);
+    const chips = await screen.findByTestId("atomic-topics");
+    expect(chips.textContent).toContain("兴趣与喜好");
+    expect(chips.textContent).toContain("日常习惯与现实约束");
+
+    fireEvent.click(screen.getByText("修改"));
+    const topicsInput = screen.getByLabelText("长期信息主题");
+    expect((topicsInput as HTMLInputElement).value).toBe(
+      "兴趣与喜好，日常习惯与现实约束"
+    );
+    fireEvent.change(topicsInput, { target: { value: "目标与计划" } });
+    fireEvent.click(screen.getByText("保存"));
+
+    await waitFor(() =>
+      expect(api.modifyAtomicProfileItem).toHaveBeenCalledWith("item-1", {
+        text: "我在准备雅思考试",
+        version: 1,
+        topics: ["目标与计划"],
+      })
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("atomic-topics").textContent).toContain("目标与计划")
+    );
   });
 });

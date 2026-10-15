@@ -18,6 +18,7 @@ from bridges.contracts.profiles import FourDimension, FourDimensionConfidence
 from bridges.profiles.adapters import InMemoryProfileRepository
 from bridges.profiles.atomic import AtomicProfileService, InMemoryAtomicProfileRepository
 from bridges.profiles.automatic import AutomaticProfileService, InMemoryAutomaticProfileRepository
+from bridges.profiles.commit import ProfileFactSubmission
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     InMemoryFourDimensionProfileRepository,
@@ -108,12 +109,15 @@ ingest(automatic, "我喜欢慢跑", 2)
 results["删除后近义新表述"] = texts(atomic)
 
 four, _, atomic, _ = services()
-record = four.upsert_automatic_record(
-    "audit-user", dimension=FourDimension.KNOWLEDGE_INTEREST,
-    content="概率统计", action="create", confidence=FourDimensionConfidence.LOW,
-    evidence_message_id="low-evidence",
+atomic.commit_fact(
+    "audit-user",
+    ProfileFactSubmission(
+        text="概率统计",
+        dimension=FourDimension.KNOWLEDGE_INTEREST,
+        confidence=FourDimensionConfidence.LOW,
+        evidence_message_id="low-evidence",
+    ),
 )
-atomic.mirror_record("audit-user", record)
 results["低把握度原子召回"] = recalled(atomic, "概率统计")
 
 _, repository, atomic, _ = services()

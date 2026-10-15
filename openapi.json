@@ -14646,6 +14646,84 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Create Atomic Profile Item",
+        "description": "手动添加一条信息：与「记住」同一用户权威路径，重复正文幂等合并。\n\n工单 03：页面上手动添加不再依赖聊天；重复正文合并到既有条目（主题取\n并集），新增内容立即生效并受用户权威保护。主题可空、多选、可扩展。",
+        "operationId": "create_atomic_profile_item_profiles_items_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AtomicProfileItemCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AtomicProfileItemProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
       }
     },
     "/profiles/items/{item_id}": {
@@ -29762,6 +29840,39 @@
         "title": "AtomicProfileGoalState",
         "description": "目标生命周期标记（改进工单 18；只按用户明确信号变化）。\n\n暂停/完成的目标停止作为当前目标使用，但保留正文、来源与法定期限；\n``ACTIVE`` 是其余事实的默认状态。"
       },
+      "AtomicProfileItemCreateRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Text",
+            "description": "要记住的完整事实正文。"
+          },
+          "topics": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topics",
+            "description": "可选主题（多选、可扩展）；不传或空列表表示无主题。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "AtomicProfileItemCreateRequest",
+        "description": "手动添加一条长期信息的请求（页面主动添加，用户权威写入）。"
+      },
       "AtomicProfileItemDeleteRequest": {
         "properties": {
           "version": {
@@ -29819,6 +29930,14 @@
             "format": "date-time",
             "title": "Updated At",
             "description": "最近一次变化时间。"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Topics",
+            "description": "开放主题；可空、多选，只组织浏览。"
           },
           "fact_scope": {
             "$ref": "#/components/schemas/AtomicProfileFactScope",
@@ -29960,6 +30079,21 @@
             "minimum": 1.0,
             "title": "Version",
             "description": "用户读到的版本号。"
+          },
+          "topics": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topics",
+            "description": "替换后的主题；不传表示不修改主题，空列表表示清空主题。"
           }
         },
         "additionalProperties": false,
@@ -29969,7 +30103,7 @@
           "version"
         ],
         "title": "AtomicProfileItemModifyRequest",
-        "description": "行内编辑的乐观锁请求。"
+        "description": "行内编辑的乐观锁请求；主题可选修改，不改变事实身份。"
       },
       "AtomicProfileItemProjection": {
         "properties": {
@@ -30007,6 +30141,14 @@
             ],
             "title": "User Edited At",
             "description": "用户最近一次编辑时间，可为空。"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Topics",
+            "description": "开放主题；可空、多选，只组织浏览。"
           },
           "source_message_ids": {
             "items": {

@@ -3264,7 +3264,14 @@ export interface paths {
          */
         get: operations["list_atomic_profile_items_profiles_items_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Atomic Profile Item
+         * @description 手动添加一条信息：与「记住」同一用户权威路径，重复正文幂等合并。
+         *
+         *     工单 03：页面上手动添加不再依赖聊天；重复正文合并到既有条目（主题取
+         *     并集），新增内容立即生效并受用户权威保护。主题可空、多选、可扩展。
+         */
+        post: operations["create_atomic_profile_item_profiles_items_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7657,6 +7664,22 @@ export interface components {
          */
         AtomicProfileGoalState: "active" | "paused" | "completed";
         /**
+         * AtomicProfileItemCreateRequest
+         * @description 手动添加一条长期信息的请求（页面主动添加，用户权威写入）。
+         */
+        AtomicProfileItemCreateRequest: {
+            /**
+             * Text
+             * @description 要记住的完整事实正文。
+             */
+            text: string;
+            /**
+             * Topics
+             * @description 可选主题（多选、可扩展）；不传或空列表表示无主题。
+             */
+            topics?: string[] | null;
+        };
+        /**
          * AtomicProfileItemDeleteRequest
          * @description 删除确认的乐观锁请求。
          */
@@ -7703,6 +7726,11 @@ export interface components {
              * @description 最近一次变化时间。
              */
             updated_at: string;
+            /**
+             * Topics
+             * @description 开放主题；可空、多选，只组织浏览。
+             */
+            topics?: string[];
             /** @description 适用范围。 */
             fact_scope: components["schemas"]["AtomicProfileFactScope"];
             /** @description 目标生命周期标记。 */
@@ -7757,7 +7785,7 @@ export interface components {
         };
         /**
          * AtomicProfileItemModifyRequest
-         * @description 行内编辑的乐观锁请求。
+         * @description 行内编辑的乐观锁请求；主题可选修改，不改变事实身份。
          */
         AtomicProfileItemModifyRequest: {
             /**
@@ -7770,6 +7798,11 @@ export interface components {
              * @description 用户读到的版本号。
              */
             version: number;
+            /**
+             * Topics
+             * @description 替换后的主题；不传表示不修改主题，空列表表示清空主题。
+             */
+            topics?: string[] | null;
         };
         /**
          * AtomicProfileItemProjection
@@ -7802,6 +7835,11 @@ export interface components {
              * @description 用户最近一次编辑时间，可为空。
              */
             user_edited_at?: string | null;
+            /**
+             * Topics
+             * @description 开放主题；可空、多选，只组织浏览。
+             */
+            topics?: string[];
             /**
              * Source Message Ids
              * @description 证据来源消息标识。
@@ -40067,6 +40105,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_atomic_profile_item_profiles_items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AtomicProfileItemCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AtomicProfileItemProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
                 };
             };
         };

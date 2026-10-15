@@ -53,7 +53,7 @@ from bridges.profiles.automatic import (
     InMemoryAutomaticProfileRepository,
     SqliteAutomaticProfileRepository,
 )
-from bridges.profiles.commit import SourceWithdrawalStatus
+from bridges.profiles.commit import ProfileFactSubmission, SourceWithdrawalStatus
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileRepository,
     FourDimensionProfileService,
@@ -123,8 +123,8 @@ class _WithdrawFailsOnce(FourDimensionProfileService):
         return super().withdraw_record(account_id, record_id, version)
 
 
-class _MirrorFailsOnce(AtomicProfileService):
-    """``fail_at`` 指定第几次镜像写入失败（0 表示不注入故障）。"""
+class _CommitFailsOnce(AtomicProfileService):
+    """``fail_at`` 指定第几次事实写入失败（0 表示不注入故障）。"""
 
     def __init__(
         self,
@@ -135,25 +135,17 @@ class _MirrorFailsOnce(AtomicProfileService):
         self.calls = 0
         self.fail_at = 0
 
-    def mirror_record(
+    def commit_fact(
         self,
         account_id: str,
-        record: FourDimensionProfileRecord,
+        fact: ProfileFactSubmission,
         *,
-        evidence_message_id: str | None = None,
-        fact_text: str | None = None,
         source_at: datetime | None = None,
     ) -> AtomicProfileItem | None:
         self.calls += 1
         if self.calls == self.fail_at:
-            raise RuntimeError("镜像写入失败")
-        return super().mirror_record(
-            account_id,
-            record,
-            evidence_message_id=evidence_message_id,
-            fact_text=fact_text,
-            source_at=source_at,
-        )
+            raise RuntimeError("事实写入失败")
+        return super().commit_fact(account_id, fact, source_at=source_at)
 
 
 class _Stack:
@@ -210,7 +202,7 @@ class _Harness:
     def _install(self, stack: _Stack) -> None:
         self.stack = stack
         self.dimensions = _WithdrawFailsOnce(stack.dimensions)
-        self.atomic = _MirrorFailsOnce(self.dimensions, stack.atomic)
+        self.atomic = _CommitFailsOnce(self.dimensions, stack.atomic)
         self.service = AutomaticProfileService(
             four_dimension_service=self.dimensions,
             repository=stack.state,
@@ -322,6 +314,32 @@ def _delete_with_failed_withdrawal(harness: _Harness, text: str) -> AtomicProfil
     return item
 
 
+def _link_legacy_sources(harness: _Harness, *, account: str = ACCOUNT) -> None:
+    """给抽取产生的条目补上工单 03 之前形态的四维来源（存量对账对象）。
+
+    工单 03 起新写入不再产生四维记录，来源撤回与跨重启恢复的服务对象只剩
+    迁移前的存量条目。测试用这个助手构造存量形态：来源记录活动，条目仍
+    指向它；撤回失败、幂等补做与恢复扫描的合同因此继续被覆盖。
+    """
+
+    items = harness.atomic.list_items(account)
+    for item in items:
+        record = harness.dimensions.upsert_automatic_record(
+            account,
+            dimension=FourDimension(item.topic_hint),
+            content=item.text,
+            action="create",
+            confidence=FourDimensionConfidence.MEDIUM,
+            evidence_message_id=(
+                item.source_message_ids[0] if item.source_message_ids else None
+            ),
+            migration_version="profile-auto-v2",
+        )
+        harness.stack.atomic.save_item(
+            item.model_copy(update={"source_record_id": record.record_id})
+        )
+
+
 def _enqueue_replay_task(harness: _Harness, message_id: str) -> None:
     """以真实重放形状为旧消息排队一条重放任务。
 
@@ -384,6 +402,7 @@ def test_restart_recovery_completes_source_withdrawal_after_delete(
     """删除越过墓碑保护点后撤回失败：重启后恢复补齐来源，条目不复活。"""
 
     harness.extract("message-1")
+    _link_legacy_sources(harness)
     goal = _delete_with_failed_withdrawal(harness, GOAL_TEXT)
 
     # 保护点之内没事：墓碑已提交，条目不可召回，切片里也没有它。
@@ -429,6 +448,8 @@ def test_multi_forget_partial_failure_is_recoverable_and_account_scoped(
 
     harness.extract("message-1")
     harness.extract("message-1", account=OTHER_ACCOUNT)
+    _link_legacy_sources(harness)
+    _link_legacy_sources(harness, account=OTHER_ACCOUNT)
     other_items_before = {
         item.profile_item_id: item.model_dump()
         for item in harness.items(OTHER_ACCOUNT)
@@ -506,6 +527,7 @@ def test_recovery_keeps_user_edits_and_never_revives_deleted_facts(
     """故障期间的用户编辑与重放：编辑不被旧结果覆盖，删除的事实不复活。"""
 
     harness.extract("message-1")
+    _link_legacy_sources(harness)
     goal = _delete_with_failed_withdrawal(harness, GOAL_TEXT)
 
     # 故障期间：用户编辑另一条条目，随后旧消息被重放。
@@ -550,9 +572,9 @@ def test_recovery_keeps_user_edits_and_never_revives_deleted_facts(
 def test_interrupted_mirror_retry_does_not_duplicate_or_half_write(
     harness: _Harness,
 ) -> None:
-    """同一批次自动镜像中断后重试：整批回滚、重试不产生重复活动条目。"""
+    """同一批次事实写入中断后重试：整批回滚、重试不产生重复活动条目。"""
 
-    # 第二条事实的镜像写入失败：整批提交必须一起回滚。
+    # 第二条事实的写入失败：整批提交必须一起回滚。
     harness.atomic.fail_at = 2
     failed = harness.extract("message-1")
 
@@ -574,10 +596,6 @@ def test_interrupted_mirror_retry_does_not_duplicate_or_half_write(
     assert runs[0].status is ProfileExtractionStatus.SUCCEEDED
     assert len(runs[0].committed_record_ids) == 2
     assert {item.text for item in harness.items()} == {GOAL_TEXT, STATUS_TEXT}
-    assert {record.content for record in harness.records()} == {
-        GOAL_TEXT,
-        STATUS_TEXT,
-    }
     assert harness.slice_texts() == {GOAL_TEXT, STATUS_TEXT}
 
     # 去重：再次重试没有待处理任务，条目标识与版本都不变。
@@ -646,6 +664,7 @@ def test_history_migration_contracts_hold_after_recovery(harness: _Harness) -> N
     """恢复之后：迁移可重复运行、可回滚，旧四维审计来源不被删除或改写。"""
 
     harness.extract("message-1")
+    _link_legacy_sources(harness)
     _delete_with_failed_withdrawal(harness, GOAL_TEXT)
     harness.restart()
     assert harness.recover() == [SourceWithdrawalStatus.WITHDRAWN]

@@ -6,41 +6,48 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from bridges.chat.turn import profile_slice_context
+from bridges.contracts.atomic_profile import AtomicProfileItemModifyRequest
 from bridges.contracts.profiles import (
     FourDimension,
     FourDimensionConfidence,
-    FourDimensionProfileModifyRequest,
     ProfileSensitivityClass,
     ProfileSlice,
     ProfileSliceItem,
 )
 from bridges.profiles import (
+    AtomicProfileService,
     AutomaticProfileService,
     FourDimensionProfileService,
+    InMemoryAtomicProfileRepository,
     InMemoryAutomaticProfileRepository,
     InMemoryFourDimensionProfileRepository,
     RuleBasedAutomaticProfileExtractor,
+    SqliteAtomicProfileRepository,
     SqliteAutomaticProfileRepository,
     SqliteFourDimensionProfileRepository,
 )
 from bridges.storage import BridgesDatabase
 
 
-def _in_memory_services() -> tuple[FourDimensionProfileService, AutomaticProfileService]:
+def _in_memory_services() -> tuple[
+    FourDimensionProfileService, AutomaticProfileService, AtomicProfileService
+]:
     target = FourDimensionProfileService(
         source_repository=None,  # type: ignore[arg-type]
         repository=InMemoryFourDimensionProfileRepository(),
     )
+    atomic = AtomicProfileService(target, InMemoryAtomicProfileRepository())
     automatic = AutomaticProfileService(
         four_dimension_service=target,
         repository=InMemoryAutomaticProfileRepository(),
         extractor=RuleBasedAutomaticProfileExtractor(),
+        atomic_profile_service=atomic,
     )
-    return target, automatic
+    return target, automatic, atomic
 
 
 def test_first_self_statement_is_medium_and_repeated_message_becomes_high() -> None:
-    target, automatic = _in_memory_services()
+    target, automatic, atomic = _in_memory_services()
 
     first = automatic.preprocess_message(
         "account-alice",
@@ -50,10 +57,10 @@ def test_first_self_statement_is_medium_and_repeated_message_becomes_high() -> N
         run_id="run-1",
         mode="study",
     )
-    record = target.list_records("account-alice")[0]
-    assert record.confidence == FourDimensionConfidence.MEDIUM
-    assert record.evidence_quote == "我想学习物理"
-    assert record.evidence_message_id == "message-1"
+    item = atomic.list_items("account-alice")[0]
+    assert item.confidence == FourDimensionConfidence.MEDIUM
+    assert item.evidence_quote == "我想学习物理"
+    assert item.source_message_ids == ["message-1"]
     assert first.observed_count == 1
 
     automatic.preprocess_message(
@@ -64,13 +71,16 @@ def test_first_self_statement_is_medium_and_repeated_message_becomes_high() -> N
         run_id="run-2",
         mode="study",
     )
-    repeated = target.list_records("account-alice")[0]
+    repeated = atomic.list_items("account-alice")[0]
+    assert repeated.text == "我想学习物理"
     assert repeated.confidence == FourDimensionConfidence.HIGH
-    assert repeated.evidence_message_id == "message-2"
+    assert repeated.source_message_ids == ["message-1", "message-2"]
 
 
-def test_explicit_preference_change_replaces_the_previous_value() -> None:
-    target, automatic = _in_memory_services()
+def test_explicit_preference_change_coexists_without_forced_overwrite() -> None:
+    """工单 03：兴趣不再按维度槽强制覆盖；两个偏好作为并行事实并存。"""
+
+    target, automatic, atomic = _in_memory_services()
 
     automatic.preprocess_message(
         "account-alice",
@@ -89,13 +99,12 @@ def test_explicit_preference_change_replaces_the_previous_value() -> None:
         mode="companion",
     )
 
-    records = target.list_records("account-alice")
-    assert len(records) == 1
-    assert records[0].content == "跑步"
+    items = atomic.list_items("account-alice")
+    assert {item.text for item in items} == {"我喜欢游泳", "我现在更喜欢跑步"}
 
 
 def test_explicit_confirmation_is_stronger_than_a_first_self_statement() -> None:
-    target, automatic = _in_memory_services()
+    target, automatic, atomic = _in_memory_services()
 
     automatic.preprocess_message(
         "account-alice",
@@ -106,13 +115,13 @@ def test_explicit_confirmation_is_stronger_than_a_first_self_statement() -> None
         mode="companion",
     )
 
-    record = target.list_records("account-alice")[0]
-    assert record.confidence == FourDimensionConfidence.HIGH
-    assert record.change_note == "用户明确确认，可靠程度已提高"
+    item = atomic.list_items("account-alice")[0]
+    assert item.text == "我喜欢跑步"
+    assert item.confidence == FourDimensionConfidence.HIGH
 
 
 def test_question_observations_do_not_upgrade_a_later_self_statement() -> None:
-    target, automatic = _in_memory_services()
+    target, automatic, atomic = _in_memory_services()
 
     automatic.preprocess_message(
         "account-alice",
@@ -131,13 +140,16 @@ def test_question_observations_do_not_upgrade_a_later_self_statement() -> None:
         mode="study",
     )
 
-    records = target.list_records("account-alice")
-    assert len(records) == 1
-    assert records[0].confidence == FourDimensionConfidence.MEDIUM
+    items = atomic.list_items("account-alice")
+    assert len(items) == 1
+    assert items[0].text == "我想学习物理"
+    assert items[0].confidence == FourDimensionConfidence.MEDIUM
 
 
-def test_repeated_corrections_lower_confidence_and_stop_recall() -> None:
-    target, automatic = _in_memory_services()
+def test_repeated_chat_corrections_keep_applying_without_degradation() -> None:
+    """工单 03：连续聊天更正直接改写同一条目；旧的四维降级保护不迁移。"""
+
+    target, automatic, atomic = _in_memory_services()
     automatic.preprocess_message(
         "account-alice",
         conversation_id="conversation-1",
@@ -146,52 +158,46 @@ def test_repeated_corrections_lower_confidence_and_stop_recall() -> None:
         run_id="run-1",
         mode="study",
     )
-    record = target.list_records("account-alice")[0]
 
-    first = target.modify_record(
+    for text in ("我想学习化学", "我想学习生物", "我想学习数学"):
+        item, changed = atomic.correct_fact(
+            "account-alice",
+            dimension=FourDimension.KNOWLEDGE_INTEREST,
+            text=text,
+        )
+        assert changed
+        assert item is not None
+
+    items = atomic.list_items("account-alice")
+    assert [item.text for item in items] == ["我想学习数学"]
+    assert items[0].confidence == FourDimensionConfidence.HIGH
+    slice_ = atomic.compile_chat_slice(
         "account-alice",
-        record.record_id,
-        FourDimensionProfileModifyRequest(content="我想学习化学", version=record.version),
+        run_id="assistant-1",
+        current_question="帮我安排数学的学习计划",
     )
-    assert first.correction_count == 1
-    assert first.content == "我想学习化学"
-    assert first.confidence == FourDimensionConfidence.MEDIUM
-
-    second = target.modify_record(
-        "account-alice",
-        first.record_id,
-        FourDimensionProfileModifyRequest(content="我想学习生物", version=first.version),
-    )
-    assert second.correction_count == 2
-    assert second.confidence == FourDimensionConfidence.LOW
-    assert "反复纠错" in (second.change_note or "")
-
-    third = target.modify_record(
-        "account-alice",
-        second.record_id,
-        FourDimensionProfileModifyRequest(content="我想学习数学", version=second.version),
-    )
-    assert third.correction_count == 3
-    assert third.confidence == FourDimensionConfidence.LOW
-    assert "当前不可信" in (third.change_note or "")
-    assert automatic.compile_chat_slice(
-        "account-alice", mode="study", run_id="assistant-1"
-    ).included_items == []
+    assert [item.value_or_rule for item in slice_.included_items] == [
+        "我想学习数学"
+    ]
 
 
-def test_true_delete_removes_record_and_its_observations(tmp_path: Path) -> None:
+def test_true_delete_removes_item_and_replay_cannot_revive(tmp_path: Path) -> None:
+    """工单 03：删除是原子墓碑；旧消息重放与重启都不再复活。"""
+
     database = BridgesDatabase(tmp_path / "bridges.db")
     automatic_repository = SqliteAutomaticProfileRepository(database)
     target_repository = SqliteFourDimensionProfileRepository(database)
+    atomic_repository = SqliteAtomicProfileRepository(database)
     target = FourDimensionProfileService(
         source_repository=None,  # type: ignore[arg-type]
         repository=target_repository,
-        observation_delete_callback=automatic_repository.delete_observations_for_record,
     )
+    atomic = AtomicProfileService(target, atomic_repository)
     automatic = AutomaticProfileService(
         four_dimension_service=target,
         repository=automatic_repository,
         extractor=RuleBasedAutomaticProfileExtractor(),
+        atomic_profile_service=atomic,
     )
     automatic.preprocess_message(
         "account-alice",
@@ -201,32 +207,40 @@ def test_true_delete_removes_record_and_its_observations(tmp_path: Path) -> None
         run_id="run-1",
         mode="study",
     )
-    record = target.list_records("account-alice")[0]
-    edited = target.modify_record(
+    item = atomic.list_items("account-alice")[0]
+    edited = atomic.modify_item(
         "account-alice",
-        record.record_id,
-        FourDimensionProfileModifyRequest(content="我想学习化学", version=record.version),
+        item.profile_item_id,
+        AtomicProfileItemModifyRequest(text="我想学习化学", version=item.version),
     )
-    assert database.connection.execute(
-        "SELECT COUNT(*) FROM profile_extraction_observations "
-        "WHERE account_id = 'account-alice' AND normalized_value = '物理'"
-    ).fetchone()[0] == 0
 
-    target.delete_record("account-alice", edited.record_id, edited.version)
+    atomic.delete_item("account-alice", edited.profile_item_id, edited.version)
 
-    assert target.list_records("account-alice") == []
-    assert database.connection.execute(
-        "SELECT COUNT(*) FROM profile_extraction_observations "
-        "WHERE account_id = 'account-alice'"
-    ).fetchone()[0] == 0
-    assert database.connection.execute(
-        "SELECT COUNT(*) FROM profile_four_dimension_records "
-        "WHERE account_id = 'account-alice'"
-    ).fetchone()[0] == 0
+    assert atomic.list_items("account-alice") == []
+    tombstones = atomic_repository.list_items("account-alice", include_withdrawn=True)
+    deleted = next(
+        tombstone
+        for tombstone in tombstones
+        if tombstone.profile_item_id == edited.profile_item_id
+    )
+    assert deleted.status.value == "withdrawn"
+
+    replay = automatic.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="我想学习物理",
+        run_id="run-2",
+        mode="study",
+    )
+    assert replay.run.status == "succeeded"
+    # 墓碑抑制复活：重放不写回被删除的事实。
+    assert atomic.list_items("account-alice") == []
+    database.close()
 
 
 def test_do_not_record_stops_new_observations_and_future_retries() -> None:
-    target, automatic = _in_memory_services()
+    target, automatic, atomic = _in_memory_services()
 
     blocked = automatic.preprocess_message(
         "account-alice",
@@ -248,6 +262,7 @@ def test_do_not_record_stops_new_observations_and_future_retries() -> None:
     )
     assert result.committed_record_ids == []
     assert target.list_records("account-alice") == []
+    assert atomic.list_items("account-alice") == []
     assert automatic._repository.list_observations(  # type: ignore[attr-defined]
         "account-alice",
         FourDimension.KNOWLEDGE_INTEREST,
@@ -257,7 +272,7 @@ def test_do_not_record_stops_new_observations_and_future_retries() -> None:
 
 
 def test_local_do_not_record_only_blocks_the_named_content() -> None:
-    target, automatic = _in_memory_services()
+    target, automatic, atomic = _in_memory_services()
 
     automatic.preprocess_message(
         "account-alice",
@@ -284,9 +299,8 @@ def test_local_do_not_record_only_blocks_the_named_content() -> None:
         mode="companion",
     )
 
-    records = target.list_records("account-alice")
-    assert len(records) == 1
-    assert records[0].content == "游泳"
+    items = atomic.list_items("account-alice")
+    assert [item.text for item in items] == ["我喜欢游泳"]
 
 
 def test_model_context_uses_daily_language_without_internal_terms() -> None:

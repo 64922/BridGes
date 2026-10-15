@@ -33,7 +33,8 @@ from bridges.chat.context_compiler import compile_turn_context
 from bridges.chat.repository import MessageRecord
 from bridges.config import get_settings
 from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus, ChatMode
-from bridges.contracts.profiles import FourDimension, FourDimensionConfidence
+from bridges.contracts.profiles import FourDimensionConfidence
+from bridges.profiles.commit import ProfileFactSubmission
 from tests.api.test_qwen_credential_settings import (
     _NEW_KEY,
     _OLD_KEY,
@@ -184,17 +185,14 @@ def test_deleted_profile_item_does_not_come_back_from_old_messages() -> None:
     assert client.get("/profiles/items").json() == []
 
     # 旧消息重放/自动抽取不得让已删除条目复活。
-    four_dimensions = client.app.state.four_dimension_profile_service
-    record = four_dimensions.upsert_automatic_record(
+    service.commit_fact(
         account_id,
-        dimension=FourDimension.ACADEMIC_STATUS,
-        content="我对花生过敏",
-        action="create",
-        confidence=FourDimensionConfidence.MEDIUM,
-        evidence_message_id="msg-deleted",
-        migration_version="profile-auto-v2",
+        ProfileFactSubmission(
+            text="我对花生过敏",
+            confidence=FourDimensionConfidence.MEDIUM,
+            evidence_message_id="msg-deleted",
+        ),
     )
-    service.mirror_record(account_id, record, evidence_message_id="msg-deleted")
     assert client.get("/profiles/items").json() == []
 
 

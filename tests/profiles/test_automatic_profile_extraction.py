@@ -26,15 +26,19 @@ from bridges.contracts.profile_extraction import (
 )
 from bridges.contracts.profiles import FourDimension, FourDimensionConfidence
 from bridges.profiles import (
+    AtomicProfileService,
     AutomaticProfileService,
     FourDimensionProfileService,
     GatewayAutomaticProfileExtractor,
+    InMemoryAtomicProfileRepository,
     InMemoryAutomaticProfileRepository,
     InMemoryFourDimensionProfileRepository,
     RuleBasedAutomaticProfileExtractor,
+    SqliteAtomicProfileRepository,
     SqliteAutomaticProfileRepository,
     SqliteFourDimensionProfileRepository,
 )
+from bridges.profiles.atomic import MAX_SLICE_ITEMS
 from bridges.profiles.signals import (
     PROFILE_SIGNAL_CLASSIFIER_VERSION,
     ProfileSignalCategory,
@@ -42,6 +46,33 @@ from bridges.profiles.signals import (
     ProfileSignalClassifier,
 )
 from bridges.storage import BridgesDatabase
+
+
+def _stack(
+    extractor: Any = None,
+    *,
+    four_repository: Any = None,
+    automatic_repository: Any = None,
+    atomic_repository: Any = None,
+    lock_recorder: Any = None,
+) -> tuple[AutomaticProfileService, FourDimensionProfileService, AtomicProfileService]:
+    """构造工单 03 之后的写入栈：抽取只写原子条目，四维记录不再参与。"""
+
+    four = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=four_repository or InMemoryFourDimensionProfileRepository(),
+    )
+    atomic = AtomicProfileService(
+        four, atomic_repository or InMemoryAtomicProfileRepository()
+    )
+    automatic = AutomaticProfileService(
+        four_dimension_service=four,
+        repository=automatic_repository or InMemoryAutomaticProfileRepository(),
+        extractor=extractor,
+        lock_recorder=lock_recorder,
+        atomic_profile_service=atomic,
+    )
+    return automatic, four, atomic
 
 
 class _GoalExtractor:
@@ -143,16 +174,16 @@ class _ChangingGoalExtractor:
         )
 
 
-class _FailingFourDimensionRepository(InMemoryFourDimensionProfileRepository):
+class _FailingAtomicRepository(InMemoryAtomicProfileRepository):
     def __init__(self) -> None:
         super().__init__()
         self._saves = 0
 
-    def save_record(self, record):  # type: ignore[no-untyped-def]
+    def save_item(self, item):  # type: ignore[no-untyped-def]
         self._saves += 1
         if self._saves == 2:
-            raise RuntimeError("四维提交失败")
-        return super().save_record(record)
+            raise RuntimeError("原子条目提交失败")
+        return super().save_item(item)
 
 
 def _fake_lock(
@@ -295,16 +326,7 @@ class _RecordingLockRecorder(ModelRunLockRecorder):
 
 
 def test_explicit_goal_is_committed_before_same_round_slice_is_compiled() -> None:
-    target_repository = InMemoryFourDimensionProfileRepository()
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=target_repository,
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=_GoalExtractor(),
-    )
+    service, target_service, atomic_service = _stack(_GoalExtractor())
 
     result = service.preprocess_message(
         "account-alice",
@@ -316,33 +338,27 @@ def test_explicit_goal_is_committed_before_same_round_slice_is_compiled() -> Non
     )
 
     assert result.run.status == "succeeded"
-    records = target_service.list_records("account-alice")
-    assert [(record.dimension, record.content) for record in records] == [
+    items = atomic_service.list_items("account-alice")
+    assert [(item.topic_hint, item.text) for item in items] == [
         (FourDimension.STAGE_GOAL, "今年通过雅思考试")
     ]
 
-    slice_ = service.compile_chat_slice(
+    # 工单 03：采用路径读取原子条目；普通自动提取下一轮生效，因此不带
+    # 本轮消息标识编译时该目标必须已被采用。
+    slice_ = atomic_service.compile_chat_slice(
         "account-alice",
-        mode="companion",
         run_id="assistant-1",
         project_id="conversation-1",
+        current_question="帮我安排雅思考试的复习计划",
     )
     assert [item.value_or_rule for item in slice_.included_items] == [
         "今年通过雅思考试"
     ]
-    assert slice_.length_budget == 6
+    assert slice_.length_budget == MAX_SLICE_ITEMS
 
 
 def test_privacy_notice_is_account_scoped_and_shown_once() -> None:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=_GoalExtractor(),
-    )
+    service, _, _ = _stack(_GoalExtractor())
 
     first = service.preprocess_message(
         "account-alice",
@@ -366,15 +382,9 @@ def test_privacy_notice_is_account_scoped_and_shown_once() -> None:
 
 
 def test_extraction_failure_has_one_bounded_retry_task() -> None:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
     extractor = _BrokenExtractor()
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=extractor,
+    service, target_service, atomic_service = _stack(
+        extractor,
     )
 
     first = service.preprocess_message(
@@ -402,19 +412,13 @@ def test_extraction_failure_has_one_bounded_retry_task() -> None:
     task = service.list_retry_tasks("account-alice")[0]
     assert task.status == "exhausted"
     assert extractor.calls == 4
-    assert target_service.list_records("account-alice") == []
+    assert atomic_service.list_items("account-alice") == []
 
 
 def test_tombstone_exhausts_retry_without_replaying_old_message() -> None:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
     extractor = _BrokenExtractor()
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=extractor,
+    service, target_service, atomic_service = _stack(
+        extractor,
     )
 
     service.preprocess_message(
@@ -445,14 +449,8 @@ def test_tombstone_exhausts_retry_without_replaying_old_message() -> None:
 
 
 def test_repeated_non_explicit_knowledge_needs_two_messages_within_window() -> None:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=_KnowledgeExtractor(),
+    service, target_service, atomic_service = _stack(
+        _KnowledgeExtractor(),
     )
 
     for index in (1, 2):
@@ -465,8 +463,8 @@ def test_repeated_non_explicit_knowledge_needs_two_messages_within_window() -> N
             mode="study",
         )
 
-    records = target_service.list_records("account-alice")
-    assert [(record.dimension, record.content) for record in records] == [
+    items = atomic_service.list_items("account-alice")
+    assert [(item.topic_hint, item.text) for item in items] == [
         (FourDimension.KNOWLEDGE_INTEREST, "物理")
     ]
 
@@ -537,14 +535,8 @@ def test_course_and_profile_questions_do_not_become_stable_self_statements(
 
 
 def test_subject_omission_messages_create_three_dimensions_without_hobby() -> None:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=RuleBasedAutomaticProfileExtractor(),
+    service, target_service, atomic_service = _stack(
+        RuleBasedAutomaticProfileExtractor(),
     )
 
     messages = (
@@ -566,18 +558,13 @@ def test_subject_omission_messages_create_three_dimensions_without_hobby() -> No
     ]
 
     assert all(result.run.status == "succeeded" for result in results)
-    assert {
-        (record.dimension, record.content)
-        for record in target_service.list_records("account-alice")
-    } == {
+    items = atomic_service.list_items("account-alice")
+    assert {(item.topic_hint, item.text) for item in items} == {
         (FourDimension.ACADEMIC_STATUS, "大三人工智能专业"),
         (FourDimension.STAGE_GOAL, "考211相关专业/考研"),
-        (FourDimension.KNOWLEDGE_INTEREST, "Transformer"),
+        (FourDimension.KNOWLEDGE_INTEREST, "想学习Transformer"),
     }
-    assert not any(
-        record.dimension == FourDimension.HOBBY
-        for record in target_service.list_records("account-alice")
-    )
+    assert not any(item.topic_hint == FourDimension.HOBBY for item in items)
 
 
 def test_search_is_observation_then_explicit_learning_deduplicates_topic() -> None:
@@ -586,10 +573,9 @@ def test_search_is_observation_then_explicit_learning_deduplicates_topic() -> No
         repository=InMemoryFourDimensionProfileRepository(),
     )
     repository = InMemoryAutomaticProfileRepository()
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=repository,
-        extractor=RuleBasedAutomaticProfileExtractor(),
+    service, target_service, atomic_service = _stack(
+        RuleBasedAutomaticProfileExtractor(),
+        automatic_repository=repository,
     )
 
     search = service.preprocess_message(
@@ -612,9 +598,9 @@ def test_search_is_observation_then_explicit_learning_deduplicates_topic() -> No
     assert search.observed_count == 1
     assert learning.committed_record_ids
     assert [
-        (record.dimension, record.content)
-        for record in target_service.list_records("account-alice")
-    ] == [(FourDimension.KNOWLEDGE_INTEREST, "Transformer")]
+        (item.topic_hint, item.text)
+        for item in atomic_service.list_items("account-alice")
+    ] == [(FourDimension.KNOWLEDGE_INTEREST, "想学习Transformer")]
     observations = repository.list_observations(
         "account-alice",
         FourDimension.KNOWLEDGE_INTEREST,
@@ -630,9 +616,8 @@ def test_search_is_observation_then_explicit_learning_deduplicates_topic() -> No
         PROFILE_SIGNAL_CLASSIFIER_VERSION in observation.extractor_version
         for observation in observations
     )
-    record = target_service.list_records("account-alice")[0]
-    assert PROFILE_SIGNAL_CLASSIFIER_VERSION in record.migration_version
-    assert "category=high_confidence_self" in record.migration_version
+    item = atomic_service.list_items("account-alice")[0]
+    assert item.write_origin.value == "automatic"
 
 
 @pytest.mark.parametrize(
@@ -652,14 +637,8 @@ def test_search_is_observation_then_explicit_learning_deduplicates_topic() -> No
 def test_forbidden_subject_omission_variants_never_write_profile(
     content: str,
 ) -> None:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=RuleBasedAutomaticProfileExtractor(),
+    service, target_service, atomic_service = _stack(
+        RuleBasedAutomaticProfileExtractor(),
     )
 
     result = service.preprocess_message(
@@ -673,19 +652,13 @@ def test_forbidden_subject_omission_variants_never_write_profile(
 
     assert result.run.status == "succeeded"
     assert result.observed_count == 0
-    assert target_service.list_records("account-alice") == []
+    assert atomic_service.list_items("account-alice") == []
 
 
 def test_mixed_sensitive_and_clean_fragments_write_only_clean_fragment() -> None:
     """改进工单 17：混合消息逐片段判定，合规片段可写入，敏感片段零写入。"""
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=RuleBasedAutomaticProfileExtractor(),
+    service, target_service, atomic_service = _stack(
+        RuleBasedAutomaticProfileExtractor(),
     )
 
     result = service.preprocess_message(
@@ -698,12 +671,12 @@ def test_mixed_sensitive_and_clean_fragments_write_only_clean_fragment() -> None
     )
 
     assert result.run.status == "succeeded"
-    records = target_service.list_records("account-alice")
-    assert [(record.dimension, record.content) for record in records] == [
-        (FourDimension.KNOWLEDGE_INTEREST, "Transformer")
+    items = atomic_service.list_items("account-alice")
+    assert [(item.topic_hint, item.text) for item in items] == [
+        (FourDimension.KNOWLEDGE_INTEREST, "想学习 Transformer")
     ]
-    assert "焦虑" not in (records[0].evidence_quote or "")
-    assert "想学习 Transformer" in (records[0].evidence_quote or "")
+    assert "焦虑" not in (items[0].evidence_quote or "")
+    assert "想学习 Transformer" in (items[0].evidence_quote or "")
 
 
 def test_submission_validation_reuses_precheck_classification() -> None:
@@ -735,15 +708,9 @@ def test_submission_validation_reuses_precheck_classification() -> None:
                 }
             )
 
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
     extractor = _ClassificationAwareExtractor()
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=extractor,
+    service, target_service, atomic_service = _stack(
+        extractor,
     )
 
     result = service.preprocess_message(
@@ -762,7 +729,7 @@ def test_submission_validation_reuses_precheck_classification() -> None:
     assert result.run.status == "succeeded"
     assert result.run.last_error is None
     assert result.observed_count == 1
-    assert target_service.list_records("account-alice") == []
+    assert atomic_service.list_items("account-alice") == []
 
 
 def test_gateway_configuration_keeps_deterministic_signals_local() -> None:
@@ -780,15 +747,9 @@ def test_gateway_configuration_keeps_deterministic_signals_local() -> None:
                 error_message=None,
             )
 
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
     gateway = _CountingGateway()
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=GatewayAutomaticProfileExtractor(cast(ModelGateway, gateway)),
+    service, target_service, atomic_service = _stack(
+        GatewayAutomaticProfileExtractor(cast(ModelGateway, gateway)),
     )
 
     result = service.preprocess_message(
@@ -802,20 +763,14 @@ def test_gateway_configuration_keeps_deterministic_signals_local() -> None:
 
     assert result.run.status == "succeeded"
     assert gateway.calls == 0
-    assert [record.content for record in target_service.list_records("account-alice")] == [
-        "CNN"
+    assert [item.text for item in atomic_service.list_items("account-alice")] == [
+        "想学习 CNN"
     ]
 
 
 def test_learning_request_is_committed_as_knowledge_interest_on_first_message() -> None:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=RuleBasedAutomaticProfileExtractor(),
+    service, target_service, atomic_service = _stack(
+        RuleBasedAutomaticProfileExtractor(),
     )
 
     result = service.preprocess_message(
@@ -829,20 +784,14 @@ def test_learning_request_is_committed_as_knowledge_interest_on_first_message() 
 
     assert result.run.status == "succeeded"
     assert [
-        (record.dimension, record.content)
-        for record in target_service.list_records("account-alice")
-    ] == [(FourDimension.KNOWLEDGE_INTEREST, "卷积神经网络相关知识")]
+        (item.topic_hint, item.text)
+        for item in atomic_service.list_items("account-alice")
+    ] == [(FourDimension.KNOWLEDGE_INTEREST, "我想学习卷积神经网络相关知识")]
 
 
 def test_compound_academic_and_planning_request_commits_two_dimensions() -> None:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=RuleBasedAutomaticProfileExtractor(),
+    service, target_service, atomic_service = _stack(
+        RuleBasedAutomaticProfileExtractor(),
     )
 
     result = service.preprocess_message(
@@ -856,8 +805,8 @@ def test_compound_academic_and_planning_request_commits_two_dimensions() -> None
 
     assert result.run.status == "succeeded"
     assert {
-        (record.dimension, record.content)
-        for record in target_service.list_records("account-alice")
+        (item.topic_hint, item.text)
+        for item in atomic_service.list_items("account-alice")
     } == {
         (FourDimension.ACADEMIC_STATUS, "一名大三的人工智能专业学生"),
         (FourDimension.STAGE_GOAL, "考研进度"),
@@ -865,14 +814,8 @@ def test_compound_academic_and_planning_request_commits_two_dimensions() -> None
 
 
 def test_standalone_planning_request_triggers_stage_goal_extraction() -> None:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=RuleBasedAutomaticProfileExtractor(),
+    service, target_service, atomic_service = _stack(
+        RuleBasedAutomaticProfileExtractor(),
     )
 
     result = service.preprocess_message(
@@ -885,7 +828,7 @@ def test_standalone_planning_request_triggers_stage_goal_extraction() -> None:
     )
 
     assert result.run.status == "succeeded"
-    assert [record.content for record in target_service.list_records("account-alice")] == [
+    assert [item.text for item in atomic_service.list_items("account-alice")] == [
         "考研进度"
     ]
 
@@ -942,14 +885,8 @@ def test_gateway_profile_prompt_requires_json_and_preserves_upstream_error_messa
 
 
 def test_ordinary_question_is_internal_observation_only() -> None:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=RuleBasedAutomaticProfileExtractor(),
+    service, target_service, atomic_service = _stack(
+        RuleBasedAutomaticProfileExtractor(),
     )
 
     result = service.preprocess_message(
@@ -962,7 +899,7 @@ def test_ordinary_question_is_internal_observation_only() -> None:
     )
 
     assert result.observed_count == 1
-    assert target_service.list_records("account-alice") == []
+    assert atomic_service.list_items("account-alice") == []
     assert (
         service.compile_chat_slice(
             "account-alice", mode="study", run_id="assistant-1"
@@ -972,14 +909,8 @@ def test_ordinary_question_is_internal_observation_only() -> None:
 
 
 def test_forbidden_signal_is_zero_write() -> None:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=RuleBasedAutomaticProfileExtractor(),
+    service, target_service, atomic_service = _stack(
+        RuleBasedAutomaticProfileExtractor(),
     )
 
     result = service.preprocess_message(
@@ -993,7 +924,7 @@ def test_forbidden_signal_is_zero_write() -> None:
 
     assert result.run.status == "succeeded"
     assert result.observed_count == 0
-    assert target_service.list_records("account-alice") == []
+    assert atomic_service.list_items("account-alice") == []
 
 
 def test_extractor_cannot_invent_a_forbidden_normalized_value() -> None:
@@ -1015,14 +946,8 @@ def test_extractor_cannot_invent_a_forbidden_normalized_value() -> None:
                 }
             )
 
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=_InventedSensitiveExtractor(),
+    service, target_service, atomic_service = _stack(
+        _InventedSensitiveExtractor(),
     )
 
     result = service.preprocess_message(
@@ -1036,7 +961,7 @@ def test_extractor_cannot_invent_a_forbidden_normalized_value() -> None:
 
     assert result.run.status == "exhausted"
     assert result.run.last_error == "profile_extraction_forbidden_value"
-    assert target_service.list_records("account-alice") == []
+    assert atomic_service.list_items("account-alice") == []
 
 
 def test_extraction_contract_rejects_unknown_dimensions_and_extra_fields() -> None:
@@ -1057,17 +982,19 @@ def test_extraction_contract_rejects_unknown_dimensions_and_extra_fields() -> No
         )
 
 
-def test_failed_batch_rolls_back_observations_and_four_dimension_records() -> None:
-    target_repository = _FailingFourDimensionRepository()
+def test_failed_batch_rolls_back_observations_and_atomic_items() -> None:
+    target_repository = InMemoryFourDimensionProfileRepository()
     target_service = FourDimensionProfileService(
         source_repository=None,  # type: ignore[arg-type]
         repository=target_repository,
     )
     automatic_repository = InMemoryAutomaticProfileRepository()
+    atomic_service = AtomicProfileService(target_service, _FailingAtomicRepository())
     service = AutomaticProfileService(
         four_dimension_service=target_service,
         repository=automatic_repository,
         extractor=_TwoItemExtractor(),
+        atomic_profile_service=atomic_service,
     )
 
     result = service.preprocess_message(
@@ -1081,6 +1008,7 @@ def test_failed_batch_rolls_back_observations_and_four_dimension_records() -> No
 
     assert result.run.status == "pending"
     assert target_service.list_records("account-alice") == []
+    assert atomic_service.list_items("account-alice") == []
     assert (
         automatic_repository.list_observations(
             "account-alice",
@@ -1092,15 +1020,11 @@ def test_failed_batch_rolls_back_observations_and_four_dimension_records() -> No
     )
 
 
-def test_later_explicit_stage_goal_updates_in_place() -> None:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=_ChangingGoalExtractor(),
+def test_later_explicit_stage_goal_coexists_without_forced_overwrite() -> None:
+    """工单 03：写入层不再按维度槽强制覆盖；不同目标作为并行事实并存。"""
+
+    service, _, atomic_service = _stack(
+        _ChangingGoalExtractor(),
     )
 
     for index, content in enumerate(("我的目标是旧目标", "我的目标是新目标"), start=1):
@@ -1113,22 +1037,19 @@ def test_later_explicit_stage_goal_updates_in_place() -> None:
             mode="study",
         )
 
-    records = target_service.list_records("account-alice")
-    assert len(records) == 1
-    assert records[0].content == "新目标"
+    items = atomic_service.list_items("account-alice")
+    assert {item.text for item in items} == {"旧目标", "新目标"}
 
 
 def test_sqlite_repository_survives_restart_and_isolates_accounts(tmp_path) -> None:
     database_path = tmp_path / "bridges.db"
     first_database = BridgesDatabase(database_path)
     first_database.initialize()
-    first_service = AutomaticProfileService(
-        four_dimension_service=FourDimensionProfileService(
-            source_repository=None,  # type: ignore[arg-type]
-            repository=SqliteFourDimensionProfileRepository(first_database),
-        ),
-        repository=SqliteAutomaticProfileRepository(first_database),
-        extractor=_GoalExtractor(),
+    first_service, _, first_atomic = _stack(
+        _GoalExtractor(),
+        four_repository=SqliteFourDimensionProfileRepository(first_database),
+        automatic_repository=SqliteAutomaticProfileRepository(first_database),
+        atomic_repository=SqliteAtomicProfileRepository(first_database),
     )
     first_service.preprocess_message(
         "account-alice",
@@ -1141,13 +1062,11 @@ def test_sqlite_repository_survives_restart_and_isolates_accounts(tmp_path) -> N
     first_database.close()
 
     second_database = BridgesDatabase(database_path)
-    second_service = AutomaticProfileService(
-        four_dimension_service=FourDimensionProfileService(
-            source_repository=None,  # type: ignore[arg-type]
-            repository=SqliteFourDimensionProfileRepository(second_database),
-        ),
-        repository=SqliteAutomaticProfileRepository(second_database),
-        extractor=_GoalExtractor(),
+    second_service, _, second_atomic = _stack(
+        _GoalExtractor(),
+        four_repository=SqliteFourDimensionProfileRepository(second_database),
+        automatic_repository=SqliteAutomaticProfileRepository(second_database),
+        atomic_repository=SqliteAtomicProfileRepository(second_database),
     )
 
     replay = second_service.preprocess_message(
@@ -1169,12 +1088,8 @@ def test_sqlite_repository_survives_restart_and_isolates_accounts(tmp_path) -> N
 
     assert replay.run.status == "succeeded"
     assert other_account.run.account_id == "account-bob"
-    assert (
-        len(second_service._four_dimensions.list_records("account-alice")) == 1
-    )  # noqa: SLF001
-    assert (
-        len(second_service._four_dimensions.list_records("account-bob")) == 1
-    )  # noqa: SLF001
+    assert len(second_atomic.list_items("account-alice")) == 1
+    assert len(second_atomic.list_items("account-bob")) == 1
     second_database.close()
 
 
@@ -1186,13 +1101,11 @@ def test_sqlite_subject_omission_path_survives_restart_and_isolates_accounts(
     first_database.initialize()
     first_target = SqliteFourDimensionProfileRepository(first_database)
     first_automatic = SqliteAutomaticProfileRepository(first_database)
-    first_service = AutomaticProfileService(
-        four_dimension_service=FourDimensionProfileService(
-            source_repository=None,  # type: ignore[arg-type]
-            repository=first_target,
-        ),
-        repository=first_automatic,
-        extractor=RuleBasedAutomaticProfileExtractor(),
+    first_service, _, _ = _stack(
+        RuleBasedAutomaticProfileExtractor(),
+        four_repository=first_target,
+        automatic_repository=first_automatic,
+        atomic_repository=SqliteAtomicProfileRepository(first_database),
     )
     for index, content in enumerate(
         (
@@ -1214,13 +1127,11 @@ def test_sqlite_subject_omission_path_survives_restart_and_isolates_accounts(
     first_database.close()
 
     second_database = BridgesDatabase(database_path)
-    second_service = AutomaticProfileService(
-        four_dimension_service=FourDimensionProfileService(
-            source_repository=None,  # type: ignore[arg-type]
-            repository=SqliteFourDimensionProfileRepository(second_database),
-        ),
-        repository=SqliteAutomaticProfileRepository(second_database),
-        extractor=RuleBasedAutomaticProfileExtractor(),
+    second_service, _, second_atomic = _stack(
+        RuleBasedAutomaticProfileExtractor(),
+        four_repository=SqliteFourDimensionProfileRepository(second_database),
+        automatic_repository=SqliteAutomaticProfileRepository(second_database),
+        atomic_repository=SqliteAtomicProfileRepository(second_database),
     )
     replay = second_service.preprocess_message(
         "account-alice",
@@ -1242,14 +1153,14 @@ def test_sqlite_subject_omission_path_survives_restart_and_isolates_accounts(
     assert replay.run.status == "succeeded"
     assert bob.run.account_id == "account-bob"
     assert {
-        (record.dimension, record.content)
-        for record in second_service._four_dimensions.list_records("account-alice")
+        (item.topic_hint, item.text)
+        for item in second_atomic.list_items("account-alice")
     } == {
         (FourDimension.ACADEMIC_STATUS, "大三人工智能专业"),
         (FourDimension.STAGE_GOAL, "考211相关专业/考研"),
-        (FourDimension.KNOWLEDGE_INTEREST, "Transformer"),
-    }  # noqa: SLF001
-    assert second_service._four_dimensions.list_records("account-bob") == []  # noqa: SLF001
+        (FourDimension.KNOWLEDGE_INTEREST, "想学习Transformer"),
+    }
+    assert second_atomic.list_items("account-bob") == []
     second_database.close()
 
 
@@ -1367,18 +1278,14 @@ def _hybrid_service(
     gateway: _LockAwareCountingGateway,
     *,
     recorder: _RecordingLockRecorder | None = None,
-) -> tuple[AutomaticProfileService, FourDimensionProfileService]:
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=GatewayAutomaticProfileExtractor(cast(ModelGateway, gateway)),
+) -> tuple[
+    AutomaticProfileService, FourDimensionProfileService, AtomicProfileService
+]:
+    service, target_service, atomic_service = _stack(
+        GatewayAutomaticProfileExtractor(cast(ModelGateway, gateway)),
         lock_recorder=recorder,
     )
-    return service, target_service
+    return service, target_service, atomic_service
 
 
 @pytest.mark.parametrize(
@@ -1397,15 +1304,18 @@ def test_local_rule_cases_never_call_gateway_and_mark_source(
     网关 0 调用、模型锁 0 条（Issue 13 AC）。"""
     gateway = _LockAwareCountingGateway()
     recorder = _RecordingLockRecorder()
-    service, target_service = _hybrid_service(gateway, recorder=recorder)
+    service, _, atomic_service = _hybrid_service(gateway, recorder=recorder)
     if content == "我的关注点换成 CNN":
-        target_service.upsert_automatic_record(
+        # 工单 03：更正只改写原子条目；先经明确学习写入同提示的活动条目。
+        seeded = service.preprocess_message(
             "account-alice",
-            dimension=FourDimension.KNOWLEDGE_INTEREST,
-            content="旧的知识兴趣",
-            action="create",
-            confidence=FourDimensionConfidence.HIGH,
+            conversation_id="conversation-seed",
+            message_id="message-seed",
+            content="我想学习旧的知识兴趣",
+            run_id="run-seed",
+            mode="companion",
         )
+        assert seeded.run.status == "succeeded"
 
     result = service.preprocess_message(
         "account-alice",
@@ -1421,11 +1331,10 @@ def test_local_rule_cases_never_call_gateway_and_mark_source(
     assert result.run.source == ProfileExtractionSource.LOCAL_RULE
     assert gateway.calls == 0
     assert recorder.records == []
-    if content in {"找Transformer论文", "我的关注点换成 CNN"}:
+    if content == "找Transformer论文":
         return
-    records = target_service.list_records("account-alice")
-    assert records
-    assert "source=local_rule" in records[0].migration_version
+    assert result.committed_record_ids
+    assert atomic_service.list_items("account-alice")
 
 
 @pytest.mark.parametrize(
@@ -1450,7 +1359,7 @@ def test_withdraw_and_privacy_blocked_never_call_gateway(
 ) -> None:
     """撤回/隐私阻断代表用例同样不调用 Qwen，来源保持 local_rule。"""
     gateway = _LockAwareCountingGateway()
-    service, _ = _hybrid_service(gateway)
+    service, _, _ = _hybrid_service(gateway)
 
     result = service.preprocess_message(
         "account-alice",
@@ -1483,7 +1392,7 @@ def test_ambiguous_signal_uses_qwen_branch_with_one_lock() -> None:
         }
     )
     recorder = _RecordingLockRecorder()
-    service, _ = _hybrid_service(gateway, recorder=recorder)
+    service, _, _ = _hybrid_service(gateway, recorder=recorder)
 
     result = service.preprocess_message(
         "account-alice",
@@ -1534,7 +1443,7 @@ def test_qwen_retry_keeps_first_failed_lock_and_appends_next_ordinal() -> None:
         fail_once=True,
     )
     recorder = _RecordingLockRecorder()
-    service, _ = _hybrid_service(gateway, recorder=recorder)
+    service, _, _ = _hybrid_service(gateway, recorder=recorder)
 
     first = service.preprocess_message(
         "account-alice",
@@ -1591,15 +1500,9 @@ def test_local_branch_with_collected_lock_fails_closed() -> None:
                 )
             return ProfileExtractionOutput(items=[])
 
-    target_service = FourDimensionProfileService(
-        source_repository=None,  # type: ignore[arg-type]
-        repository=InMemoryFourDimensionProfileRepository(),
-    )
     recorder = _RecordingLockRecorder()
-    service = AutomaticProfileService(
-        four_dimension_service=target_service,
-        repository=InMemoryAutomaticProfileRepository(),
-        extractor=_LockEmittingLocalExtractor(),
+    service, target_service, atomic_service = _stack(
+        _LockEmittingLocalExtractor(),
         lock_recorder=recorder,
     )
 
@@ -1617,13 +1520,13 @@ def test_local_branch_with_collected_lock_fails_closed() -> None:
     assert result.run.outcome == ProfileExtractionOutcome.PERMANENT_FAILURE
     # 来源不变量：local_rule 分支即使出现异常锁，也绝不落库（0 锁）。
     assert recorder.records == []
-    assert target_service.list_records("account-alice") == []
+    assert atomic_service.list_items("account-alice") == []
 
 
 def test_qwen_branch_without_lock_fails_closed() -> None:
     """守卫：Qwen 分支缺少运行锁必须失败关闭（profile_qwen_missing_run_lock）。"""
     gateway = _LockAwareCountingGateway(with_lock=False)
-    service, _ = _hybrid_service(gateway)
+    service, _, _ = _hybrid_service(gateway)
 
     result = service.preprocess_message(
         "account-alice",

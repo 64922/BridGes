@@ -14,6 +14,9 @@ from bridges.contracts.profile_extraction import (
     ProfileExtractionRun,
 )
 from bridges.contracts.profiles import FourDimensionMigrationReport
+from bridges.profiles.atomic import (
+    SqliteAtomicProfileRepository,
+)
 from bridges.profiles.automatic import (
     PROFILE_REPLAY_QUEUE,
     SqliteAutomaticProfileRepository,
@@ -90,6 +93,11 @@ class SqliteProfileReplayRepository:
             if database is not None
             else None
         )
+        self._atomics = (
+            SqliteAtomicProfileRepository(database, initialize=False)
+            if database is not None
+            else None
+        )
         self._dimensions = (
             SqliteFourDimensionProfileRepository(database, initialize=False)
             if database is not None
@@ -115,6 +123,12 @@ class SqliteProfileReplayRepository:
         if self._dimensions is None:
             raise RuntimeError("read-only replay repository has no write adapter")
         return self._dimensions
+
+    @property
+    def atomic_repository(self) -> SqliteAtomicProfileRepository:
+        if self._atomics is None:
+            raise RuntimeError("read-only replay repository has no write adapter")
+        return self._atomics
 
     def list_candidates(self) -> list[ProfileReplayCandidate]:
         if self._automatic is not None and self._conversations is not None:

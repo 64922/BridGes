@@ -48,6 +48,7 @@ from bridges.profiles.atomic import (
     parse_fact_identity,
     parse_goal_lifecycle_signal,
 )
+from bridges.profiles.commit import ProfileFactSubmission
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileRepository,
     FourDimensionProfileService,
@@ -136,7 +137,7 @@ class _Harness:
     def close(self) -> None:
         self._stack.close()
 
-    def mirror(
+    def commit(
         self,
         content: str,
         *,
@@ -146,19 +147,16 @@ class _Harness:
         confidence: FourDimensionConfidence = FourDimensionConfidence.MEDIUM,
         account: str = ACCOUNT,
     ) -> AtomicProfileItem | None:
-        record = self.dimensions.upsert_automatic_record(
+        """按工单 03 的唯一写入路径提交一条开放事实。"""
+
+        return self.atomic.commit_fact(
             account,
-            dimension=dimension,
-            content=content,
-            action="create",
-            confidence=confidence,
-            evidence_message_id=message_id,
-            migration_version="profile-auto-v2",
-        )
-        return self.atomic.mirror_record(
-            account,
-            record,
-            evidence_message_id=message_id,
+            ProfileFactSubmission(
+                text=content,
+                dimension=dimension,
+                confidence=confidence,
+                evidence_message_id=message_id,
+            ),
             source_at=source_at,
         )
 
@@ -212,7 +210,7 @@ def _exclusion_reason(slice_: ProfileSlice, assertion_id: str) -> str | None:
 def test_relative_exam_phrase_anchors_once_and_expires(harness: _Harness) -> None:
     """「下周」按来源消息时间解析成绝对区间，之后不按使用当天重解释。"""
 
-    harness.mirror(EXAM_TEXT, message_id="m-exam", source_at=ANCHOR)
+    harness.commit(EXAM_TEXT, message_id="m-exam", source_at=ANCHOR)
     item = harness.item_of(EXAM_TEXT)
     assert item.validity_phrase == "下周"
     assert item.validity_anchor_at == ANCHOR
@@ -234,9 +232,9 @@ def test_relative_exam_phrase_anchors_once_and_expires(harness: _Harness) -> Non
 def test_new_source_message_reanchors_relative_phrase(harness: _Harness) -> None:
     """同一句话再次出现（新来源）时，相对时间按新来源时间重新锚定。"""
 
-    harness.mirror(EXAM_TEXT, message_id="m-exam-1", source_at=ANCHOR)
+    harness.commit(EXAM_TEXT, message_id="m-exam-1", source_at=ANCHOR)
     later = ANCHOR + timedelta(days=21)
-    harness.mirror(EXAM_TEXT, message_id="m-exam-2", source_at=later)
+    harness.commit(EXAM_TEXT, message_id="m-exam-2", source_at=later)
     item = harness.item_of(EXAM_TEXT)
     assert item.validity_anchor_at == later
     assert item.valid_from == datetime(2026, 2, 2, tzinfo=UTC)
@@ -249,7 +247,7 @@ def test_new_source_message_reanchors_relative_phrase(harness: _Harness) -> None
 def test_long_term_preference_has_no_unified_ttl(harness: _Harness) -> None:
     """没有明示时间的长期偏好不设期限，多年后仍可召回。"""
 
-    harness.mirror(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
+    harness.commit(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
     item = harness.item_of(RUN_TEXT)
     assert item.valid_until is None
     much_later = harness.slice(now=ANCHOR + timedelta(days=3650))
@@ -260,7 +258,7 @@ def test_past_dated_fact_keeps_no_expiry(harness: _Harness) -> None:
     """写入时已过去的具体日期是历史事件时间，不是期限，事实仍可召回。"""
 
     text = "我2023年5月1日入职了A公司"
-    item = harness.mirror(text, message_id="m-job", source_at=ANCHOR)
+    item = harness.commit(text, message_id="m-job", source_at=ANCHOR)
     assert item is not None
     assert item.valid_until is None
     assert item.validity_phrase is None
@@ -271,7 +269,7 @@ def test_future_expression_wins_over_past_date(harness: _Harness) -> None:
     """同句里既有已过去的日期又有「下周」时，取未过去的那个表达。"""
 
     text = "我2023年5月1日入职，下周有考试"
-    item = harness.mirror(text, message_id="m-mix", source_at=ANCHOR)
+    item = harness.commit(text, message_id="m-mix", source_at=ANCHOR)
     assert item is not None
     assert item.valid_until == datetime(2026, 1, 18, 23, 59, 59, tzinfo=UTC)
 
@@ -280,7 +278,7 @@ def test_current_scope_statement_is_not_recalled(harness: _Harness) -> None:
     """只适用于提出时那一轮的说法（「这次」）不作为长期信息召回。"""
 
     text = "这次考试我想考好"
-    harness.mirror(text, message_id="m-now", source_at=ANCHOR)
+    harness.commit(text, message_id="m-now", source_at=ANCHOR)
     item = harness.item_of(text)
     slice_ = harness.slice()
     assert text not in _included_texts(slice_)
@@ -326,8 +324,8 @@ def test_legacy_item_backfills_window_with_its_own_created_at(
 def test_projection_exposes_validity_and_goal_state(harness: _Harness) -> None:
     """页面投影带上明示期限与目标状态，长期偏好为空/active。"""
 
-    harness.mirror(EXAM_TEXT, message_id="m-exam", source_at=ANCHOR)
-    harness.mirror(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
+    harness.commit(EXAM_TEXT, message_id="m-exam", source_at=ANCHOR)
+    harness.commit(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
     projections = {
         projection.text: projection
         for projection in harness.atomic.projections(ACCOUNT)
@@ -351,7 +349,7 @@ def test_low_confidence_automatic_not_recalled_until_user_edits(
 ) -> None:
     """LOW 自动条目不作为确定事实召回；用户编辑后权威独立于档位。"""
 
-    harness.mirror(
+    harness.commit(
         RUN_TEXT,
         message_id="m-low",
         source_at=ANCHOR,
@@ -415,7 +413,7 @@ def test_migration_origin_low_confidence_not_recalled(harness: _Harness) -> None
 
 
 def _mirror_goal(harness: _Harness, message_id: str = "m-goal") -> AtomicProfileItem:
-    harness.mirror(
+    harness.commit(
         GOAL_TEXT,
         dimension=FourDimension.STAGE_GOAL,
         message_id=message_id,
@@ -518,7 +516,7 @@ def test_pause_targets_only_named_goal(harness: _Harness) -> None:
     """「暂时不考研」只暂停考研：考公与考研共用「考」字不得被误伤。"""
 
     kaoyan = _mirror_goal(harness)
-    harness.mirror(
+    harness.commit(
         "考公",
         dimension=FourDimension.STAGE_GOAL,
         message_id="m-goal-2",
@@ -547,7 +545,7 @@ def test_goal_suppression_keeps_distinct_goal_writable(harness: _Harness) -> Non
 
     _mirror_goal(harness)
     harness.atomic.forget(ACCOUNT, GOAL_TEXT)
-    written = harness.mirror(
+    written = harness.commit(
         "考公",
         dimension=FourDimension.STAGE_GOAL,
         message_id="m-goal-2",
@@ -563,7 +561,7 @@ def test_lifecycle_keyword_without_target_is_written_as_fact(
     """「作业搞定了」没有可对账目标：按普通事实写入，不动无关目标。"""
 
     goal = _mirror_goal(harness)
-    item = harness.mirror("作业搞定了", message_id="m-homework", source_at=ANCHOR)
+    item = harness.commit("作业搞定了", message_id="m-homework", source_at=ANCHOR)
     assert item is not None
     assert item.text == "作业搞定了"
     assert (
@@ -583,7 +581,7 @@ def test_generic_completion_does_not_complete_sole_goal(harness: _Harness) -> No
     """只有「考完了/考砸了」能无对象指向目标；「搞定了」不能完成唯一目标。"""
 
     goal = _mirror_goal(harness)
-    item = harness.mirror("终于搞定了", message_id="m-done-generic", source_at=ANCHOR)
+    item = harness.commit("终于搞定了", message_id="m-done-generic", source_at=ANCHOR)
     assert item is not None
     assert item.text == "终于搞定了"
     assert (
@@ -600,30 +598,14 @@ def test_generic_completion_does_not_complete_sole_goal(harness: _Harness) -> No
 def test_delete_then_replay_and_near_synonym_stay_revoked(
     harness: _Harness,
 ) -> None:
-    record = harness.dimensions.upsert_automatic_record(
-        ACCOUNT,
-        dimension=FourDimension.KNOWLEDGE_INTEREST,
-        content=RUN_TEXT,
-        action="create",
-        confidence=FourDimensionConfidence.MEDIUM,
-        evidence_message_id="m-run",
-        migration_version="profile-auto-v2",
-    )
-    item = harness.atomic.mirror_record(
-        ACCOUNT, record, evidence_message_id="m-run", source_at=ANCHOR
-    )
+    item = harness.commit(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
     assert item is not None
     harness.atomic.delete_item(ACCOUNT, item.profile_item_id, item.version)
 
-    # 旧证据重放不复活。
-    assert (
-        harness.atomic.mirror_record(
-            ACCOUNT, record, evidence_message_id="m-run", source_at=ANCHOR
-        )
-        is None
-    )
+    # 旧证据重放不复活：同一事实与同文本都命中墓碑抑制。
+    assert harness.commit(RUN_TEXT, message_id="m-run", source_at=ANCHOR) is None
     # 普通近义提及（未明确重新记住）暂缓写入。
-    assert harness.mirror(JOG_TEXT, message_id="m-jog", source_at=ANCHOR) is None
+    assert harness.commit(JOG_TEXT, message_id="m-jog", source_at=ANCHOR) is None
     assert _included_texts(harness.slice()) == set()
 
     # 明确重新记住：解除抑制、保留新授权来源。
@@ -636,18 +618,7 @@ def test_delete_then_replay_and_near_synonym_stay_revoked(
 
 
 def test_edit_identity_change_suppresses_old_value(harness: _Harness) -> None:
-    record = harness.dimensions.upsert_automatic_record(
-        ACCOUNT,
-        dimension=FourDimension.KNOWLEDGE_INTEREST,
-        content=RUN_TEXT,
-        action="create",
-        confidence=FourDimensionConfidence.MEDIUM,
-        evidence_message_id="m-run",
-        migration_version="profile-auto-v2",
-    )
-    item = harness.atomic.mirror_record(
-        ACCOUNT, record, evidence_message_id="m-run", source_at=ANCHOR
-    )
+    item = harness.commit(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
     assert item is not None
     harness.atomic.modify_item(
         ACCOUNT,
@@ -656,12 +627,9 @@ def test_edit_identity_change_suppresses_old_value(harness: _Harness) -> None:
     )
 
     # 旧证据重放只回到用户版本，不把旧值写回来；近义普通提及暂缓写入。
-    replayed = harness.atomic.mirror_record(
-        ACCOUNT, record, evidence_message_id="m-run", source_at=ANCHOR
-    )
-    assert replayed is not None
-    assert replayed.profile_item_id == item.profile_item_id
-    assert harness.mirror(JOG_TEXT, message_id="m-jog", source_at=ANCHOR) is None
+    replayed = harness.commit(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
+    assert replayed is None
+    assert harness.commit(JOG_TEXT, message_id="m-jog", source_at=ANCHOR) is None
     texts = _included_texts(harness.slice())
     assert "我喜欢游泳" in texts
     assert RUN_TEXT not in texts
@@ -677,12 +645,12 @@ def test_revocation_listener_receives_sources_by_reason(harness: _Harness) -> No
     listener = _Listener()
     harness.atomic.set_revocation_listener(listener)
 
-    harness.mirror(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
+    harness.commit(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
     run_item = harness.item_of(RUN_TEXT)
     harness.atomic.delete_item(ACCOUNT, run_item.profile_item_id, run_item.version)
     assert listener.calls[-1] == (ACCOUNT, ["m-run"], "deleted")
 
-    harness.mirror(
+    harness.commit(
         GOAL_TEXT,
         dimension=FourDimension.STAGE_GOAL,
         message_id="m-goal",
@@ -693,7 +661,7 @@ def test_revocation_listener_receives_sources_by_reason(harness: _Harness) -> No
     assert listener.calls[-1] == (ACCOUNT, ["m-goal"], "forgotten")
 
     location = "我住在南昌"
-    harness.mirror(location, message_id="m-home", source_at=ANCHOR)
+    harness.commit(location, message_id="m-home", source_at=ANCHOR)
     home = harness.item_of(location)
     harness.atomic.modify_item(
         ACCOUNT,
@@ -709,13 +677,13 @@ def test_revocation_notification_is_sent_after_commit(harness: _Harness) -> None
     listener = _TransactionalListener(harness.repository)
     harness.atomic.set_revocation_listener(listener)
 
-    harness.mirror(
+    harness.commit(
         GOAL_TEXT,
         dimension=FourDimension.STAGE_GOAL,
         message_id="m-goal",
         source_at=ANCHOR,
     )
-    harness.mirror(
+    harness.commit(
         "我不考研了，转为准备就业",
         dimension=FourDimension.STAGE_GOAL,
         message_id="m-change",
@@ -739,7 +707,7 @@ def test_revocation_notification_is_sent_after_commit(harness: _Harness) -> None
 
 
 def test_revocation_version_invalidates_compiled_slice(harness: _Harness) -> None:
-    harness.mirror(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
+    harness.commit(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
     slice_ = harness.slice()
     assert slice_.revocation_version is not None
     assert harness.atomic.is_slice_current(ACCOUNT, slice_.revocation_version)
@@ -752,7 +720,7 @@ def test_revocation_version_invalidates_compiled_slice(harness: _Harness) -> Non
 
 
 def test_tombstone_audit_is_text_free_and_account_scoped(harness: _Harness) -> None:
-    harness.mirror(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
+    harness.commit(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
     item = harness.item_of(RUN_TEXT)
     harness.atomic.delete_item(ACCOUNT, item.profile_item_id, item.version)
 
@@ -770,7 +738,7 @@ def test_tombstone_audit_is_text_free_and_account_scoped(harness: _Harness) -> N
 
 
 def test_atomic_profile_is_account_scoped(harness: _Harness) -> None:
-    harness.mirror(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
+    harness.commit(RUN_TEXT, message_id="m-run", source_at=ANCHOR)
     other = harness.atomic.compile_chat_slice(
         OTHER_ACCOUNT, run_id="run-other", current_question=None, now=ANCHOR
     )

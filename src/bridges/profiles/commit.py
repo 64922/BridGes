@@ -1,27 +1,22 @@
-"""Issue 04/05：画像跨记录写入的提交边界归属地。
+"""画像工单 03：开放原子记忆的唯一提交边界。
 
-自动提取要同时维护三类记录：四维来源记录（内部提取与冲突消解的依据）、
-它对应的用户可见原子条目（镜像），以及同一批次的提取记账（运行记录与
-观察记录）。用户权威操作（聊天更正、删除/忘掉后的来源撤回）维护的是
-同一对记录，且「墓碑先落地、再撤回来源」的顺序是有意的防复活保护。
-本模块是这组写入的提交边界归属地，回答四个问题：
+自动提取、明确更正与用户权威操作（记住、行内编辑、目标生命周期、删除、
+忘掉）都直接写入原子条目；本模块是这组写入的提交边界归属地，回答四个
+问题：
 
-- **一次提交包含哪些写入**：四维来源、原子镜像与提取记账必须同成同败；
-  任一步失败就整批回滚，不留下会被后续读取当成成功的部分画像。记账行
-  仍由调用方按自己的端口写（它比本模块更清楚一个批次记什么），但写在与
-  :meth:`ProfileCommit.write_records` 相同的边界内。
+- **一次提交包含哪些写入**：开放事实（原子条目）与自动提取记账必须同成
+  同败；任一步失败就整批回滚，不留下会被后续读取当成成功的部分画像。记账
+  行仍由调用方按自己的端口写（它比本模块更清楚一个批次记什么），但写在与
+  :meth:`ProfileCommit.write_facts` 相同的边界内。
 - **失败后保留什么**：尝试记录（重试任务状态、失败审计、模型运行锁）
   不是业务成功结果，由调用方在回滚之后另开事务保留，供有界重试与审计
   使用。
-- **用户权威的成对写入**：聊天更正走 :meth:`ProfileCommit.write_correction`，
-  首次处理与后台重试共用同一实现，来源与镜像不因路径不同而分叉；墓碑
-  提交后的来源撤回走 :meth:`ProfileCommit.withdraw_item_sources`，逐条
-  隔离且幂等——撤回失败不回滚已提交的墓碑，重复执行不重写业务结果。
-  指令识别、目标匹配与用户请求校验留在各自入口，本模块只负责「先写哪张
-  记录、再撤回哪个来源」的顺序。原子服务的行内编辑、记住、目标生命周期、
-  删除与忘掉同样在 :meth:`ProfileCommit.transaction` 边界内执行（Issue 02），
-  因此事务参与方只在本模块声明一次；条目换键、抑制键与墓碑的业务规则留在
-  原子画像 implementation，不复制到这里，也不由各入口各自开事务。
+- **用户权威的写入**：聊天更正走 :meth:`ProfileCommit.write_correction`，
+  首次处理与后台重试共用同一实现。删除／忘掉的墓碑在提交边界内，之后对
+  **存量**旧四维来源的撤回走 :meth:`ProfileCommit.withdraw_item_sources`，
+  逐条隔离且幂等——撤回失败不回滚已提交的墓碑，重复执行不重写业务结果。
+  新写入不再产生四维记录，因此新条目没有内部来源可撤回；撤回只服务迁移
+  前的存量条目与「记住」时关联到的旧记录。
 - **谁决定存储形态**：事务边界由各仓库 adapter 自己声明——共用同一
   ``BridgesDatabase`` 的 SQLite 仓库并入外层事务，内存仓库各自建立可
   回滚快照。调用方不判断仓库类型、连接或事务开关。
@@ -31,12 +26,12 @@
 - **保护点之内**：删除／忘掉的墓碑、编辑的换键与抑制键都在提交边界里。
   边界内任一步失败即整批回滚，用户可见结果与失败前相同，入口可以整轮
   重试（纠正路径也一样，见 :meth:`ProfileCommit.write_correction`）。
-- **保护点之后**：只剩来源撤回一步。它失败时墓碑已经提交，删除照常成立
-  ——条目不会回到活动列表或记忆切片，残留状态只是「底层来源记录仍是活
-  动的」，也就是 :meth:`ProfileCommit.recover_source_withdrawals` 的扫描
-  对象。撤回因此逐条隔离：一条失败不影响其余条目，失败只以 ``FAILED``
-  结论返回并可再次重试（``forget`` 保持本轮删除结论，``delete_item`` 原样
-  上抛但墓碑有效）。
+- **保护点之后**：只剩存量来源撤回一步。它失败时墓碑已经提交，删除照常
+  成立——条目不会回到活动列表或记忆切片，残留状态只是「底层旧四维记录
+  仍是活动的」，也就是 :meth:`ProfileCommit.recover_source_withdrawals`
+  的扫描对象。撤回因此逐条隔离：一条失败不影响其余条目，失败只以
+  ``FAILED`` 结论返回并可再次重试（``forget`` 保持本轮删除结论，
+  ``delete_item`` 原样上抛但墓碑有效）。
 - **恢复不依赖进程内对象**：待补工作只从持久墓碑重新推导，因此连接或
   module 重建之后仍能补齐。补齐后的可见结果是「条目保持删除、来源记录
   转为已撤回」；已完成或没有来源的条目收敛为 ``ALREADY_WITHDRAWN``／
@@ -44,9 +39,8 @@
   恢复入口是公开方法，由调用方（服务层或运维动作）在重启后按账户调用；
   本模块不自行调度，也不新增台账——残留状态本身就可重复识别。
 
-抽取范围、阈值、提示词与抽取侧去重规则不在本模块：它们留在自动提取的
-implementation 中；用户权威规则（版本冲突、条目去重、旧正文抑制、墓碑）
-留在原子画像的 implementation 中，本模块负责把它们与来源撤回编排成序。
+事实身份解析、去重、用户编辑保护与墓碑规则留在原子画像 implementation；
+本模块只声明「哪些写入属于同一次提交」与「先墓碑、后撤回存量来源」的顺序。
 """
 
 from __future__ import annotations
@@ -85,26 +79,25 @@ class ProfileCommitParticipant(Protocol):
 
 
 @dataclass(frozen=True)
-class ProfileRecordSubmission:
-    """一条待提交的四维记录及其原子镜像依据。
+class ProfileFactSubmission:
+    """一条待写入的开放事实提案（唯一写入合同）。
 
-    字段与 ``upsert_automatic_record`` 一一对应：本模块只负责把「写入四维
-    记录」与「镜像成原子条目」当成一次写入执行，取值由调用方的抽取与
-    晋升规则决定，因此这里不设策略默认值。
+    字段与原子服务的事实写入一一对应：主体/关系/对象/范围由原子服务的
+    确定性规则从 ``text`` 解析（``dimension`` 只作解析提示），主题由调用方
+    以开放词汇提供（可空、多选、可扩展），证据只引用真实来源，绝不伪造。
     """
 
-    dimension: FourDimension
-    content: str
-    action: str
-    confidence: FourDimensionConfidence
-    migration_version: str
+    text: str
+    #: 旧四维抽取提示；帮助关系解析（如裸值「考研」「软件工程专业」）。
+    dimension: FourDimension | None = None
+    #: 开放主题（可空、多选、可扩展）；不决定事实身份，也不构成写入门槛。
+    topics: tuple[str, ...] = ()
+    #: 证据把握度档位（沿用旧档位，用于召回门与排序），不改变事实身份。
+    confidence: FourDimensionConfidence = FourDimensionConfidence.MEDIUM
+    #: 精确来源原话；缺失时为空，不伪造引语。
     evidence_quote: str | None = None
+    #: 证据来源消息标识；缺失时条目没有来源定位。
     evidence_message_id: str | None = None
-    change_note: str | None = None
-    #: 改进工单 16：完整事实正文（关系会从 content 丢失时由抽取侧提供）。
-    fact_text: str | None = None
-    #: 自动来源记录键的事实身份识别项：同一维度下不同关系的同值事实各自成记录。
-    identity_discriminator: str | None = None
 
 
 class SourceWithdrawalStatus(Enum):
@@ -132,11 +125,11 @@ class SourceWithdrawal:
 
 
 class ProfileCommit:
-    """四维来源与原子镜像的提交边界与成对写入。
+    """开放事实、提取记账与存量来源撤回的提交边界。
 
     调用方在同一进程内复用同一个实例：``transaction()`` 打开一次提交，
-    ``write_records()``/``write_correction()`` 在其中写入跨记录结果，
-    ``withdraw_item_sources()`` 在墓碑提交之后撤回来源。
+    ``write_facts()``/``write_correction()`` 在其中写入开放事实，
+    ``withdraw_item_sources()`` 在墓碑提交之后撤回存量来源。
     """
 
     def __init__(
@@ -148,15 +141,15 @@ class ProfileCommit:
     ) -> None:
         self._records = records
         self._items = items
-        # 顺序固定：已挂载的仓库依次并入边界。自动提取的边界包含记账
-        # 仓库（``state``）；用户权威操作只需要跨记录两方。SQLite 仓库
+        # 顺序固定：一次提交里承担同行或同败责任的仓库依次并入边界。自动
+        # 提取的边界包含记账仓库（``state``）与原子条目仓库；旧四维仓库
+        # 不再参与新写入，只在墓碑提交之后承接存量来源撤回。SQLite 仓库
         # 共用连接时只有第一次调用真正 BEGIN，其余并入；内存仓库各自
         # 建立可回滚快照，同一组业务对象一起回滚。并入规则在 adapter
         # 内部（见 ``bridges.profiles.transactions``），这里不判断仓库类型。
         participants: list[ProfileCommitParticipant] = []
         if state is not None:
             participants.append(state)
-        participants.append(records)
         if items is not None:
             participants.append(items)
         self._participants: list[ProfileCommitParticipant] = participants
@@ -170,55 +163,33 @@ class ProfileCommit:
                 stack.enter_context(participant.transaction())
             yield
 
-    def write_records(
+    def write_facts(
         self,
         account_id: str,
-        submissions: Iterable[ProfileRecordSubmission],
+        facts: Iterable[ProfileFactSubmission],
         *,
-        from_replay: bool = False,
         source_at: datetime | None = None,
     ) -> list[str]:
-        """按顺序写入四维记录并立刻镜像原子条目，返回去重后的记录标识。
+        """把开放事实直接写入原子条目，返回真正落库的条目标识。
 
-        必须在 :meth:`transaction` 内调用；否则每条记录各自成一次提交。
+        必须在 :meth:`transaction` 内调用；否则每条事实各自成一次提交。
 
-        ``from_replay`` 标记本次写入来自旧消息重放，四维仓库据此保护用户
-        纠正过的记录不被改回旧值；新消息的自动写入保持既有证据阶梯。
         ``source_at`` 是来源消息的原始时间，作为「下周/下个月」这类相对
-        时间的锚；缺省时镜像按写入当天锚定（前台首次处理仍显式传入）。
+        时间的锚；缺省时按写入当天锚定（前台首次处理仍显式传入）。
 
-        镜像不写入是正常结果，不是系统失败：正文为空、用户已把该条目改成
-        别的正文时，镜像按用户权威跳过，本方法照常返回该记录标识（调用方
-        的「空结果」因此只表示没有可写事实）。用户已删除（撤回）同一条
-        事实是另一回事：四维仓库会拒绝复活并抛出错误，由调用方按既有有界
-        重试策略处理，耗尽后不产生成功结果。
+        条目未写入是正常结果，不是系统失败：正文为空、用户已把该条目改成
+        别的正文时，写入按用户权威跳过；用户已删除（撤回）同一条事实时，
+        墓碑抑制复活、同样跳过。调用方的「空结果」因此只表示没有可写事实。
         """
 
-        record_ids: list[str] = []
-        for submission in submissions:
-            record = self._records.upsert_automatic_record(
-                account_id,
-                dimension=submission.dimension,
-                content=submission.content,
-                action=submission.action,
-                confidence=submission.confidence,
-                evidence_quote=submission.evidence_quote,
-                evidence_message_id=submission.evidence_message_id,
-                change_note=submission.change_note,
-                migration_version=submission.migration_version,
-                from_replay=from_replay,
-                identity_discriminator=submission.identity_discriminator,
-            )
-            if self._items is not None:
-                self._items.mirror_record(
-                    account_id,
-                    record,
-                    evidence_message_id=submission.evidence_message_id,
-                    fact_text=submission.fact_text,
-                    source_at=source_at,
-                )
-            record_ids.append(record.record_id)
-        return list(dict.fromkeys(record_ids))
+        if self._items is None:
+            return []
+        item_ids: list[str] = []
+        for fact in facts:
+            item = self._items.commit_fact(account_id, fact, source_at=source_at)
+            if item is not None:
+                item_ids.append(item.profile_item_id)
+        return list(dict.fromkeys(item_ids))
 
     def write_correction(
         self,
@@ -226,31 +197,27 @@ class ProfileCommit:
         *,
         dimension: FourDimension,
         content: str,
-    ) -> tuple[FourDimensionProfileRecord | None, bool]:
-        """聊天更正的成对写入：先按维度纠正四维记录，成功后立刻镜像。
+    ) -> tuple[AtomicProfileItem | None, bool]:
+        """聊天纠正直写原子条目：返回 ``(被修正条目, 是否写入)``。
 
-        必须在 :meth:`transaction` 内调用。目标定位、保护阈值（反复纠错）
-        与版本校验留在四维服务，返回 ``(record, changed)`` 语义不变；
-        本方法只保证「记录已改、镜像跟上」是同一个动作——首次处理与后台
-        重试共用这一实现，重试不再出现只写来源、不更新条目的分叉。
+        必须在 :meth:`transaction` 内调用。目标定位（同抽取提示的最近活动
+        条目）与用户权威规则留在原子服务，返回语义与旧四维纠正一致：没有
+        可修正条目时返回 ``(None, False)``；修正已提交时返回 ``(item, True)``。
+        首次处理与后台重试共用这一实现，不会出现只记账、不落事实的分叉。
         """
 
-        record, changed = self._records.correct_record(
-            account_id,
-            dimension=dimension,
-            content=content,
-            manage_transaction=False,
+        if self._items is None:
+            return None, False
+        return self._items.correct_fact(
+            account_id, dimension=dimension, text=content
         )
-        if changed and record is not None and self._items is not None:
-            self._items.mirror_record(account_id, record)
-        return record, changed
 
     def withdraw_item_sources(
         self,
         account_id: str,
         items: Iterable[AtomicProfileItem],
     ) -> list[SourceWithdrawal]:
-        """撤回原子条目底层的四维来源记录；逐条隔离、幂等。
+        """撤回原子条目底层的存量四维来源；逐条隔离、幂等。
 
         必须在墓碑（或抑制键）提交之后调用：调用方不判断「先写哪张记录、
         再撤回哪个来源」，本方法是撤回一步的唯一归属地。每条撤回独立
@@ -287,7 +254,7 @@ class ProfileCommit:
         """按持久残留状态补齐来源撤回：扫描墓碑条目，幂等重跑撤回。
 
         跨重启恢复的唯一入口。待补工作只从存储里的墓碑重新推导——已删除
-        且仍指向来源记录的条目（见
+        且仍指向存量来源记录的条目（见
         :meth:`AtomicProfileService.tombstoned_items_with_sources`），因此
         模块重建、进程内对象全部丢失之后仍然有效，不需要通用任务框架或
         额外记账表。已完成或没有来源的条目收敛为 ``ALREADY_WITHDRAWN``／

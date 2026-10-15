@@ -566,10 +566,10 @@ def test_retryable_report_keeps_only_the_failed_record_in_the_ledger(
     assert (retry.migrated, retry.failed) == (2, 0)
 
 
-def test_automatic_extraction_still_mirrors_after_repair(
+def test_automatic_extraction_still_writes_after_repair(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """验收 5：修复后的库上，新对话的自动抽取继续镜像到原子画像。"""
+    """验收 5：修复后的库上，新对话的自动抽取继续写入原子画像。"""
 
     path = tmp_path / "bridges.db"
     _replay_drifted(path)
@@ -587,13 +587,13 @@ def test_automatic_extraction_still_mirrors_after_repair(
     )
     assert created.status_code == 200, created.text
     # 改进工单 17：普通抽取在回答正常完成后由可恢复队列异步执行；
-    # 测试显式驱动一次 worker，验证修复后的库上队列仍能镜像。
+    # 测试显式驱动一次 worker，验证修复后的库上队列仍能写入。
     app.state.generation_executor.run_tick()
 
     items = client.get("/profiles/items").json()
     assert [item["text"] for item in items] == ["今年通过雅思考试"]
-    records = client.get("/profiles/four-dimensions").json()
-    assert [record["content"] for record in records] == ["今年通过雅思考试"]
+    # 工单 03：新写入不再产生四维记录。
+    assert client.get("/profiles/four-dimensions").json() == []
     assert items[0]["write_origin"] == "automatic"
     assert client.get("/profiles/status").json()["has_records"] is True
 
@@ -637,11 +637,11 @@ def test_repair_keeps_tombstones_written_before_the_drift(tmp_path: Path) -> Non
 def test_exhausted_extraction_is_re_armed_only_after_the_cause_is_confirmed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """验收 5/6：缺表导致的耗尽行，在结构恢复后用既有受控方式重排并重新镜像。
+    """验收 5/6：缺表导致的耗尽行，在结构恢复后用既有受控方式重排并重新写入。
 
-    复刻运行库里的真实形状：抽取本身跑得通，镜像写 profile_items 时缺表，
+    复刻运行库里的真实形状：抽取本身跑得通，写 profile_items 时缺表，
     于是同一个 run 以 ``profile_extraction_unexpected`` 被重试到 exhausted
-    （记录字段与运行库逐列一致：attempts=3、record_ids 为空、四维写入随事务
+    （记录字段与运行库逐列一致：attempts=3、record_ids 为空、原子写入随事务
     回滚）。修复结构之后，默认清理**不碰**这类行——必须先确认缺表是原因，
     再显式按该错误码重排；重排只处理这些行，不顺带重跑其他聊天。
     """
@@ -657,12 +657,13 @@ def test_exhausted_extraction_is_re_armed_only_after_the_cause_is_confirmed(
     )
     service = app.state.automatic_profile_service
 
-    # 缺表形状：镜像读取直接抛「no such table: profile_items」。
-    def _missing_table(self: Any, owner_id: str, source_record_id: str) -> Any:
+    # 缺表形状：原子条目写入直接抛「no such table: profile_items」。
+    def _missing_table(self: Any, item: Any) -> Any:
+        del self, item
         raise sqlite3.OperationalError("no such table: profile_items")
 
     monkeypatch.setattr(
-        SqliteAtomicProfileRepository, "find_item_by_source", _missing_table
+        SqliteAtomicProfileRepository, "save_item", _missing_table
     )
 
     created = client.post(
@@ -688,7 +689,7 @@ def test_exhausted_extraction_is_re_armed_only_after_the_cause_is_confirmed(
     assert str(row["last_error"]) == MISSING_TABLE_ERROR_CODE
     assert str(row["record_ids_json"]) == "[]"
     assert int(row["observed_count"]) == 0
-    # 镜像失败与四维写入同事务：这条消息当时没有留下任何长期信息。
+    # 原子写入失败与状态同事务：这条消息当时没有留下任何长期信息。
     assert client.get("/profiles/four-dimensions").json() == []
     assert client.get("/profiles/items").json() == []
 
@@ -725,10 +726,8 @@ def test_exhausted_extraction_is_re_armed_only_after_the_cause_is_confirmed(
     ).fetchone()
     assert str(recovered["status"]) == "succeeded"
     assert str(recovered["record_ids_json"]) != "[]"
-    # 自动抽取继续镜像到原子画像：页面重新看到这条长期信息。
+    # 自动抽取继续写入原子画像：页面重新看到这条长期信息。
     assert [item["text"] for item in client.get("/profiles/items").json()] == [
         "今年通过雅思考试"
     ]
-    assert [record["content"] for record in client.get("/profiles/four-dimensions").json()] == [
-        "今年通过雅思考试"
-    ]
+    assert client.get("/profiles/four-dimensions").json() == []

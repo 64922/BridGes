@@ -1,4 +1,4 @@
-import type { Account, AtomicProfileFeedbackProjection, AtomicProfileItemEvidenceProjection, AtomicProfileItemFeedbackRequest, AtomicProfileItemModifyRequest, AtomicProfileItemProjection, FourDimensionProfileModifyRequest, FourDimensionProfileRecord, ProfileAccountControlsProjection, ProfileStatusProjection } from "./types";
+import type { Account, AtomicProfileFeedbackProjection, AtomicProfileItemCreateRequest, AtomicProfileItemEvidenceProjection, AtomicProfileItemFeedbackRequest, AtomicProfileItemModifyRequest, AtomicProfileItemProjection, FourDimensionProfileModifyRequest, FourDimensionProfileRecord, ProfileAccountControlsProjection, ProfileStatusProjection } from "./types";
 import { API_BASE, parseApiError } from "./core";
 
 // ---------- 画像中心（Issue 25） ----------
@@ -79,6 +79,19 @@ export async function listAtomicProfileItems(): Promise<
   const res = await fetch(`${API_BASE}/profiles/items`, {
     credentials: "same-origin",
     cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function createAtomicProfileItem(
+  request: AtomicProfileItemCreateRequest
+): Promise<AtomicProfileItemProjection> {
+  const res = await fetch(`${API_BASE}/profiles/items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(request),
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();

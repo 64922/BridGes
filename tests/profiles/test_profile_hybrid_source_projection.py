@@ -47,12 +47,15 @@ from bridges.contracts.profile_extraction import (
 )
 from bridges.contracts.profiles import FourDimension
 from bridges.profiles import (
+    AtomicProfileService,
     AutomaticProfileService,
     FourDimensionProfileService,
     GatewayAutomaticProfileExtractor,
+    InMemoryAtomicProfileRepository,
     InMemoryFourDimensionProfileRepository,
     InMemoryAutomaticProfileRepository,
     RuleBasedAutomaticProfileExtractor,
+    SqliteAtomicProfileRepository,
     SqliteAutomaticProfileRepository,
     SqliteFourDimensionProfileRepository,
 )
@@ -595,14 +598,17 @@ def test_source_metrics_enable_gray_period_comparison() -> None:
 
     gateway = _LockAwareCountingGateway(_OBSERVE_OUTPUT)
     observability = ObservabilityService()
+    four = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    atomic = AtomicProfileService(four, InMemoryAtomicProfileRepository())
     service = AutomaticProfileService(
-        four_dimension_service=FourDimensionProfileService(
-            source_repository=None,  # type: ignore[arg-type]
-            repository=InMemoryFourDimensionProfileRepository(),
-        ),
+        four_dimension_service=four,
         repository=InMemoryAutomaticProfileRepository(),
         extractor=GatewayAutomaticProfileExtractor(cast(ModelGateway, gateway)),
         observability_service=observability,
+        atomic_profile_service=atomic,
     )
 
     service.preprocess_message(
@@ -712,14 +718,19 @@ def test_qwen_unavailable_fails_closed_while_local_branch_stays_pure(tmp_path) -
     database = BridgesDatabase(tmp_path / "no-adapter.db")
     database.initialize()
     recorder = SqliteModelRunLockRecorder(database)
+    four = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=SqliteFourDimensionProfileRepository(database),
+    )
+    atomic = AtomicProfileService(
+        four, SqliteAtomicProfileRepository(database)
+    )
     service = AutomaticProfileService(
-        four_dimension_service=FourDimensionProfileService(
-            source_repository=None,  # type: ignore[arg-type]
-            repository=SqliteFourDimensionProfileRepository(database),
-        ),
+        four_dimension_service=four,
         repository=SqliteAutomaticProfileRepository(database),
         extractor=GatewayAutomaticProfileExtractor(gateway),
         lock_recorder=recorder,
+        atomic_profile_service=atomic,
     )
 
     ambiguous = service.preprocess_message(
@@ -735,7 +746,7 @@ def test_qwen_unavailable_fails_closed_while_local_branch_stays_pure(tmp_path) -
     assert ambiguous.run.last_error == "no_adapter"
     assert ambiguous.run.source == ProfileExtractionSource.QWEN_MODEL
     # 失败关闭：绝不伪造本地规则输出来冒充等价语义。
-    assert service._four_dimensions.list_records("account-alice") == []  # noqa: SLF001
+    assert atomic.list_items("account-alice") == []
 
     local = service.preprocess_message(
         "account-alice",
@@ -747,7 +758,7 @@ def test_qwen_unavailable_fails_closed_while_local_branch_stays_pure(tmp_path) -
     )
     assert local.run.status == ProfileExtractionStatus.SUCCEEDED
     assert local.run.source == ProfileExtractionSource.LOCAL_RULE
-    assert service._four_dimensions.list_records("account-alice")  # noqa: SLF001
+    assert atomic.list_items("account-alice")
     # 真实失败的 Qwen 尝试也留下不可变失败锁（no_adapter 属于网关阻断）。
     locks = recorder.list_locks_by_run("account-alice", ambiguous.run.extraction_id)
     assert len(locks) == 1
@@ -758,13 +769,16 @@ def test_qwen_unavailable_fails_closed_while_local_branch_stays_pure(tmp_path) -
 
 def test_rule_extractor_is_never_degraded_by_missing_qwen() -> None:
     """本地分支不依赖 Qwen 可用性：规则抽取器独立工作。"""
+    four = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    atomic = AtomicProfileService(four, InMemoryAtomicProfileRepository())
     service = AutomaticProfileService(
-        four_dimension_service=FourDimensionProfileService(
-            source_repository=None,  # type: ignore[arg-type]
-            repository=InMemoryFourDimensionProfileRepository(),
-        ),
+        four_dimension_service=four,
         repository=InMemoryAutomaticProfileRepository(),
         extractor=RuleBasedAutomaticProfileExtractor(),
+        atomic_profile_service=atomic,
     )
 
     result = service.preprocess_message(

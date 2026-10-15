@@ -49,6 +49,7 @@ from bridges.profiles.automatic import (
     AutomaticProfileService,
     InMemoryAutomaticProfileRepository,
 )
+from bridges.profiles.commit import ProfileFactSubmission
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     InMemoryFourDimensionProfileRepository,
@@ -784,15 +785,15 @@ def scenario_delete_synonym_and_recovery() -> ScenarioResult:
 
 def scenario_low_confidence_mirror() -> ScenarioResult:
     lab = ProfileLab()
-    record = lab.four.upsert_automatic_record(
+    mirrored = lab.atomic.commit_fact(
         ACCOUNT_A,
-        dimension=FourDimension.KNOWLEDGE_INTEREST,
-        content="概率统计",
-        action="create",
-        confidence=FourDimensionConfidence.LOW,
-        evidence_message_id="low-evidence",
+        ProfileFactSubmission(
+            text="概率统计",
+            dimension=FourDimension.KNOWLEDGE_INTEREST,
+            confidence=FourDimensionConfidence.LOW,
+            evidence_message_id="low-evidence",
+        ),
     )
-    mirrored = lab.atomic.mirror_record(ACCOUNT_A, record)
     recalled = lab.recalled_texts(ACCOUNT_A, "概率统计")
     excluded_reasons = {
         item.fact_text: item.exclusion_reason
@@ -802,7 +803,7 @@ def scenario_low_confidence_mirror() -> ScenarioResult:
     has_reason = any("概率统计" in text and reason for text, reason in excluded_reasons.items())
     return ScenarioResult(
         scenario_id="low_confidence_mirror",
-        title="LOW 把握度镜像条目不作为确定事实召回",
+        title="LOW 把握度条目不作为确定事实召回",
         checkpoints=[
             _check(
                 "low_not_recalled",

@@ -10,14 +10,16 @@ from bridges.ai.capability_registry import CapabilityRegistry
 from bridges.chat.repository import ConversationRepository
 from bridges.chat.service import ChatService
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
-from bridges.contracts.profiles import FourDimension, FourDimensionConfidence
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.profiles import (
+    AtomicProfileService,
     AutomaticProfileService,
     FourDimensionProfileService,
+    InMemoryAtomicProfileRepository,
     InMemoryAutomaticProfileRepository,
     InMemoryFourDimensionProfileRepository,
+    RuleBasedAutomaticProfileExtractor,
 )
 from bridges.storage.database import BridgesDatabase
 
@@ -76,16 +78,20 @@ def test_chat_persists_correction_before_model_payload(tmp_path: Path) -> None:
         source_repository=None,  # type: ignore[arg-type]
         repository=InMemoryFourDimensionProfileRepository(),
     )
-    four_dimensions.upsert_automatic_record(
-        "account-alice",
-        dimension=FourDimension.KNOWLEDGE_INTEREST,
-        content="Transformer",
-        action="create",
-        confidence=FourDimensionConfidence.HIGH,
-    )
+    atomic = AtomicProfileService(four_dimensions, InMemoryAtomicProfileRepository())
     automatic = AutomaticProfileService(
         four_dimension_service=four_dimensions,
         repository=InMemoryAutomaticProfileRepository(),
+        extractor=RuleBasedAutomaticProfileExtractor(),
+        atomic_profile_service=atomic,
+    )
+    automatic.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-seed",
+        message_id="message-seed-1",
+        content="我想学习 Transformer 的相关基础知识",
+        run_id="run-seed-1",
+        mode="companion",
     )
     adapter = _CaptureAdapter()
     registry = CapabilityRegistry()
@@ -97,6 +103,7 @@ def test_chat_persists_correction_before_model_payload(tmp_path: Path) -> None:
         gateway=gateway,
         automatic_profile_service=automatic,
         four_dimension_profile_service=four_dimensions,
+        atomic_profile_service=atomic,
     )
 
     conversation = service.create_conversation("account-alice")

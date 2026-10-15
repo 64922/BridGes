@@ -27,6 +27,7 @@ from bridges.profiles.atomic import (
     AtomicProfileService,
     InMemoryAtomicProfileRepository,
 )
+from bridges.profiles.commit import ProfileFactSubmission
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     InMemoryFourDimensionProfileRepository,
@@ -251,19 +252,14 @@ def test_same_turn_snapshot_is_frozen_for_later_nodes():
 
 def test_same_turn_automatic_extraction_waits_for_next_turn():
     four, service = _services()
-    record = four.upsert_automatic_record(
+    service.commit_fact(
         ALICE,
-        dimension=FourDimension.STAGE_GOAL,
-        content="今年通过雅思考试",
-        action="create",
-        confidence=FourDimensionConfidence.HIGH,
-        evidence_message_id="message-1",
-    )
-    service.mirror_record(
-        ALICE,
-        record,
-        fact_text="我的目标是今年通过雅思考试",
-        evidence_message_id="message-1",
+        ProfileFactSubmission(
+            text="我的目标是今年通过雅思考试",
+            dimension=FourDimension.STAGE_GOAL,
+            confidence=FourDimensionConfidence.HIGH,
+            evidence_message_id="message-1",
+        ),
     )
 
     this_turn = service.compile_adopted_slice(

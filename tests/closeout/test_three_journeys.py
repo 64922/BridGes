@@ -112,14 +112,20 @@ def test_three_journeys_persist_profile_and_isolate_accounts(
         )
         assert all(paper["arxiv_id"] for paper in paper_search["selected"])
 
-        profile_response = client.get("/profiles/four-dimensions")
+        profile_response = client.get("/profiles/items")
         assert profile_response.status_code == 200, profile_response.text
-        records = profile_response.json()
-        dimensions = {record["dimension"] for record in records}
-        assert {"knowledge_interest", "academic_status", "stage_goal"} <= dimensions
-        assert "hobby" not in dimensions
+        items = profile_response.json()
+        texts = {item["text"] for item in items}
+        assert {
+            "我想学习Transformer架构的相关知识",
+            "一名人工智能专业的大三学生",
+            "考一个211院校的相关专业",
+            "考研",
+        } <= texts
+        topics = {topic for item in items for topic in item["topics"]}
+        assert {"兴趣与喜好", "基本背景与称呼", "目标与计划"} <= topics
         first_stable_times = {
-            record["dimension"]: record["first_stable_recorded_at"] for record in records
+            item["profile_item_id"]: item["updated_at"] for item in items
         }
         assert client.get("/profiles/status").json()["status"] == "ready"
         session_cookie = client.cookies.get("bridges_session")
@@ -133,21 +139,16 @@ def test_three_journeys_persist_profile_and_isolate_accounts(
     try:
         with TestClient(restarted_app) as restarted:
             restarted.cookies.set("bridges_session", session_cookie)
-            replayed = restarted.get("/profiles/four-dimensions")
+            replayed = restarted.get("/profiles/items")
             assert replayed.status_code == 200, replayed.text
             replayed_records = replayed.json()
-            assert {record["dimension"] for record in replayed_records} >= {
-                "knowledge_interest",
-                "academic_status",
-                "stage_goal",
-            }
             assert {
-                record["dimension"]: record["first_stable_recorded_at"]
+                record["profile_item_id"]: record["updated_at"]
                 for record in replayed_records
             } == first_stable_times
 
             _register(restarted, "secondary")
-            secondary_profile = restarted.get("/profiles/four-dimensions")
+            secondary_profile = restarted.get("/profiles/items")
             assert secondary_profile.status_code == 200, secondary_profile.text
             assert secondary_profile.json() == []
     finally:

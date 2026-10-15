@@ -47,6 +47,7 @@ from bridges.profiles.automatic import (
     InMemoryAutomaticProfileRepository,
     SqliteAutomaticProfileRepository,
 )
+from bridges.profiles.commit import ProfileFactSubmission
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileRepository,
     FourDimensionProfileService,
@@ -94,8 +95,8 @@ class _FixedExtractor:
         )
 
 
-class _MirrorFailsOnce(AtomicProfileService):
-    """``fail_at`` 指定第几次镜像写入失败（0 表示不注入故障）。"""
+class _FactWriteFailsOnce(AtomicProfileService):
+    """``fail_at`` 指定第几次事实写入失败（0 表示不注入故障）。"""
 
     def __init__(
         self,
@@ -106,25 +107,17 @@ class _MirrorFailsOnce(AtomicProfileService):
         self.calls = 0
         self.fail_at = 0
 
-    def mirror_record(
+    def commit_fact(
         self,
         account_id: str,
-        record: FourDimensionProfileRecord,
+        fact: ProfileFactSubmission,
         *,
-        evidence_message_id: str | None = None,
-        fact_text: str | None = None,
         source_at: datetime | None = None,
     ) -> AtomicProfileItem | None:
         self.calls += 1
         if self.calls == self.fail_at:
-            raise RuntimeError("镜像写入失败")
-        return super().mirror_record(
-            account_id,
-            record,
-            evidence_message_id=evidence_message_id,
-            fact_text=fact_text,
-            source_at=source_at,
-        )
+            raise RuntimeError("事实写入失败")
+        return super().commit_fact(account_id, fact, source_at=source_at)
 
 
 @dataclass
@@ -164,7 +157,7 @@ class _Harness:
             source_repository=InMemoryProfileRepository(),
             repository=stack.dimensions,
         )
-        self.atomic = _MirrorFailsOnce(self.dimensions, stack.atomic)
+        self.atomic = _FactWriteFailsOnce(self.dimensions, stack.atomic)
         self.service = AutomaticProfileService(
             four_dimension_service=self.dimensions,
             repository=stack.state,

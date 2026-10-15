@@ -39,6 +39,7 @@ from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     InMemoryFourDimensionProfileRepository,
 )
+from bridges.profiles.commit import ProfileFactSubmission
 from bridges.storage.database import BridgesDatabase
 
 ALICE = "alice"
@@ -83,6 +84,25 @@ def _record(
         confidence=confidence,
         evidence_message_id=evidence_message_id,
         migration_version="profile-auto-v2",
+    )
+
+
+def _fact(
+    text: str,
+    *,
+    dimension: FourDimension = FourDimension.KNOWLEDGE_INTEREST,
+    message_id: str | None = None,
+    evidence_quote: str | None = None,
+    confidence: FourDimensionConfidence = FourDimensionConfidence.MEDIUM,
+) -> ProfileFactSubmission:
+    """构造一条待提交的开放事实（工单 03 之后的唯一写入形态）。"""
+
+    return ProfileFactSubmission(
+        text=text,
+        dimension=dimension,
+        confidence=confidence,
+        evidence_quote=evidence_quote,
+        evidence_message_id=message_id,
     )
 
 
@@ -219,79 +239,77 @@ def test_migration_rollback_rejects_unknown_batch(service: AtomicProfileService)
 
 
 # ---------------------------------------------------------------------------
-# AC2：自动抽取镜像（去重、冲突、来源、零条）
+# AC2：开放事实写入（去重、冲突、来源、零条）
 # ---------------------------------------------------------------------------
 
 
-def test_mirror_records_zero_or_many_items_with_sources(
-    service: AtomicProfileService, four_dimensions: FourDimensionProfileService
+def test_commit_fact_writes_zero_or_many_items_with_sources(
+    service: AtomicProfileService,
 ) -> None:
-    assert service.mirror_record(ALICE, _record(four_dimensions, ALICE, "我大三")) is None or True
-    assert len(service.list_items(BOB)) == 0
+    assert service.list_items(BOB) == []
 
-    record = _record(four_dimensions, ALICE, "我大三", evidence_message_id="msg-1")
-    item = service.mirror_record(
-        ALICE, record, evidence_message_id="msg-1"
-    )
+    item = service.commit_fact(ALICE, _fact("我大三", message_id="msg-1"))
     assert item is not None
     assert item.text == "我大三"
     assert item.source_message_ids == ["msg-1"]
     assert item.write_origin == AtomicProfileWriteOrigin.AUTOMATIC
 
 
-def test_mirror_deduplicates_same_text_and_unions_sources(
-    service: AtomicProfileService, four_dimensions: FourDimensionProfileService
+def test_commit_fact_deduplicates_same_text_and_unions_sources(
+    service: AtomicProfileService,
 ) -> None:
-    first = _record(
-        four_dimensions,
+    service.commit_fact(
         ALICE,
-        "喜欢看天体物理科普",
-        dimension=FourDimension.KNOWLEDGE_INTEREST,
-        evidence_message_id="msg-1",
+        _fact(
+            "喜欢看天体物理科普",
+            dimension=FourDimension.KNOWLEDGE_INTEREST,
+            message_id="msg-1",
+        ),
     )
-    other_dimension = _record(
-        four_dimensions,
+    service.commit_fact(
         ALICE,
-        "喜欢看天体物理科普",
-        dimension=FourDimension.HOBBY,
-        evidence_message_id="msg-2",
+        _fact(
+            "喜欢看天体物理科普",
+            dimension=FourDimension.HOBBY,
+            message_id="msg-2",
+        ),
     )
-
-    service.mirror_record(ALICE, first, evidence_message_id="msg-1")
-    service.mirror_record(ALICE, other_dimension, evidence_message_id="msg-2")
 
     items = service.list_items(ALICE)
     assert len(items) == 1
     assert items[0].source_message_ids == ["msg-1", "msg-2"]
 
 
-def test_mirror_replaces_value_when_underlying_record_is_updated(
-    service: AtomicProfileService, four_dimensions: FourDimensionProfileService
+def test_new_slot_value_supersedes_previous_item(
+    service: AtomicProfileService,
 ) -> None:
-    record = _record(four_dimensions, ALICE, "假期想学游泳", dimension=FourDimension.STAGE_GOAL)
-    service.mirror_record(ALICE, record, evidence_message_id="msg-1")
+    """单值属性槽的新值替代旧活动条目；并行目标不受影响（目标可并存）。"""
 
-    four_dimensions.correct_record(
-        ALICE, dimension=FourDimension.STAGE_GOAL, content="假期想学爬山"
+    service.commit_fact(
+        ALICE,
+        _fact("我大三", dimension=FourDimension.ACADEMIC_STATUS, message_id="msg-1"),
     )
-    updated = four_dimensions.get_record(ALICE, record.record_id)
-    service.mirror_record(ALICE, updated, evidence_message_id="msg-2")
+
+    item = service.commit_fact(
+        ALICE,
+        _fact("我大四", dimension=FourDimension.ACADEMIC_STATUS, message_id="msg-2"),
+    )
+    assert item is not None
 
     items = service.list_items(ALICE)
-    assert [item.text for item in items] == ["假期想学爬山"]
+    assert [item.text for item in items] == ["我大四"]
     assert items[0].source_message_ids == ["msg-2"]
 
 
-def test_mirror_skips_blank_and_tombstoned_content(
-    service: AtomicProfileService, four_dimensions: FourDimensionProfileService
+def test_commit_fact_skips_blank_and_tombstoned_content(
+    service: AtomicProfileService,
 ) -> None:
-    record = _record(four_dimensions, ALICE, "我住在南昌", evidence_message_id="msg-1")
-    service.mirror_record(ALICE, record, evidence_message_id="msg-1")
+    service.commit_fact(ALICE, _fact("我住在南昌", message_id="msg-1"))
     item = service.list_items(ALICE)[0]
 
     service.delete_item(ALICE, item.profile_item_id, item.version)
 
-    assert service.mirror_record(ALICE, record, evidence_message_id="msg-1") is None
+    assert service.commit_fact(ALICE, _fact("我住在南昌", message_id="msg-1")) is None
     assert service.list_items(ALICE) == []
 
 
@@ -301,10 +319,9 @@ def test_mirror_skips_blank_and_tombstoned_content(
 
 
 def test_modify_item_sets_user_authority_and_protects_from_automation(
-    service: AtomicProfileService, four_dimensions: FourDimensionProfileService
+    service: AtomicProfileService,
 ) -> None:
-    record = _record(four_dimensions, ALICE, "喜欢看科普", evidence_message_id="msg-1")
-    service.mirror_record(ALICE, record, evidence_message_id="msg-1")
+    service.commit_fact(ALICE, _fact("喜欢看科普", message_id="msg-1"))
     item = service.list_items(ALICE)[0]
     version = item.version
 
@@ -319,18 +336,13 @@ def test_modify_item_sets_user_authority_and_protects_from_automation(
     assert updated.write_origin == AtomicProfileWriteOrigin.USER
     assert updated.version == version + 1
 
-    # 自动抽取再提出旧值：条目保持用户版本，不被改写。
-    service._four_dimensions.upsert_automatic_record(  # noqa: SLF001 - 合同断言
-        ALICE, dimension=FourDimension.KNOWLEDGE_INTEREST, content="喜欢看科普", action="update"
-    )
-    stale = four_dimensions.get_record(ALICE, record.record_id)
-    service.mirror_record(ALICE, stale, evidence_message_id="msg-2")
+    # 自动抽取再提出旧值：旧文本命中抑制键，用户版本不被改写。
+    assert service.commit_fact(ALICE, _fact("喜欢看科普", message_id="msg-2")) is None
     assert [item_.text for item_ in service.list_items(ALICE)] == ["喜欢看天体物理科普"]
 
 
 def test_modify_item_suppresses_the_old_text_from_later_extraction(
     service: AtomicProfileService,
-    four_dimensions: FourDimensionProfileService,
     repository: InMemoryAtomicProfileRepository,
 ) -> None:
     """用户改掉的值不会因旧消息或旧记录再次被抽取而作为新条目回来。"""
@@ -343,10 +355,7 @@ def test_modify_item_suppresses_the_old_text_from_later_extraction(
         AtomicProfileItemModifyRequest(text="我养了两只猫", version=version),
     )
 
-    record = _record(
-        four_dimensions, ALICE, "我养了一只猫", evidence_message_id="msg-2"
-    )
-    service.mirror_record(ALICE, record, evidence_message_id="msg-2")
+    assert service.commit_fact(ALICE, _fact("我养了一只猫", message_id="msg-2")) is None
 
     assert [item_.text for item_ in service.list_items(ALICE)] == ["我养了两只猫"]
     # 抑制键只留键、不留正文：对账输出里不能出现被改掉的旧值。这里只断言
@@ -394,16 +403,12 @@ def test_modify_item_rejects_stale_version_and_duplicates(
 
 
 def test_delete_item_writes_tombstone_and_survives_replay(
-    service: AtomicProfileService, four_dimensions: FourDimensionProfileService
+    service: AtomicProfileService,
 ) -> None:
-    record = _record(
-        four_dimensions,
+    service.commit_fact(
         ALICE,
-        "我住在南昌",
-        dimension=FourDimension.ACADEMIC_STATUS,
-        evidence_message_id="msg-1",
+        _fact("我住在南昌", dimension=FourDimension.ACADEMIC_STATUS, message_id="msg-1"),
     )
-    service.mirror_record(ALICE, record, evidence_message_id="msg-1")
     item = service.list_items(ALICE)[0]
 
     service.delete_item(ALICE, item.profile_item_id, item.version)
@@ -415,10 +420,19 @@ def test_delete_item_writes_tombstone_and_survives_replay(
     assert tombstone is not None
     assert tombstone.status == AtomicProfileItemStatus.WITHDRAWN
     assert tombstone.text == ""
-    # 旧消息重放：抽取结果不会再写成条目，底层记录也不会复活。
-    service.mirror_record(ALICE, record, evidence_message_id="msg-1")
+    # 旧消息重放：抽取结果不会再写成条目。
+    assert (
+        service.commit_fact(
+            ALICE,
+            _fact(
+                "我住在南昌",
+                dimension=FourDimension.ACADEMIC_STATUS,
+                message_id="msg-1",
+            ),
+        )
+        is None
+    )
     assert service.list_items(ALICE) == []
-    assert four_dimensions.list_records(ALICE) == []
 
 
 def test_remember_takes_effect_immediately_and_revives_deleted(
@@ -453,16 +467,12 @@ def test_remember_rejects_blank_text(service: AtomicProfileService) -> None:
 
 
 def test_forget_removes_matched_items_and_reports_unresolved(
-    service: AtomicProfileService, four_dimensions: FourDimensionProfileService
+    service: AtomicProfileService,
 ) -> None:
-    record = _record(
-        four_dimensions,
+    service.commit_fact(
         ALICE,
-        "爱好是跑步",
-        dimension=FourDimension.HOBBY,
-        evidence_message_id="msg-1",
+        _fact("爱好是跑步", dimension=FourDimension.HOBBY, message_id="msg-1"),
     )
-    service.mirror_record(ALICE, record, evidence_message_id="msg-1")
     service.remember(ALICE, "习惯早睡")
 
     result = service.forget(ALICE, "跑步")
@@ -471,8 +481,13 @@ def test_forget_removes_matched_items_and_reports_unresolved(
     assert result.status == AtomicProfileMemoryStatus.FORGOTTEN
     assert result.matched_count == 1
     assert [item.text for item in service.list_items(ALICE)] == ["习惯早睡"]
-    assert four_dimensions.list_records(ALICE) == []
-    assert service.mirror_record(ALICE, record, evidence_message_id="msg-1") is None
+    assert (
+        service.commit_fact(
+            ALICE,
+            _fact("爱好是跑步", dimension=FourDimension.HOBBY, message_id="msg-1"),
+        )
+        is None
+    )
 
     assert service.forget(
         ALICE, "我从来没说过的事情"
@@ -506,12 +521,13 @@ def test_slice_includes_only_task_relevant_items(service: AtomicProfileService) 
 
 
 def test_same_turn_extraction_enters_context_from_the_next_turn(
-    service: AtomicProfileService, four_dimensions: FourDimensionProfileService
+    service: AtomicProfileService,
 ) -> None:
     """普通异步提取下一轮生效；用户「记住」的条目本轮就能用。"""
 
-    record = _record(four_dimensions, ALICE, "今年通过雅思考试")
-    service.mirror_record(ALICE, record, evidence_message_id="message-1")
+    service.commit_fact(
+        ALICE, _fact("今年通过雅思考试", message_id="message-1")
+    )
 
     this_turn = service.compile_chat_slice(
         ALICE,
@@ -606,10 +622,7 @@ def test_sqlite_repository_persists_items_and_reports(tmp_path: Path) -> None:
     )
     repository = SqliteAtomicProfileRepository(database, initialize=False)
     service = AtomicProfileService(four_dimensions, repository)
-    record = _record(
-        four_dimensions, ALICE, "喜欢看科普", evidence_message_id="msg-1"
-    )
-    service.mirror_record(ALICE, record, evidence_message_id="msg-1")
+    service.commit_fact(ALICE, _fact("喜欢看科普", message_id="msg-1"))
     item = service.list_items(ALICE)[0]
     service.modify_item(
         ALICE,
@@ -633,11 +646,11 @@ def test_sqlite_repository_persists_items_and_reports(tmp_path: Path) -> None:
     assert reloaded.rollback_migration(ALICE, report.run_id).status == (
         AtomicProfileMigrationStatus.UNDONE
     )
-    # 回滚只删除该批次新建的条目；镜像写入并已由用户编辑的条目不受影响。
+    # 回滚只删除该批次新建的条目；自动写入并已由用户编辑的条目不受影响。
     assert [entry.text for entry in reloaded.list_items(ALICE)] == ["喜欢看天体物理科普"]
 
 
-def test_sqlite_tombstone_blocks_mirror_after_restart(tmp_path: Path) -> None:
+def test_sqlite_tombstone_blocks_commit_after_restart(tmp_path: Path) -> None:
     database = BridgesDatabase(tmp_path / "bridges.db")
     database.initialize()
     four_dimensions = FourDimensionProfileService(
@@ -652,8 +665,9 @@ def test_sqlite_tombstone_blocks_mirror_after_restart(tmp_path: Path) -> None:
 
     reopened = SqliteAtomicProfileRepository(database, initialize=False)
     reloaded = AtomicProfileService(four_dimensions, reopened)
-    record = _record(four_dimensions, ALICE, "我住在南昌", evidence_message_id="msg-9")
 
-    assert reloaded.mirror_record(ALICE, record, evidence_message_id="msg-9") is None
+    assert (
+        reloaded.commit_fact(ALICE, _fact("我住在南昌", message_id="msg-9")) is None
+    )
     assert reloaded.list_items(ALICE) == []
     assert normalize_text("  我住在南昌  ") == "我住在南昌"

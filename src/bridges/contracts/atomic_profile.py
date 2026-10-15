@@ -15,7 +15,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from bridges.contracts.profiles import FourDimensionConfidence
+from bridges.contracts.profiles import FourDimension, FourDimensionConfidence
 
 
 class AtomicProfileItemStatus(StrEnum):
@@ -90,6 +90,49 @@ class AtomicProfileFactIdentity(BaseModel):
     scope: AtomicProfileFactScope = Field(
         default=AtomicProfileFactScope.LONG_TERM, description="适用范围。"
     )
+
+
+#: 默认浏览主题（开放词汇）：主题可扩展、可空、多选，不构成保存事实的门槛，
+#: 也不复制同内容的多个条目；主题修改不改变事实身份。近义主题的归一化与
+#: 按主题浏览由后续概览票实现。
+PROFILE_TOPIC_BACKGROUND = "基本背景与称呼"
+PROFILE_TOPIC_COMMUNICATION = "交流与协作偏好"
+PROFILE_TOPIC_INTERESTS = "兴趣与喜好"
+PROFILE_TOPIC_HABITS = "日常习惯与现实约束"
+PROFILE_TOPIC_GOALS = "目标与计划"
+PROFILE_TOPIC_EXPERIENCES = "经历与重要事件"
+PROFILE_TOPIC_RELATIONS = "重要关系"
+PROFILE_TOPIC_ONGOING = "持续事项"
+PROFILE_TOPIC_LEARNING = "学习背景与学情"
+
+DEFAULT_PROFILE_TOPICS: tuple[str, ...] = (
+    PROFILE_TOPIC_BACKGROUND,
+    PROFILE_TOPIC_COMMUNICATION,
+    PROFILE_TOPIC_INTERESTS,
+    PROFILE_TOPIC_HABITS,
+    PROFILE_TOPIC_GOALS,
+    PROFILE_TOPIC_EXPERIENCES,
+    PROFILE_TOPIC_RELATIONS,
+    PROFILE_TOPIC_ONGOING,
+    PROFILE_TOPIC_LEARNING,
+)
+
+#: 旧四维抽取提示对应的默认主题；04 的自然表达覆盖会给出更细的主题，
+#: 这里只覆盖当前抽取合同能确定的确定映射，不做推断。
+_DIMENSION_DEFAULT_TOPICS: dict[FourDimension, tuple[str, ...]] = {
+    FourDimension.ACADEMIC_STATUS: (PROFILE_TOPIC_BACKGROUND,),
+    FourDimension.KNOWLEDGE_INTEREST: (PROFILE_TOPIC_INTERESTS,),
+    FourDimension.HOBBY: (PROFILE_TOPIC_INTERESTS,),
+    FourDimension.STAGE_GOAL: (PROFILE_TOPIC_GOALS,),
+}
+
+
+def default_topics_for_dimension(dimension: FourDimension | None) -> tuple[str, ...]:
+    """返回一条抽取事实的默认主题；没有确定映射时为空（无主题不拒绝事实）。"""
+
+    if dimension is None:
+        return ()
+    return _DIMENSION_DEFAULT_TOPICS.get(dimension, ())
 
 
 class AtomicProfileWriteOrigin(StrEnum):
@@ -218,6 +261,13 @@ class AtomicProfileItem(BaseModel):
     topic_hint: str | None = Field(
         default=None, description="内部提示，不进入页面投影或模型上下文。"
     )
+    topics: list[str] = Field(
+        default_factory=list,
+        description=(
+            "开放主题：可空、多选、可扩展；只组织浏览，不决定事实身份，"
+            "也不复制同内容条目。"
+        ),
+    )
     status: AtomicProfileItemStatus = Field(description="活动条目或删除墓碑。")
     write_origin: AtomicProfileWriteOrigin = Field(description="条目最近一次写入来源。")
     confidence: FourDimensionConfidence = Field(
@@ -267,6 +317,9 @@ class AtomicProfileItemProjection(BaseModel):
     updated_at: datetime = Field(description="最近一次变化时间。")
     user_edited_at: datetime | None = Field(
         default=None, description="用户最近一次编辑时间，可为空。"
+    )
+    topics: list[str] = Field(
+        default_factory=list, description="开放主题；可空、多选，只组织浏览。"
     )
     source_message_ids: list[str] = Field(
         default_factory=list, description="证据来源消息标识。"
@@ -461,6 +514,9 @@ class AtomicProfileItemEvidenceProjection(BaseModel):
         default=None, description="用户最近一次编辑时间；非空表示主动来源。"
     )
     updated_at: datetime = Field(description="最近一次变化时间。")
+    topics: list[str] = Field(
+        default_factory=list, description="开放主题；可空、多选，只组织浏览。"
+    )
     fact_scope: AtomicProfileFactScope = Field(description="适用范围。")
     goal_state: AtomicProfileGoalState = Field(description="目标生命周期标记。")
     valid_from: datetime | None = Field(default=None, description="有效期起点。")
@@ -483,13 +539,29 @@ class AtomicProfileItemEvidenceProjection(BaseModel):
     )
 
 
+class AtomicProfileItemCreateRequest(BaseModel):
+    """手动添加一条长期信息的请求（页面主动添加，用户权威写入）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=1000, description="要记住的完整事实正文。")
+    topics: list[str] | None = Field(
+        default=None,
+        description="可选主题（多选、可扩展）；不传或空列表表示无主题。",
+    )
+
+
 class AtomicProfileItemModifyRequest(BaseModel):
-    """行内编辑的乐观锁请求。"""
+    """行内编辑的乐观锁请求；主题可选修改，不改变事实身份。"""
 
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field(min_length=1, max_length=1000, description="替换后的正文。")
     version: int = Field(ge=1, description="用户读到的版本号。")
+    topics: list[str] | None = Field(
+        default=None,
+        description="替换后的主题；不传表示不修改主题，空列表表示清空主题。",
+    )
 
 
 class AtomicProfileItemDeleteRequest(BaseModel):
@@ -574,6 +646,7 @@ __all__ = [
     "AtomicProfileFeedbackProjection",
     "AtomicProfileGoalState",
     "AtomicProfileItem",
+    "AtomicProfileItemCreateRequest",
     "AtomicProfileItemDeleteRequest",
     "AtomicProfileItemEvidenceProjection",
     "AtomicProfileItemFeedbackRequest",
@@ -590,6 +663,17 @@ __all__ = [
     "AtomicProfileTombstoneEntry",
     "AtomicProfileValidityStatus",
     "AtomicProfileWriteOrigin",
+    "DEFAULT_PROFILE_TOPICS",
+    "PROFILE_TOPIC_BACKGROUND",
+    "PROFILE_TOPIC_COMMUNICATION",
+    "PROFILE_TOPIC_EXPERIENCES",
+    "PROFILE_TOPIC_GOALS",
+    "PROFILE_TOPIC_HABITS",
+    "PROFILE_TOPIC_INTERESTS",
+    "PROFILE_TOPIC_LEARNING",
+    "PROFILE_TOPIC_ONGOING",
+    "PROFILE_TOPIC_RELATIONS",
+    "default_topics_for_dimension",
     "feedback_effect_for",
     "feedback_message_for",
 ]

@@ -26,10 +26,10 @@ from bridges.contracts.ai import (
     ModelRunLock,
 )
 from bridges.contracts.atomic_profile import (
-    AtomicProfileFactRelation,
     AtomicProfileMemoryKind,
     AtomicProfileMemoryResult,
     AtomicProfileMemoryStatus,
+    default_topics_for_dimension,
 )
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profile_extraction import (
@@ -69,11 +69,10 @@ from bridges.profiles.atomic import (
     AtomicProfileService,
     GoalLifecycleOutcome,
     MemoryDirective,
-    parse_fact_identity,
     parse_goal_lifecycle_signal,
     parse_memory_directive,
 )
-from bridges.profiles.commit import ProfileCommit, ProfileRecordSubmission
+from bridges.profiles.commit import ProfileCommit, ProfileFactSubmission
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     confidence_rank,
@@ -1481,11 +1480,11 @@ class AutomaticProfileService:
         atomic_profile_service: AtomicProfileService | None = None,
     ) -> None:
         self._four_dimensions = four_dimension_service
-        # V2 Issue 08：原子条目是用户可见的长期信息列表；挂载后自动抽取
-        # 在写四维记录的同时镜像成无类别条目，并处理本轮「记住／忘掉」。
+        # 工单 03：原子条目是长期信息的唯一权威；自动抽取直接写入原子
+        # 条目（不再写四维记录），四维服务只保留旧路由与存量数据职责。
         self._atomic_profiles = atomic_profile_service
-        # Issue 04：四维来源与原子镜像的提交边界归属；本类不再判断仓库
-        # 类型、连接或事务开关，只决定抽取、证据校验与有界重试。
+        # Issue 04 / 工单 03：开放事实与提取记账的提交边界归属；本类不再
+        # 判断仓库类型、连接或事务开关，只决定抽取、证据校验与有界重试。
         self._commit = ProfileCommit(
             state=repository,
             records=four_dimension_service,
@@ -2343,19 +2342,20 @@ class AutomaticProfileService:
         dimension: FourDimension,
         content: str,
     ) -> tuple[ProfileCorrectionResult, ProfileExtractionOutcome, list[str]]:
-        """执行一次更正写入，返回用户可见结果、运行结论与已提交记录标识。
+        """执行一次更正写入，返回用户可见结果、运行结论与已提交条目标识。
 
         首次处理与后台重试的唯一归属地：两条路径的差别只在「谁先决定要不要
-        写」，写完之后的映射（无活动记录／受保护／已写入）只有这一份实现，
-        不会再出现只更新其中一条路径的分叉。
+        写」，写完之后的映射（无活动条目／已写入）只有这一份实现，不会再
+        出现只更新其中一条路径的分叉。工单 03：纠正直接改写原子条目，旧四维
+        记录的「反复纠错降级」保护不再适用（见工单 03 的剩余限制）。
         """
 
-        record, changed = self._commit.write_correction(
+        item, _changed = self._commit.write_correction(
             account_id,
             dimension=dimension,
             content=content,
         )
-        if record is None:
+        if item is None:
             return (
                 ProfileCorrectionResult(
                     status=ProfileCorrectionStatus.NO_ACTIVE_RECORD,
@@ -2364,24 +2364,14 @@ class AutomaticProfileService:
                 ProfileExtractionOutcome.SUCCEEDED_CORRECTION_NO_ACTIVE,
                 [],
             )
-        if not changed:
-            return (
-                ProfileCorrectionResult(
-                    status=ProfileCorrectionStatus.PROTECTED,
-                    dimension=dimension,
-                    record_id=record.record_id,
-                ),
-                ProfileExtractionOutcome.SUCCEEDED_CORRECTION_PROTECTED,
-                [],
-            )
         return (
             ProfileCorrectionResult(
                 status=ProfileCorrectionStatus.WRITTEN,
                 dimension=dimension,
-                record_id=record.record_id,
+                record_id=item.profile_item_id,
             ),
             ProfileExtractionOutcome.SUCCEEDED_CORRECTION_WRITTEN,
-            [record.record_id],
+            [item.profile_item_id],
         )
 
     def _preprocess_correction(
@@ -2989,13 +2979,10 @@ class AutomaticProfileService:
                         now=_now(),
                         signal_classification=signal_classification,
                         source=source,
-                        # 重放任务（来源哈希内嵌重放标记，见
-                        # replay._replay_source_hash 的真实形状）不得把用户
-                        # 纠正过的记录改回旧值；普通重试保持既有证据阶梯。
-                        from_replay=PROFILE_REPLAY_SOURCE_HASH_PREFIX
-                        in task.source_hash,
                         # 工单 18：期限以原消息时间为锚，后台重试不会把
-                        # 「下周考试」按重试当天重新解释。
+                        # 「下周考试」按重试当天重新解释；用户已编辑或
+                        # 已删除的条目由原子写入层按用户权威保护，重放
+                        # 旧消息不会把它们改回旧值（工单 03）。
                         source_at=source_at,
                     )
                     task.status = ProfileExtractionStatus.SUCCEEDED
@@ -3185,11 +3172,10 @@ class AutomaticProfileService:
         now: datetime,
         signal_classification: ProfileSignalClassification,
         source: ProfileExtractionSource,
-        from_replay: bool = False,
         source_at: datetime | None = None,
     ) -> tuple[list[str], int]:
         observed_count = 0
-        submissions: list[ProfileRecordSubmission] = []
+        submissions: list[ProfileFactSubmission] = []
         audit_version = _signal_audit_version(
             self.extractor_version, signal_classification, source
         )
@@ -3267,50 +3253,28 @@ class AutomaticProfileService:
                 if len(unique_messages) >= 2 or self._is_user_confirmation(content)
                 else FourDimensionConfidence.MEDIUM
             )
-            resolved = action.value
-            if (
-                resolved == ProfileExtractionAction.CREATE.value
-                and re.search(r"我(?:现在|目前)?更喜欢", content)
-            ):
-                # 「更喜欢」是明确的偏好变更信号，不是同维度后值覆盖：
-                # 只在这条消息自身携带变更词时更新，其他维度冲突靠事实身份并存。
-                resolved = ProfileExtractionAction.UPDATE.value
             fact_text = item.fact_text or item.normalized_value
-            identity = parse_fact_identity(fact_text, dimension=item.dimension)
-            identity_discriminator = (
-                None
-                if identity.relation is AtomicProfileFactRelation.STATEMENT
-                else f"{identity.relation.value}:{identity.object.casefold()}"
-            )
             submissions.append(
-                ProfileRecordSubmission(
+                ProfileFactSubmission(
+                    text=fact_text,
                     dimension=item.dimension,
-                    content=item.normalized_value,
-                    action=resolved,
+                    # 工单 03：自动提取附带维度默认主题（开放词汇，可再编辑）；
+                    # 主题只组织浏览，不参与事实身份与去重。
+                    topics=default_topics_for_dimension(item.dimension),
                     confidence=confidence,
                     evidence_quote=self._candidate_evidence_quote(item, content),
                     evidence_message_id=message_id,
-                    change_note=(
-                        "用户明确确认，可靠程度已提高"
-                        if self._is_user_confirmation(content)
-                        else "多次对话中再次出现，可靠程度已提高"
-                        if confidence == FourDimensionConfidence.HIGH
-                        else "首次明确表达，等待再次确认"
-                    ),
-                    migration_version=audit_version,
-                    fact_text=item.fact_text,
-                    identity_discriminator=identity_discriminator,
                 )
             )
-        # Issue 04：四维记录与原子镜像由提交 module 在同一事务里成对写入。
-        # 镜像不写入（用户已删除同键条目或已改成别的正文）是正常结果，不算
-        # 提交失败，因此这里只回报真正落库的记录标识。工单 18：来源消息时间
-        # 作为相对时间的锚随提交传入，后台重试不会按重试当天重解释期限。
+        # 工单 03：开放事实直接写入原子条目（唯一权威路径），四维记录不再
+        # 参与写入。条目未写入（用户已删除同键条目或已改成别的正文）是正常
+        # 结果，不算提交失败，因此这里只回报真正落库的条目标识。工单 18：
+        # 来源消息时间作为相对时间的锚随提交传入，后台重试不会按重试当天
+        # 重解释期限。
         return (
-            self._commit.write_records(
+            self._commit.write_facts(
                 account_id,
                 submissions,
-                from_replay=from_replay,
                 source_at=source_at,
             ),
             observed_count,

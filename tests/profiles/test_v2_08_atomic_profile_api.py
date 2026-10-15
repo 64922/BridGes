@@ -174,10 +174,10 @@ def test_modify_route_rejects_blank_text() -> None:
     assert response.json()["detail"]["error"] == "atomic_profile_modify_failed"
 
 
-def test_sqlite_composition_extracts_mirrors_and_deletes_in_one_pass(
+def test_sqlite_composition_extracts_and_deletes_in_one_pass(
     sqlite_app: Any,
 ) -> None:
-    """落盘组合下：抽取镜像与删除墓碑都真实写入，且不因嵌套事务失败。"""
+    """落盘组合下：抽取只写原子条目、删除墓碑真实写入，且不因嵌套事务失败。"""
 
     client = TestClient(sqlite_app)
     account_id = _register(client, "issue08-sqlite", "080008@qq.com")
@@ -190,13 +190,13 @@ def test_sqlite_composition_extracts_mirrors_and_deletes_in_one_pass(
     )
     assert created.status_code == 200, created.text
     # 改进工单 17：普通抽取在回答正常完成后由可恢复队列异步执行，
-    # 测试显式驱动一次 worker 再读取镜像结果。
+    # 测试显式驱动一次 worker 再读取条目结果。
     sqlite_app.state.generation_executor.run_tick()
 
     items = client.get("/profiles/items").json()
     assert [item["text"] for item in items] == ["今年通过雅思考试"]
-    records = client.get("/profiles/four-dimensions").json()
-    assert [record["content"] for record in records] == ["今年通过雅思考试"]
+    # 工单 03：新写入不再产生四维记录。
+    assert client.get("/profiles/four-dimensions").json() == []
 
     removed = client.request(
         "DELETE",
@@ -206,7 +206,6 @@ def test_sqlite_composition_extracts_mirrors_and_deletes_in_one_pass(
 
     assert removed.status_code == 204, removed.text
     assert client.get("/profiles/items").json() == []
-    # 底层四维记录同步撤回：自动抽取不能把用户删掉的条目再写回来。
     assert client.get("/profiles/four-dimensions").json() == []
     status = client.get("/profiles/status").json()
     assert status["has_records"] is False

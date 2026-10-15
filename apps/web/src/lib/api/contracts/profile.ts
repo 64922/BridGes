@@ -20,6 +20,9 @@ export type FourDimensionProfileDeleteRequest =
 export type AtomicProfileItemProjection =
   components["schemas"]["AtomicProfileItemProjection"];
 
+export type AtomicProfileItemCreateRequest =
+  components["schemas"]["AtomicProfileItemCreateRequest"];
+
 export type AtomicProfileItemModifyRequest =
   components["schemas"]["AtomicProfileItemModifyRequest"];
 

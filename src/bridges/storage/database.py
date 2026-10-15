@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 79
+SCHEMA_VERSION = 80
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3642,6 +3642,15 @@ MIGRATIONS: dict[int, list[str]] = {
         "ALTER TABLE chat_attachments ADD COLUMN adopted_from_object_id"
         " TEXT NOT NULL DEFAULT ''",
     ],
+    # 画像工单 03：开放原子记忆的开放主题。主题可空、多选、可扩展，只组织
+    # 浏览，不参与事实身份；既有行以空列表启始（无主题不拒绝任何事实）。
+    # 列名与 JSON 载荷形式与 source_message_ids_json 一致。
+    80: [
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN topics_json TEXT NOT NULL DEFAULT '[]'
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -4032,6 +4041,7 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "validity_anchor_at",
         "validity_phrase",
         "goal_state",
+        "topics_json",
     }),
     "profile_item_migrations": frozenset({
         "run_id",
@@ -4090,6 +4100,7 @@ MIGRATION_ADDED_COLUMNS: dict[str, frozenset[str]] = {
         "validity_anchor_at",
         "validity_phrase",
         "goal_state",
+        "topics_json",
     }),
     "profile_item_migrations": frozenset({"identity_backfilled"}),
     # Issue 06：v76 为用户控制状态与撤回标记补加列。

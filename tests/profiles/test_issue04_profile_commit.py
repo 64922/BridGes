@@ -42,6 +42,7 @@ from bridges.profiles.automatic import (
     InMemoryAutomaticProfileRepository,
     SqliteAutomaticProfileRepository,
 )
+from bridges.profiles.commit import ProfileFactSubmission
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileRepository,
     FourDimensionProfileService,
@@ -88,8 +89,8 @@ class _TwoFactExtractor:
         )
 
 
-class _MirrorFailsOnce(AtomicProfileService):
-    """`fail_at` 指定第几次镜像写入失败（0 表示不注入故障）。"""
+class _CommitFailsOnce(AtomicProfileService):
+    """`fail_at` 指定第几次事实写入失败（0 表示不注入故障）。"""
 
     def __init__(
         self,
@@ -100,25 +101,17 @@ class _MirrorFailsOnce(AtomicProfileService):
         self.calls = 0
         self.fail_at = 0
 
-    def mirror_record(
+    def commit_fact(
         self,
         account_id: str,
-        record: FourDimensionProfileRecord,
+        fact: ProfileFactSubmission,
         *,
-        evidence_message_id: str | None = None,
-        fact_text: str | None = None,
         source_at: datetime | None = None,
     ) -> AtomicProfileItem | None:
         self.calls += 1
         if self.calls == self.fail_at:
-            raise RuntimeError("镜像写入失败")
-        return super().mirror_record(
-            account_id,
-            record,
-            evidence_message_id=evidence_message_id,
-            fact_text=fact_text,
-            source_at=source_at,
-        )
+            raise RuntimeError("事实写入失败")
+        return super().commit_fact(account_id, fact, source_at=source_at)
 
 
 class _Harness:
@@ -240,7 +233,7 @@ def _build(
         source_repository=None,  # type: ignore[arg-type]
         repository=dimension_repository,
     )
-    atomic = _MirrorFailsOnce(dimensions, atomic_repository)
+    atomic = _CommitFailsOnce(dimensions, atomic_repository)
     return _Harness(
         service=AutomaticProfileService(
             four_dimension_service=dimensions,
@@ -268,8 +261,8 @@ def harness(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[_Harness
         built.close()
 
 
-def test_mirror_failure_keeps_no_partial_profile(harness: _Harness) -> None:
-    """第一条已写入、第二条镜像失败时，整批回滚为零写入。"""
+def test_fact_write_failure_keeps_no_partial_profile(harness: _Harness) -> None:
+    """第一条已写入、第二条事实写入失败时，整批回滚为零写入。"""
 
     harness.atomic.fail_at = 2
 
@@ -277,7 +270,8 @@ def test_mirror_failure_keeps_no_partial_profile(harness: _Harness) -> None:
 
     assert result.run.status == ProfileExtractionStatus.PENDING
     assert result.run.committed_record_ids == []
-    # 四维记录、观察记录与用户可见原子条目同属一次提交：一起回滚。
+    # 记账、观察记录与用户可见原子条目同属一次提交：一起回滚；四维记录
+    # 自工单 03 起不再由自动提取写入，因此始终为空。
     assert harness.records() == []
     assert harness.observations() == []
     assert harness.items() == []
@@ -301,10 +295,6 @@ def test_retry_after_failure_writes_each_fact_once_and_feeds_next_slice(
 
     harness.retry()
 
-    assert {record.content for record in harness.records()} == {
-        GOAL_TEXT,
-        STATUS_TEXT,
-    }
     items = harness.items()
     assert {item.text for item in items} == {GOAL_TEXT, STATUS_TEXT}
     assert all(item.source_message_ids == ["message-1"] for item in items)
@@ -384,7 +374,6 @@ def test_repeated_fact_merges_sources_without_duplicate_items(
     harness.extract("message-1", TWO_FACT_MESSAGE)
     harness.extract("message-2", TWO_FACT_MESSAGE)
 
-    assert len(harness.records()) == 2
     items = harness.items()
     assert {item.text for item in items} == {GOAL_TEXT, STATUS_TEXT}
     for item in items:
@@ -393,7 +382,6 @@ def test_repeated_fact_merges_sources_without_duplicate_items(
     # 另一个账户的同正文事实完全隔离。
     harness.extract("message-1", TWO_FACT_MESSAGE, account=OTHER_ACCOUNT)
     assert {item.text for item in harness.items()} == {GOAL_TEXT, STATUS_TEXT}
-    assert len(harness.records(OTHER_ACCOUNT)) == 2
     assert harness.items(OTHER_ACCOUNT)[0].source_message_ids == ["message-1"]
 
 
@@ -421,26 +409,23 @@ def test_user_edited_item_is_a_normal_result_not_a_commit_failure(
 
 
 def test_retry_does_not_revive_a_deleted_fact(harness: _Harness) -> None:
-    """用户删除的事实不会被自动提取或重试复活，也不会记成虚假成功。"""
+    """用户删除的事实不会被自动提取或重试复活，也不误报失败。"""
 
     harness.extract("message-1", TWO_FACT_MESSAGE)
     goal = next(item for item in harness.items() if item.text == GOAL_TEXT)
     harness.atomic.delete_item(ACCOUNT, goal.profile_item_id, goal.version)
 
     result = harness.extract("message-2", TWO_FACT_MESSAGE)
-    assert result.run.status == ProfileExtractionStatus.PENDING
+    # 命中墓碑按正常跳过处理（用户权威），不是系统失败也不需要重试。
+    assert result.run.status == ProfileExtractionStatus.SUCCEEDED
     for _ in range(3):
         harness.retry()
 
     # 被删的事实不复活；同批次的其他事实留在删除前的状态，没有被部分提交。
     assert {item.text for item in harness.items()} == {STATUS_TEXT}
-    assert [item.source_message_ids for item in harness.items()] == [["message-1"]]
-    # 删除后的再次提取无法复活的事实落到「重试耗尽」，不是成功；先前
-    # 正常完成的消息只留下成功的任务记账（改进工单 17 的异步调度）。
+    assert [item.source_message_ids for item in harness.items()] == [
+        ["message-1", "message-2"]
+    ]
     assert {task.status for task in harness.tasks()} == {
-        ProfileExtractionStatus.SUCCEEDED,
-        ProfileExtractionStatus.EXHAUSTED,
+        ProfileExtractionStatus.SUCCEEDED
     }
-    runs = {run.message_id: run for run in harness.state.list_runs(ACCOUNT)}
-    assert runs["message-2"].status == ProfileExtractionStatus.EXHAUSTED
-    assert runs["message-2"].outcome.value == "permanent_failure"

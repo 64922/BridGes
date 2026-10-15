@@ -247,9 +247,8 @@ def test_formal_replay_uses_v2_idempotency_and_supervised_worker(tmp_path: Path)
         "SELECT extractor_version FROM profile_extraction_observations "
         "WHERE extractor_version LIKE 'profile-auto-v2%'"
     ).fetchall()
-    records = database.connection.execute(
-        "SELECT migration_version FROM profile_four_dimension_records "
-        "WHERE migration_version LIKE 'profile-auto-v2%'"
+    items = database.connection.execute(
+        "SELECT text FROM profile_items WHERE account_id = 'account-live'"
     ).fetchall()
     queue_rows = database.connection.execute(
         "SELECT status FROM task_claims WHERE queue_name = 'profile-replay-v2'"
@@ -263,6 +262,7 @@ def test_formal_replay_uses_v2_idempotency_and_supervised_worker(tmp_path: Path)
     assert v2_runs[0][1] == "succeeded"
     assert v2_tasks[0][1] == "succeeded"
     assert len(observations) == 1
-    assert len(records) == 1
+    assert len(items) == 1
+    assert "Transformer" in items[0][0]
     assert len(queue_rows) == 1
     assert queue_rows[0][0] == "completed"

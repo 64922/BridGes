@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import {
+  createAtomicProfileItem,
   deleteAtomicProfileItem,
   fetchAtomicProfileItemEvidence,
   listAtomicProfileItems,
@@ -26,11 +27,29 @@ const ORIGIN_LABELS: Record<AtomicProfileWriteOrigin, string> = {
 };
 
 const EMPTY_COPY =
-  "这里还没有长期信息。系统只从你明确说过、能引用原话的消息里整理稳定事实，" +
-  "不会推断人格或心理状态；聊到相关内容的下一轮，也会按任务需要少量取用。";
+  "这里还没有长期信息。点「添加一条信息」可以自己记下一条，" +
+  "也可以像平常一样聊天——系统只从你明确说过、能引用原话的消息里整理稳定" +
+  "事实，不会推断人格或心理状态；聊到相关内容的下一轮，也会按任务需要少量取用。";
 
 const DELETE_CONFIRM =
   "删除后这条信息会从后续对话的上下文里移除，旧消息重放也不会让它回来。继续吗？";
+
+/** 主题输入按逗号/顿号分隔；空主题不构成保存门槛，多主题不复制条目。 */
+function parseTopics(value: string): string[] {
+  const seen = new Set<string>();
+  const topics: string[] = [];
+  for (const raw of value.split(/[,，、;；]/)) {
+    const topic = raw.trim();
+    if (!topic || seen.has(topic)) continue;
+    seen.add(topic);
+    topics.push(topic);
+  }
+  return topics;
+}
+
+function topicsToInput(topics: string[] | undefined): string {
+  return (topics ?? []).join("，");
+}
 
 const FEEDBACK_OPTIONS: Array<{
   kind: AtomicProfileFeedbackKind;
@@ -145,6 +164,11 @@ export function AtomicProfileCenter() {
     text: string;
     ok: boolean;
   } | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [addDraft, setAddDraft] = useState("");
+  const [addTopics, setAddTopics] = useState("");
+  const [addBusy, setAddBusy] = useState(false);
+  const [draftTopics, setDraftTopics] = useState("");
 
   const load = async () => {
     try {
@@ -224,12 +248,14 @@ export function AtomicProfileCenter() {
     setError(null);
     setEditingId(item.profile_item_id);
     setDraft(item.text);
+    setDraftTopics(topicsToInput(item.topics));
     if (expandedId === item.profile_item_id) setExpandedId(null);
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setDraft("");
+    setDraftTopics("");
   };
 
   const saveEdit = async () => {
@@ -243,6 +269,7 @@ export function AtomicProfileCenter() {
       const updated = await modifyAtomicProfileItem(editingId, {
         text,
         version: current.version,
+        topics: parseTopics(draftTopics),
       });
       setItems(
         (previous) =>
@@ -286,6 +313,55 @@ export function AtomicProfileCenter() {
       );
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const startAdd = () => {
+    setError(null);
+    setAdding(true);
+    cancelEdit();
+    if (expandedId !== null) {
+      clearEvidence(expandedId);
+      setExpandedId(null);
+    }
+  };
+
+  const cancelAdd = () => {
+    setAdding(false);
+    setAddDraft("");
+    setAddTopics("");
+  };
+
+  const submitAdd = async () => {
+    const text = addDraft.trim();
+    if (!text) return;
+    try {
+      setAddBusy(true);
+      // 手动添加与聊天「记住」同一条用户权威路径：重复内容合并到既有
+      // 条目，服务端返回落库后的条目（可能是被合并的旧条目）。
+      const created = await createAtomicProfileItem({
+        text,
+        topics: parseTopics(addTopics),
+      });
+      setItems((previous) => {
+        if (previous === null) return [created];
+        const exists = previous.some(
+          (item) => item.profile_item_id === created.profile_item_id
+        );
+        return exists
+          ? previous.map((item) =>
+              item.profile_item_id === created.profile_item_id ? created : item
+            )
+          : [...previous, created];
+      });
+      clearEvidence(created.profile_item_id);
+      cancelAdd();
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "长期信息添加失败，请重试。"
+      );
+    } finally {
+      setAddBusy(false);
     }
   };
 
@@ -476,6 +552,47 @@ export function AtomicProfileCenter() {
         </p>
       </header>
 
+      <div className={styles.addSection}>
+        {adding ? (
+          <div className={styles.addForm}>
+            <textarea
+              className={styles.editor}
+              value={addDraft}
+              maxLength={1000}
+              rows={3}
+              aria-label="要添加的长期信息"
+              placeholder="例如：我养了一只猫叫团子"
+              onChange={(event) => setAddDraft(event.target.value)}
+            />
+            <input
+              className={styles.topicsInput}
+              value={addTopics}
+              maxLength={200}
+              aria-label="长期信息主题"
+              placeholder="主题（可选，用逗号分隔，如：兴趣与喜好）"
+              onChange={(event) => setAddTopics(event.target.value)}
+            />
+            <div className={styles.actions}>
+              <button type="button" onClick={cancelAdd} disabled={addBusy}>
+                取消
+              </button>
+              <button
+                type="button"
+                className={styles.primary}
+                disabled={!addDraft.trim() || addBusy}
+                onClick={() => void submitAdd()}
+              >
+                添加
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={startAdd}>
+            添加一条信息
+          </button>
+        )}
+      </div>
+
       {error ? (
         <div className={styles.error} role="alert">
           <span>{error}</span>
@@ -520,6 +637,14 @@ export function AtomicProfileCenter() {
                       aria-label="长期信息内容"
                       onChange={(event) => setDraft(event.target.value)}
                     />
+                    <input
+                      className={styles.topicsInput}
+                      value={draftTopics}
+                      maxLength={200}
+                      aria-label="长期信息主题"
+                      placeholder="主题（可选，用逗号分隔；清空表示无主题）"
+                      onChange={(event) => setDraftTopics(event.target.value)}
+                    />
                     <div className={styles.actions}>
                       <button
                         type="button"
@@ -547,6 +672,15 @@ export function AtomicProfileCenter() {
                       {item.user_edited_at ? " · 已由你修改" : ""} · 最近更新于{" "}
                       {formatUpdatedTime(item.updated_at)}
                     </p>
+                    {(item.topics ?? []).length > 0 ? (
+                      <ul className={styles.topics} data-testid="atomic-topics">
+                        {(item.topics ?? []).map((topic) => (
+                          <li key={topic} className={styles.topic}>
+                            {topic}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                     <div className={styles.actions}>
                       <button
                         type="button"
