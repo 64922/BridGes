@@ -1,0 +1,60 @@
+{
+  "kind": "profile-baseline-run-lock",
+  "corpus_version": "profile-loop-corpus-v2",
+  "corpus_sha256": "ac4017b4d27c08ebb60df409efc54c6c223ba67f417447c676c9c221047fd026",
+  "journeys": [
+    "t01-name",
+    "t01-pet",
+    "t01-habit",
+    "t02-psychology",
+    "t03-time-limit",
+    "t04-cross-turn",
+    "positive-academic-control",
+    "recall-academic-control"
+  ],
+  "response_mode": "stub",
+  "injected_models_overridden": true,
+  "stub_profile_extraction": true,
+  "stub_chat": true,
+  "git_commit": "ecb6c38c38afd9046a686aa4645f58785e206af5",
+  "git_dirty": true,
+  "pipeline_snapshot_sha256": "e3fe083a47f58e6b09e113d7fa3e83a8337d213301a74eb7c64ff70016b28211",
+  "evaluation_sha256": "5e272723803b20d926432d5c9fdeab8b5af782efb113ca48f42c2dab66c2b108",
+  "python_version": "3.11.15",
+  "model_config": {
+    "model_id": "qwen3.7-plus-2026-05-26",
+    "capabilities": {
+      "text": true,
+      "image": true,
+      "tool_calling": true,
+      "structured_output": true
+    },
+    "context_window": 1000000,
+    "max_input_tokens": 999000,
+    "metadata_version": "bailian-model-list-v1",
+    "validated_at": null,
+    "revision": 0,
+    "source": "factory"
+  },
+  "contract_versions": {
+    "automatic_extractor": "profile-auto-v2",
+    "signal_classifier": "profile-signal-v3",
+    "prompt": "profile-extraction-prompt-v5",
+    "recipe": "profile-extraction-recipe-v1",
+    "context": "profile-extraction-context-v1",
+    "quality_policy": "profile-extraction-quality-v1",
+    "atomic_migration": "profile-atomic-v1"
+  },
+  "budget_constants": {
+    "turn_timeout_seconds": 600.0,
+    "profile_extraction_max_retries": 3,
+    "profile_extraction_max_neighbors": 2
+  },
+  "credentials": {
+    "qwen_configured": false,
+    "qwen_source": "none",
+    "tavily_configured": false,
+    "tavily_source": "none"
+  },
+  "started_at": "2026-10-15T12:12:46+00:00"
+}
