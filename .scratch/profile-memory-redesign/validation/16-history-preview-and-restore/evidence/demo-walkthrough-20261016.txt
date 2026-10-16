@@ -1,13 +1,14 @@
-画像工单 16 走查（确定性） 20261016T045036Z
-环境：conda agent / Python 3.11.15；SCHEMA_VERSION=84；临时库 .tmp/issue16-demo-20261016T045036Z
+画像工单 16 走查（确定性） 20261016T050022Z
+环境：conda agent / Python 3.11.15；SCHEMA_VERSION=84；临时库 .tmp/issue16-demo-20261016T050022Z
 
 [1] 权威来源确认与只读预览（Alice 主账户 + Bob 隔离）
-    来源：D:\BridGes-worktrees\issue-16-history-preview-and-restore\.tmp\issue16-demo-20261016T045036Z\runtime\bridges.db（schema 84，writer_state=inactive）
+    来源：D:\BridGes-worktrees\issue-16-history-preview-and-restore\.tmp\issue16-demo-20261016T050022Z\runtime\bridges.db（schema 84，writer_state=inactive）
     [PASS] 重复预览在同一快照上结果一致
     [PASS] 预览前后库文件摘要与业务行计数不变、无抽取运行（只读）
     条目分类：active_total=9，manual_preserved=3，automatic_verifiable=2，automatic_partial_evidence=1，automatic_deleted_evidence=1，automatic_unverified_source=1，automatic_missing_evidence=1，sensitive_authorized=1，sensitive_unauthorized=1，credentials_flagged=1，withdrawn=1，superseded=1
     [PASS] 人工/自动/部分/删除/来源无法核验/无证据/敏感/凭据/撤回/被替代分类符合合成库
     [PASS] 定位标识指回对应条目（人工保留/删除证据/材料来源/敏感/凭据）
+    [PASS] 材料类来源列出待重新核验的来源标识（不默认可提取）
     聊天范围：可用 2/6（墓碑 1、未完成 1、禁止记录 1、撤回 1）
     [PASS] 聊天范围与跳过原因符合合成库，且按账户限定会话
     [PASS] 控制开关、内容禁止与删除屏障计数、领域引用（反馈）可核对
@@ -29,9 +30,9 @@
     [PASS] 重新预览后新清单重新新鲜
 
 [4] 可恢复备份与隔离开演（实际打开并逐项对账）
-    备份：D:\BridGes-worktrees\issue-16-history-preview-and-restore\.tmp\issue16-demo-20261016T045036Z\backup\history.db（1695744 字节，schema 84）
+    备份：D:\BridGes-worktrees\issue-16-history-preview-and-restore\.tmp\issue16-demo-20261016T050022Z\backup\history.db（1695744 字节，schema 84）
     [PASS] 备份、manifest 与恢复记录均已写出，隔离开演判定通过
-    演练：opened=True，integrity=ok，state_digest_matches=True，对账字段 43 项
+    演练：opened=True，integrity=ok，state_digest_matches=True，对账字段 44 项
     [PASS] 恢复副本实际打开：事实/证据/控制/屏障/领域引用全部对账
     [PASS] 一致性取得方式与恢复所需版本已记录；演练临时副本已清理
     [PASS] 对同一备份可重复执行恢复演练
@@ -48,6 +49,6 @@
     [PASS] 暂停记录后全部可读消息（4 条）落入 recording_off，eligible 归零
     [PASS] 材料类（非聊天）来源条目列为「来源无法核验」，范围说明拒绝默认提取
 
-运行目录（保留供复核）：D:\BridGes-worktrees\issue-16-history-preview-and-restore\.tmp\issue16-demo-20261016T045036Z
-数据清理：确认无需复核后删除该目录（Remove-Item -LiteralPath 'D:\BridGes-worktrees\issue-16-history-preview-and-restore\.tmp\issue16-demo-20261016T045036Z' -Recurse -Force）；其中仅含本脚本生成的合成数据。
+运行目录（保留供复核）：D:\BridGes-worktrees\issue-16-history-preview-and-restore\.tmp\issue16-demo-20261016T050022Z
+数据清理：确认无需复核后删除该目录（Remove-Item -LiteralPath 'D:\BridGes-worktrees\issue-16-history-preview-and-restore\.tmp\issue16-demo-20261016T050022Z' -Recurse -Force）；其中仅含本脚本生成的合成数据。
 结果：全部通过

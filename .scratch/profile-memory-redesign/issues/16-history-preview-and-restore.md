@@ -53,4 +53,6 @@
 - 走查（确定性合成库，6 旅程全部通过）：只读预览可重复且库摘要/行计数不变、无抽取运行、清单不含原文；路径冲突/旧新 schema/未知账户显式拒绝且旧库读回仍 83；新增消息/修改来源/控制变化判过期并可重新预览；备份实际打开对账 43 字段、记录写出、可重复演练；过期清单拒绝备份、坏副本 `backup_drill_failed`/`backup_unverified`、原备份不受影响；暂停记录后 eligible 归零、材料类来源不默认可提取。
 - 静态：`mypy src` 141=141、`ruff check .` 445=445 与 main 归一化集合一致（新增文件 0 诊断）；`pip check` 通过。
 - 验证记录：`.scratch/profile-memory-redesign/validation/16-history-preview-and-restore/verification-record.md`（含演练命令、逐旅程预期、失败恢复与清理步骤、17 接入说明）；走查证据 `.../evidence/demo-walkthrough-20261016.txt`，脚本 `.../tools/walk_issue16_history_preview_demo.py`（可复跑）。
-- 已知限制：材料类来源在 10 票接入前一律计入「来源无法核验」，预览不解释其授权语义；Windows 持锁时写入者探测为 `writer_state_unknown`（与 `writer_active` 同为硬门）；不执行生产重整、不停止运行实例、预览不构成恢复许可，详见验证记录 §7。
+- 已知限制：材料类来源在 10 票接入前一律计入「来源无法核验」并列出待核验来源标识（不默认可提取），授权语义仍由 10 的合同定义；Windows 持锁时写入者探测为 `writer_state_unknown`（与 `writer_active` 同为硬门）；不执行生产重整、不停止运行实例、预览不构成恢复许可，详见验证记录 §7。
+
+2026-10-16（评审修复）：两轴代码评审（Standards + Spec）后修复并复验：`history_preview.py`（原 653 行）拆为 `history_preview.py` + `history_backup.py`，`history_repository.py`（原 507 行）拆为 `history_repository.py` + `history_snapshot.py`（均低于 500 行）；`automatic._normalize` 提升为公共 `normalize_message_content`（消除跨模块私有依赖，匹配语义与自动抽取保持同一实现）；`ItemEvidenceSummary` 新增 `unverified_source_refs` 列出待重新核验的来源标识；删除未使用的 `HistoryPreviewManifest.save/load` 类方法；备份与独立恢复演练共用 `_ensure_reconciled` 硬门。复验：17 项新测试与 `tests/profiles tests/storage tests/lifecycle` 894 项通过；全量复跑 327 failed / 5598 passed / 39 skipped，差集仍为分支独有 0；`mypy src` 141=141、`ruff check .` 445=445 与 main 归一化一致；走查 6 旅程全部通过（证据已更新）。

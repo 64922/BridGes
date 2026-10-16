@@ -41,11 +41,13 @@ from pydantic import SecretStr  # noqa: E402
 
 from bridges.config import Settings  # noqa: E402
 from bridges.profiles.atomic import identity_key  # noqa: E402
+from bridges.profiles.history_backup import (  # noqa: E402
+    create_history_backup,
+    verify_history_restore,
+)
 from bridges.profiles.history_preview import (  # noqa: E402
     ProfileHistoryError,
-    create_history_backup,
     preview_history,
-    verify_history_restore,
     verify_preview_manifest,
 )
 from bridges.profiles.replay import (  # noqa: E402
@@ -396,6 +398,10 @@ def journey_1_readonly_preview(script: _Script, run_dir: Path) -> Path:
         and items.locators["sensitive_authorized"] == [keys["sensitive_authorized"]]
         and keys["credential"] in items.locators["credentials_flagged"],
         "定位标识指回对应条目（人工保留/删除证据/材料来源/敏感/凭据）",
+    )
+    script.check(
+        items.unverified_source_refs == ("material:resume:alice~v1",),
+        "材料类来源列出待重新核验的来源标识（不默认可提取）",
     )
 
     chat = manifest.chat_scope
