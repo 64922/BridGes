@@ -25,13 +25,13 @@
 
 ## 验收标准
 
-- [ ] 明确身份纠错定位对应事实，当前与后续回答均不沿用旧结论。
-- [ ] 「今天简短」不改变长期偏好，「以后先给结论」正确持久化。
-- [ ] 「解释太难」调整表达，不自动产生能力低或掌握不足标签。
-- [ ] 「不是这个意思」无法定位时不猜测批量修改，不扩大敏感授权。
-- [ ] 保存失败仍可依据本轮明确事实改答并诚实反馈；改答失败不回滚已成功纠正或假称完成。
-- [ ] 重复反馈与生成重试不重复写记忆或执行工具副作用，删除竞态受相同守卫约束。
-- [ ] 反馈与运行关系支持重启、读取、导出和账号删除，聊天状态与错误反馈完整。
+- [x] 明确身份纠错定位对应事实，当前与后续回答均不沿用旧结论。
+- [x] 「今天简短」不改变长期偏好，「以后先给结论」正确持久化。
+- [x] 「解释太难」调整表达，不自动产生能力低或掌握不足标签。
+- [x] 「不是这个意思」无法定位时不猜测批量修改，不扩大敏感授权。
+- [x] 保存失败仍可依据本轮明确事实改答并诚实反馈；改答失败不回滚已成功纠正或假称完成。
+- [x] 重复反馈与生成重试不重复写记忆或执行工具副作用，删除竞态受相同守卫约束。
+- [x] 反馈与运行关系支持重启、读取、导出和账号删除，聊天状态与错误反馈完整。
 
 ## 验证与交付
 
@@ -44,3 +44,12 @@
 ## Comments
 
 2026-10-15：用户回复「按此发布」，确认本次拆分与依赖。已发布为 ready-for-agent，尚无实施记录。
+
+2026-10-16：实施与验证完成（分支 `codex/issue-12-feedback-correction-loop`，基点 `main@631a4952`）。
+
+- 交付：新契约 `contracts/feedback_correction.py`（六类 kind、`has_replacement`、运行元数据/投影合同）；新模块 `profiles/feedback.py`（确定性路由 + 采用快照定位）；`atomic.correct_item`（ACTIVE + 版本守卫、幂等、抑制键）；`automatic.process_synchronous_controls(feedback_route=...)` 同步处理（定位改写/未定位按原句记住并收敛幂等/偏好写入/本轮要求与表达投诉零写入/指向不明只澄清，敏感门防止订正绕过用途要求；反馈消息终结普通异步抽取，重放复用终态记账）；聊天接线（准入路由与关系快照、fail-open 如实 FAILED、重试克隆、消息投影、study/日常提示块、修正回合召回查询融合、`FEEDBACK_CORRECTION` 载荷类别、导出脱敏元数据）；`openapi.json` 重生成 + `generated.ts` 同步。
+- 测试：新增 34 项（`tests/profiles/test_issue12_feedback_router.py` 13、`tests/profiles/test_issue12_feedback_control.py` 9、`tests/chat/test_issue12_feedback_correction_loop.py` 12），聚焦 34 通过。责任票行为变化：t04 第二轮偏好反馈改走确定性路由（原「两次提取 run 均携带窗口」断言按 05/12 双责任更新，载荷级窗口机制仍由 05 测试独立覆盖）。全量对 main（同命令 `-n 4 --ignore=tests/career_plan`）：分支 328 failed / 5667 passed / 39 skipped vs main 328 / 5635 / 37，逐条差集**分支独有失败 0**（差异均为既有 flaky/并发冲突环境噪音；跳过 +2 为 worktree 无前端构建产物的 runtime 守卫差异）。
+- 走查（确定性 7 段、27 项检查全部通过）：纠错→条目状态→修正回答→新会话复问不复发；本轮要求/表达投诉零长期写入；偏好写入并当轮可见；指向不明只澄清；保存失败/生成失败/删除竞态与过期版本注入全部如实报告且不误改。证据 `validation/12-feedback-correction-loop/evidence/demo-walkthrough-20261016.txt`，脚本 `.../tools/walk_issue12_feedback_demo.py`（可复跑）。
+- 静态：`mypy src` 141=141（无新增，唯一涉及改动文件为既有行号平移）、`ruff`（改动文件）新增 0、`pip check` 通过。
+- 验证记录：`.scratch/profile-memory-redesign/validation/12-feedback-correction-loop/verification-record.md`。
+- 已知限制：带跨轮指代的偏好反馈按原句写入、指代消解交给修正回合模型理解；非常规措辞可能不路由而回落既有路径（保守）；同一消息中混合的新事实不在本票拆分范围。详见验证记录 §6。
