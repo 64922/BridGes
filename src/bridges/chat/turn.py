@@ -164,7 +164,10 @@ from bridges.profiles.atomic import (
     RECALL_LOW_CONFIDENCE_REASON,
     AtomicProfileService,
 )
-from bridges.profiles.automatic import AutomaticProfileService
+from bridges.profiles.automatic import (
+    AutomaticProfileService,
+    parse_turn_profile_directive,
+)
 from bridges.profiles.four_dimensions import FourDimensionProfileService
 from bridges.profiles.purpose import (
     DECISION_EXPLANATION_START,
@@ -2908,22 +2911,39 @@ class TurnOrchestrator:
                     context_budget,
                     current_message_id=until_user_message_id,
                 )
-            if not use_profile or (
-                self._automatic_profiles is not None
-                and not self._automatic_profiles.is_profile_usage_enabled(account_id)
-            ):
-                # 控制语义进入模型合同；事实级历史过滤由 18 的抑制接缝承接，
-                # 此处用途限制不代表已移除原文、摘要或派生内容里的旧个人事实。
-                history = [dict(message) for message in history]
-                history[0]["content"] += (
-                    "\n【本轮长期信息使用限制】用户已停用长期画像使用。"
-                    "不得从旧对话、摘要或旧回答中的个人信息进行间接个性化。"
-                    "只保留当前任务续接必要的目标、来源和明确条件；"
-                    "本轮用户新提供的信息照常服务当前请求。"
-                )
             mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
             route_messages = self._repo.list_messages(account_id, conversation_id)
             route_owner = owner_user_message(route_messages, assistant_message_id)
+            # 画像工单 08：「本轮不用」与切片编译共用同一确定性识别（当前用户
+            # 消息），不依赖生成入口是否携带截断标识。
+            turn_usage_restricted = (
+                route_owner is not None
+                and parse_turn_profile_directive(route_owner.content)
+            )
+            if (
+                not use_profile
+                or (
+                    self._automatic_profiles is not None
+                    and not self._automatic_profiles.is_profile_usage_enabled(account_id)
+                )
+                or turn_usage_restricted
+            ):
+                # 控制语义进入模型合同；事实级历史过滤由 18 的抑制接缝承接，
+                # 此处用途限制不代表已移除原文、摘要或派生内容里的旧个人事实。
+                # 画像工单 08：「本轮不用」同样停用历史个人信息的间接个性化，
+                # 任务续接必要前文与本轮新自述仍照常服务当前请求。
+                history = [dict(message) for message in history]
+                history[0]["content"] += (
+                    "\n【本轮长期信息使用限制】"
+                    + (
+                        "用户本轮要求不使用长期画像。"
+                        if turn_usage_restricted
+                        else "用户已停用长期画像使用。"
+                    )
+                    + "不得从旧对话、摘要或旧回答中的个人信息进行间接个性化。"
+                    "只保留当前任务续接必要的目标、来源和明确条件；"
+                    "本轮用户新提供的信息照常服务当前请求。"
+                )
             route = capability_route_from(
                 current.route
                 if current.route is not None
@@ -6896,14 +6916,57 @@ class TurnOrchestrator:
                 None,
                 None,
             )
+        # 画像工单 08：本轮不用的显式控制指令只影响当前回合——不编译、不
+        # 注入长期画像，也不写回长期开关或删除任何条目；当前用户新自述与
+        # 任务必要前文照常服务本请求。
+        current_messages = self._repo.list_messages(account_id, conversation_id)
+        current_user_message = owner_user_message(
+            current_messages, assistant_message_id
+        )
+        if current_user_message is not None and parse_turn_profile_directive(
+            current_user_message.content
+        ):
+            self._audit_slice_usage(
+                account_id,
+                mode=mode.value,
+                enabled=False,
+                slice_id=None,
+                item_count=0,
+                excluded_count=0,
+                material_categories=material_categories,
+            )
+            return (
+                self._persist_context_note(
+                    account_id,
+                    assistant_message_id,
+                    ContextNoteProjection(
+                        state=ContextNoteState.OFF,
+                        profile_enabled=False,
+                        mode=mode,
+                        used_at=now,
+                        material_categories=material_categories,
+                        note=(
+                            f"本轮明确要求不使用{_PROFILE_CONTEXT_LABEL}（本轮不用）；"
+                            "已记录内容保留，回答只基于当前对话与任务材料。"
+                        ),
+                    ),
+                ),
+                None,
+                [],
+                None,
+                None,
+                None,
+            )
         # 改进工单 07：长期画像使用开关关闭时不读取任何长期画像正文（原子
         # 列表、四维记录与旧画像切片全部跳过）；当前用户原文与任务材料照常
         # 参与回答，已记录信息保留、主动管理不受影响（profile-contract-v1
         # R08）。重新开启后未删除且有效的信息恢复可用。
-        if (
-            self._automatic_profiles is not None
-            and not self._automatic_profiles.is_profile_usage_enabled(account_id)
-        ):
+        usage_controls = (
+            self._automatic_profiles.account_controls(account_id)
+            if self._automatic_profiles is not None
+            else None
+        )
+        if usage_controls is not None and not usage_controls.usage_enabled:
             self._audit_slice_usage(
                 account_id,
                 mode=mode.value,
@@ -7124,6 +7187,12 @@ class TurnOrchestrator:
                     ),
                 })
                 config["adopted_profile_slice"] = stored.model_dump(mode="json")
+                # 画像工单 08：冻结编译时的使用控制序号，发送前核对；期间发生
+                # 的关闭/重开都使这轮旧切片失效并按最新控制重编译。
+                if usage_controls is not None:
+                    config["profile_usage_control_version"] = (
+                        usage_controls.usage_control_version
+                    )
                 self._repo.update_generation_config(account_id, run.run_id, config)
             self._audit_slice_usage(
                 account_id,
@@ -7216,19 +7285,39 @@ class TurnOrchestrator:
         revocation_version: str | None,
         assistant_message_id: str | None = None,
     ) -> bool:
-        """切片编译后到发送前是否仍未被撤回/失效（工单 18）。
+        """切片编译后到发送前是否仍未被撤回/失效（工单 18/08）。
 
         撤回发生在本轮编译之后、模型调用之前时，旧切片不得进入载荷；已发出
-        的云端上下文无法收回，检查只阻止后续调用继续使用。非原子画像服务
-        没有撤回版本，按「不检查」处理。
+        的云端上下文无法收回，检查只阻止后续调用继续使用。画像工单 08 增加
+        使用控制核对：关闭长期使用即失效，重开或任何真实控制变化（控制序号
+        改变）同样失效，按最新控制重编译。非原子画像服务没有撤回版本，按
+        「不检查」处理。
         """
 
         if revocation_version is None or self._atomic_profiles is None:
+            # 本轮没有采用任何画像切片（未编译/已按关闭或本轮不用降级）：
+            # 没有可失效的内容，披露保持编译时结论。
             return True
+        usage_controls = (
+            self._automatic_profiles.account_controls(account_id)
+            if self._automatic_profiles is not None
+            else None
+        )
+        if usage_controls is not None and not usage_controls.usage_enabled:
+            # 编译已采用切片、发送前使用被关闭：旧切片不得进入载荷。
+            return False
         if assistant_message_id is not None:
             run = self._repo.get_run_by_message(account_id, assistant_message_id)
-            saved = (run.config or {}).get("adopted_profile_slice") if run else None
+            config = run.config or {} if run else {}
+            saved = config.get("adopted_profile_slice")
             if isinstance(saved, dict):
+                expected_version = config.get("profile_usage_control_version")
+                if (
+                    usage_controls is not None
+                    and expected_version is not None
+                    and usage_controls.usage_control_version != expected_version
+                ):
+                    return False
                 return self._atomic_profiles.is_adopted_slice_current(
                     account_id, AdoptedProfileSlice.model_validate(saved)
                 )

@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import logging
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
@@ -321,6 +322,16 @@ class AutomaticProfileRepository(ABC):
     @abstractmethod
     def transaction(self) -> AbstractContextManager[None]: ...
 
+    @abstractmethod
+    def account_exists(self, account_id: str) -> bool:
+        """账户是否仍然存在（画像工单 08）。
+
+        迟到 worker 在模型调用后、提交前据此判断账户是否已删除：账户目录行
+        缺失且存在该账户的删除记录才判定为已删除（删除记录先于数据行写入并
+        在完成后保留）。账户删除后一律不写任何行，避免把来源快照正文或画像
+        内容重建回已删除账户；从未建行的库不算删除。
+        """
+
     def durable_queue(self) -> TaskQueue | None:
         """返回跨重启可恢复的重试队列；无持久化的实现返回空值。
 
@@ -561,6 +572,25 @@ def _privacy_directive(content: str) -> tuple[str, str | None] | None:
     if suffix is not None:
         return "content", _normalize(suffix.group(1)) or None
     return None
+
+
+logger = logging.getLogger(__name__)
+
+
+#: 画像工单 08：本轮不用的显式控制指令。只认「本轮/这次 + 不用 + 画像」的
+#: 明确组合，普通任务里的「这次不用复习了」不命中；控制只影响当前回合的
+#: 长期画像使用，不删除信息、不改变账户级开关，也不追溯授权禁录内容。
+_TURN_PROFILE_DIRECTIVE_RE = re.compile(
+    r"(?:这|本)(?:一)?(?:轮|次|回)(?:先|暂时)?"
+    r"(?:不用|不要用|别用|不使用|不参考|别参考|别带)"
+    r"(?:我)?(?:的)?(?:画像|记忆|长期(?:信息|记录|画像)|个人信息)"
+)
+
+
+def parse_turn_profile_directive(content: str) -> bool:
+    """识别「本轮不用长期画像」的显式控制指令（确定性，不调用模型）。"""
+
+    return _TURN_PROFILE_DIRECTIVE_RE.search(_normalize(content)) is not None
 
 
 def has_probable_profile_signal(content: str) -> bool:
@@ -1123,6 +1153,10 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
             key=lambda run: run.created_at,
         )
 
+    def account_exists(self, account_id: str) -> bool:
+        # 内存替身没有账户目录：测试删除竞态用 SQLite 实现；这里恒真。
+        return True
+
     def get_task(
         self, account_id: str, message_id: str, version: str, source_hash: str
     ) -> ProfileExtractionRetryTask | None:
@@ -1266,6 +1300,25 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
         """
 
         return joined_transaction(self.database)
+
+    def account_exists(self, account_id: str) -> bool:
+        """账户目录行仍存在，且没有被删除记录终结（画像工单 08）。
+
+        只有账户行缺失且 ``account_deletions`` 留有该账户的删除记录才判定为
+        已删除：删除记录先于数据行写入、完成后保留，既覆盖删除进程中途
+        （账户行已删），也避免把从未建行的库误判为已删除。
+        """
+
+        connection = self.database.connection
+        row = connection.execute(
+            "SELECT 1 FROM accounts WHERE account_id = ?", (account_id,)
+        ).fetchone()
+        if row is not None:
+            return True
+        deletion = connection.execute(
+            "SELECT 1 FROM account_deletions WHERE account_id = ?", (account_id,)
+        ).fetchone()
+        return deletion is None
 
     def durable_queue(self) -> TaskQueue | None:
         """持久化的提取重试队列；重试任务与运行记录同库同事务。"""
@@ -2072,6 +2125,10 @@ class AutomaticProfileService:
             and management_allowed
             else None
         )
+        # 画像工单 08：「本轮不用画像」与记忘同属本轮控制指令，由本机规则
+        # 即时处理；只影响当前回合使用，不删除信息、不改变账户级开关，
+        # 也不阻止记录期间的其他主动管理。
+        turn_directive = management_allowed and parse_turn_profile_directive(content)
         # 改进工单 18：明确的暂停/完成/恢复信号是目标生命周期变更，与「记住/
         # 忘掉」同属用户主动管理，在停止记录期间仍可生效。只在消息尚未终态
         # 记账时解析一次，重放不重复改状态。
@@ -2119,6 +2176,7 @@ class AutomaticProfileService:
             recording_blocked
             and memory_directive is None
             and lifecycle_signal is None
+            and not turn_directive
             and signal_classification.category != ProfileSignalCategory.CORRECTION
         ):
             self._repository.mark_message_tombstone(account_id, message_id)
@@ -2198,6 +2256,17 @@ class AutomaticProfileService:
                     outcome=outcome,
                     existing=existing,
                 )
+        if turn_directive:
+            # 控制消息不进入自动抽取；回合内的实际「不用画像」行为由聊天
+            # 编译链按同一确定性规则识别，重试沿用同一条用户消息。
+            return self._turn_control_result(
+                account_id=account_id,
+                message_id=message_id,
+                content=content,
+                source_hash=source_hash,
+                now=now,
+                existing=existing,
+            )
         if existing is not None and existing.status in {
             ProfileExtractionStatus.SUCCEEDED,
             ProfileExtractionStatus.EXHAUSTED,
@@ -2817,6 +2886,63 @@ class AutomaticProfileService:
         )
         return ProfilePreprocessResult(run=run)
 
+    def _turn_control_result(
+        self,
+        *,
+        account_id: str,
+        message_id: str,
+        content: str,
+        source_hash: str,
+        now: datetime,
+        existing: ProfileExtractionRun | None,
+    ) -> ProfilePreprocessResult:
+        """记录「本轮不用画像」控制消息；重放不覆盖既有终态结论。
+
+        控制行为本身由聊天编译链按用户消息确定性识别，本方法只保证这条
+        消息不进入自动抽取（否则一条控制指令可能被当成可记事实），并留下
+        可审计的本地规则结论；不新增或删除任何画像条目。
+        """
+
+        if existing is not None and existing.status in {
+            ProfileExtractionStatus.SUCCEEDED,
+            ProfileExtractionStatus.EXHAUSTED,
+        }:
+            return ProfilePreprocessResult(
+                run=existing,
+                committed_record_ids=existing.committed_record_ids,
+                observed_count=existing.observed_count,
+            )
+        run = existing or ProfileExtractionRun(
+            extraction_id=_stable_id(
+                "profile-extract",
+                account_id,
+                message_id,
+                self.extractor_version,
+                source_hash,
+            ),
+            account_id=account_id,
+            message_id=message_id,
+            extractor_version=self.extractor_version,
+            source_hash=source_hash,
+            source_snapshot=content,
+            status=ProfileExtractionStatus.SUCCEEDED,
+            outcome=ProfileExtractionOutcome.SUCCEEDED_TURN_CONTROL,
+            attempts=1,
+            source=ProfileExtractionSource.LOCAL_RULE,
+            created_at=now,
+            updated_at=now,
+        )
+        run.status = ProfileExtractionStatus.SUCCEEDED
+        run.outcome = ProfileExtractionOutcome.SUCCEEDED_TURN_CONTROL
+        run.attempts = max(1, run.attempts)
+        run.last_error = None
+        # 控制判定是纯本地规则：绝不为一条控制指令留下模型调用证据。
+        run.source = ProfileExtractionSource.LOCAL_RULE
+        run.updated_at = now
+        self._repository.save_run(run)
+        self._audit_outcome(run, result=AuditResult.SUCCESS, reason="turn_profile_control")
+        return ProfilePreprocessResult(run=run)
+
     def _extract_once(
         self,
         *,
@@ -3008,6 +3134,10 @@ class AutomaticProfileService:
         *,
         initial: bool = False,
     ) -> ProfileExtractionStatus:
+        if self._account_deleted(task.account_id):
+            # 画像工单 08：账号删除使迟到任务失效。绝不写任何行——包括
+            # task/run 记账（它们携带来源快照正文）与画像条目。
+            return ProfileExtractionStatus.EXHAUSTED
         run = self._repository.get_run(
             task.account_id, task.message_id, task.extractor_version, task.source_hash
         )
@@ -3063,6 +3193,10 @@ class AutomaticProfileService:
             if current_message is not None
             else ""
         )
+        if self._account_deleted(task.account_id):
+            # 画像工单 08：调度与尝试之间账户被删除时，RUNNING 记账同样不再
+            # 重建（真正的内容写入由提交前复核在同一事务内挡住）。
+            return ProfileExtractionStatus.EXHAUSTED
         task.status = ProfileExtractionStatus.RUNNING
         task.attempts = attempt
         task.updated_at = _now()
@@ -3089,6 +3223,10 @@ class AutomaticProfileService:
             )
             if signal_classification.category == ProfileSignalCategory.CORRECTION:
                 with self._commit.transaction():
+                    if self._account_deleted(task.account_id):
+                        # 账户删除与纠正提交串行：删除先生效时这条迟到纠正
+                        # 连同记账一起作废。
+                        return ProfileExtractionStatus.EXHAUSTED
                     intent = signal_classification.correction_intent
                     record_ids: list[str] = []
                     observed_count = 0
@@ -3192,6 +3330,10 @@ class AutomaticProfileService:
             if self._is_permanent_code(error_code) or error_code in _TRANSIENT_PROFILE_ERROR_CODES:
                 self._capability_degraded_reason = error_code
             with self._repository.transaction():
+                if self._account_deleted(task.account_id):
+                    # 账户在模型调用期间被删除：失败记账同样不落库，避免把
+                    # 来源快照正文随 task/run 行重建回已删除账户。
+                    return ProfileExtractionStatus.EXHAUSTED
                 # 本次真实尝试的锁与 run/task 状态同事务落库；即使重试
                 # 耗尽，失败锁也保留为不可覆盖的审计证据。
                 self._persist_attempt_locks(
@@ -3240,6 +3382,21 @@ class AutomaticProfileService:
             self._audit_outcome(run, result=AuditResult.SUCCESS)
         return task.status
 
+    def _account_deleted(self, account_id: str) -> bool:
+        """账户目录行是否已消失；迟到 worker 据此失败关闭（画像工单 08）。
+
+        只记录账户标识与原因，不记录消息正文或来源快照；内存替身没有账户
+        目录，恒返回 ``False``。
+        """
+
+        if self._repository.account_exists(account_id):
+            return False
+        logger.info(
+            "profile_extraction_account_deleted",
+            extra={"account_id": account_id, "reason": "account_deleted"},
+        )
+        return True
+
     def _recheck_source_before_commit(
         self,
         task: ProfileExtractionRetryTask,
@@ -3248,12 +3405,20 @@ class AutomaticProfileService:
     ) -> None:
         """最终短事务内的提交前复核（改进工单 17）。
 
-        模型调用在写事务外完成，提交前必须再次确认：抽取记录未被其他提交
-        终结、原消息未被墓碑或删除、原文哈希仍与本次一致、账户与内容级
-        记录许可仍开启。任何一项失效都失败关闭，不写迟到结果；用户编辑的
-        权威由原子写入层在同一事务内继续保护（见 Issue 16）。
+        模型调用在写事务外完成，提交前必须再次确认：账户仍存在、抽取记录
+        未被其他提交终结、原消息未被墓碑或删除、原文哈希仍与本次一致、
+        账户与内容级记录许可仍开启。任何一项失效都失败关闭，不写迟到结果；
+        用户编辑的权威由原子写入层在同一事务内继续保护（见 Issue 16）。
         """
 
+        if self._account_deleted(task.account_id):
+            # 画像工单 08：账号删除后迟到结果作废；本条检查与业务写入在同一
+            # 事务内，删除与提交二者串行，绝不为已删除账户重建任何内容。
+            raise AutomaticProfileError(
+                "profile_extraction_account_deleted",
+                "账户已删除",
+                retryable=False,
+            )
         if task.extractor_version != self.extractor_version:
             # 部署升级后旧版本的迟到结果不再提交：按新版本的提示词与
             # 质量策略重抽，避免混入过期语义。
@@ -3300,20 +3465,24 @@ class AutomaticProfileService:
     def _exhaust_task(
         self, task: ProfileExtractionRetryTask, run: ProfileExtractionRun, error: str
     ) -> ProfileExtractionStatus:
-        now = _now()
-        task.status = ProfileExtractionStatus.EXHAUSTED
-        task.last_error = error[:500]
-        task.updated_at = now
-        run.status = ProfileExtractionStatus.EXHAUSTED
-        run.outcome = (
-            ProfileExtractionOutcome.CORRECTION_FAILED
-            if run.outcome == ProfileExtractionOutcome.CORRECTION_FAILED
-            else ProfileExtractionOutcome.PERMANENT_FAILURE
-        )
-        run.last_error = task.last_error
-        run.updated_at = now
-        self._repository.save_task(task)
-        self._repository.save_run(run)
+        with self._repository.transaction():
+            if self._account_deleted(task.account_id):
+                # 账户删除使迟到任务的终结记账同样失效：不重建任何行。
+                return ProfileExtractionStatus.EXHAUSTED
+            now = _now()
+            task.status = ProfileExtractionStatus.EXHAUSTED
+            task.last_error = error[:500]
+            task.updated_at = now
+            run.status = ProfileExtractionStatus.EXHAUSTED
+            run.outcome = (
+                ProfileExtractionOutcome.CORRECTION_FAILED
+                if run.outcome == ProfileExtractionOutcome.CORRECTION_FAILED
+                else ProfileExtractionOutcome.PERMANENT_FAILURE
+            )
+            run.last_error = task.last_error
+            run.updated_at = now
+            self._repository.save_task(task)
+            self._repository.save_run(run)
         if run.outcome == ProfileExtractionOutcome.CORRECTION_FAILED:
             self._audit_correction_outcome(run, ProfileCorrectionStatus.FAILED)
         else:
