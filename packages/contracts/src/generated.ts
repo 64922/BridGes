@@ -3388,6 +3388,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profiles/ongoing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ongoing Items
+         * @description 当前账户的进行中事项（目标、进展、待续问题与领域引用）。
+         */
+        get: operations["list_ongoing_items_profiles_ongoing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/ongoing/{item_id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Ongoing Item State
+         * @description 暂停/完成/继续进行中目标；返回刷新后的事项区。
+         */
+        post: operations["update_ongoing_item_state_profiles_ongoing__item_id__state_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/ongoing/{item_id}/domain-reference": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Ongoing Domain Reference
+         * @description 设置/清除目标的领域引用；领域状态仍在读取时由领域提供方解析。
+         */
+        put: operations["update_ongoing_domain_reference_profiles_ongoing__item_id__domain_reference_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/profiles/observations": {
         parameters: {
             query?: never;
@@ -7566,6 +7626,26 @@ export interface components {
          * @enum {string}
          */
         AtomicProfileConflictState: "none" | "unresolved";
+        /**
+         * AtomicProfileDomainReference
+         * @description 目标条目上的领域引用（画像工单 13 的领域引用管理接缝）。
+         *
+         *     只保存「哪个领域、哪个对象」的引用（如学习领域的目标 id）；领域状态
+         *     不落画像库、不复制，投影读取时经所属领域注册的提供方实时解析。没有
+         *     接通提供方时如实标记未解析，绝不伪造学习状态。
+         */
+        AtomicProfileDomainReference: {
+            /**
+             * Domain
+             * @description 所属领域标识。
+             */
+            domain: string;
+            /**
+             * Reference Id
+             * @description 领域内对象标识。
+             */
+            reference_id: string;
+        };
         /**
          * AtomicProfileEvidenceQuoteStatus
          * @description 原话引用状态：只有 ``RECORDED`` 才展示正文，绝不伪造引语。
@@ -20616,6 +20696,157 @@ export interface components {
              * @default 1
              */
             version: number;
+        };
+        /**
+         * OngoingDomainReferenceProjection
+         * @description 投影里的领域引用：未解析时如实留空，不伪造领域状态。
+         */
+        OngoingDomainReferenceProjection: {
+            /**
+             * Domain
+             * @description 所属领域标识。
+             */
+            domain: string;
+            /**
+             * Reference Id
+             * @description 领域内对象标识。
+             */
+            reference_id: string;
+            /**
+             * Resolved
+             * @description 本次读取是否成功取得领域状态。
+             */
+            resolved: boolean;
+            /**
+             * Display
+             * @description 所属领域返回的展示文本；未解析时为空。
+             */
+            display?: string | null;
+            /**
+             * State Code
+             * @description 所属领域的状态标记；未解析时为空。
+             */
+            state_code?: string | null;
+        };
+        /**
+         * OngoingDomainReferenceUpdateRequest
+         * @description 设置/清除目标的领域引用请求（``null`` 表示清除）。
+         */
+        OngoingDomainReferenceUpdateRequest: {
+            /** @description 领域引用；``null`` 表示清除。 */
+            reference?: components["schemas"]["AtomicProfileDomainReference"] | null;
+            /**
+             * Version
+             * @description 操作前读到的条目版本号。
+             */
+            version: number;
+        };
+        /**
+         * OngoingEntryProjection
+         * @description 事项投影里的一条条目（目标是目标本身，其余是关联事实）。
+         */
+        OngoingEntryProjection: {
+            /** @description 本条在事项里的角色。 */
+            role: components["schemas"]["OngoingItemRole"];
+            /**
+             * Profile Item Id
+             * @description 稳定的原子条目标识。
+             */
+            profile_item_id: string;
+            /**
+             * Version
+             * @description 操作使用的乐观锁版本号。
+             */
+            version: number;
+            /**
+             * Text
+             * @description 条目正文（原样，不新增摘要）。
+             */
+            text: string;
+            /** @description 目标生命周期标记。 */
+            goal_state: components["schemas"]["AtomicProfileGoalState"];
+            /** @description 按有效期与目标状态折算的当前时效状态。 */
+            validity_status: components["schemas"]["AtomicProfileValidityStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近一次变化时间。
+             */
+            updated_at: string;
+            /**
+             * Source Message Ids
+             * @description 证据来源消息标识；待续问题的交流依据。
+             */
+            source_message_ids?: string[];
+        };
+        /**
+         * OngoingGoalAction
+         * @description 页面对事项的明确操作；只作用于精确定位的单个目标。
+         * @enum {string}
+         */
+        OngoingGoalAction: "pause" | "complete" | "resume";
+        /**
+         * OngoingItemProjection
+         * @description 一个进行中事项：目标 + 实际进展 + 待续问题 + 领域引用。
+         */
+        OngoingItemProjection: {
+            /** @description 目标条目。 */
+            goal: components["schemas"]["OngoingEntryProjection"];
+            /**
+             * Progress
+             * @description 与该目标关联、有真实交流依据的进展。
+             */
+            progress?: components["schemas"]["OngoingEntryProjection"][];
+            /**
+             * Pending Questions
+             * @description 与该目标关联、有真实交流依据的待续问题。
+             */
+            pending_questions?: components["schemas"]["OngoingEntryProjection"][];
+            /**
+             * Domain References
+             * @description 领域引用（状态实时解析，不落库复制）。
+             */
+            domain_references?: components["schemas"]["OngoingDomainReferenceProjection"][];
+        };
+        /**
+         * OngoingItemRole
+         * @description 一条投影条目在事项里的角色：目标、进展或待续问题。
+         * @enum {string}
+         */
+        OngoingItemRole: "goal" | "progress" | "pending_question";
+        /**
+         * OngoingItemStateUpdateRequest
+         * @description 页面对一个精确事项的暂停/完成/恢复请求。
+         */
+        OngoingItemStateUpdateRequest: {
+            /** @description 要执行的操作。 */
+            action: components["schemas"]["OngoingGoalAction"];
+            /**
+             * Version
+             * @description 操作前读到的条目版本号。
+             */
+            version: number;
+        };
+        /**
+         * OngoingItemsProjection
+         * @description 「进行中事项」页面投影（加载/空态由前端按 items 渲染）。
+         */
+        OngoingItemsProjection: {
+            /**
+             * Usage Enabled
+             * @description 长期记忆使用开关；关闭时页面仍列出事项供管理，回答不使用。
+             */
+            usage_enabled: boolean;
+            /**
+             * Notice
+             * @description 使用开关关闭等稳定提示文案；没有时为空。
+             */
+            notice?: string | null;
+            /**
+             * Items
+             * @description 按目标最近更新时间倒序的进行中事项。
+             */
+            items?: components["schemas"]["OngoingItemProjection"][];
         };
         /**
          * Operation
@@ -40701,6 +40932,174 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ongoing_items_profiles_ongoing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OngoingItemsProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_ongoing_item_state_profiles_ongoing__item_id__state_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OngoingItemStateUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OngoingItemsProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    update_ongoing_domain_reference_profiles_ongoing__item_id__domain_reference_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OngoingDomainReferenceUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OngoingItemsProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
                 };
             };
         };

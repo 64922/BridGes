@@ -15310,6 +15310,264 @@
         }
       }
     },
+    "/profiles/ongoing": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "List Ongoing Items",
+        "description": "当前账户的进行中事项（目标、进展、待续问题与领域引用）。",
+        "operationId": "list_ongoing_items_profiles_ongoing_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OngoingItemsProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/ongoing/{item_id}/state": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Update Ongoing Item State",
+        "description": "暂停/完成/继续进行中目标；返回刷新后的事项区。",
+        "operationId": "update_ongoing_item_state_profiles_ongoing__item_id__state_post",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OngoingItemStateUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OngoingItemsProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/profiles/ongoing/{item_id}/domain-reference": {
+      "put": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Update Ongoing Domain Reference",
+        "description": "设置/清除目标的领域引用；领域状态仍在读取时由领域提供方解析。",
+        "operationId": "update_ongoing_domain_reference_profiles_ongoing__item_id__domain_reference_put",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OngoingDomainReferenceUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OngoingItemsProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/profiles/observations": {
       "post": {
         "tags": [
@@ -29686,6 +29944,32 @@
         ],
         "title": "AtomicProfileConflictState",
         "description": "条目上的未解决冲突标记（画像工单 06）。\n\n``UNRESOLVED`` 表示同一单值属性槽存在含义不明的新旧说法：双方各自\n保留依据，争议部分不作为确定事实采用，只在相关任务确实依赖该属性\n时澄清。用户编辑、明确更正或明确变化后清除。"
+      },
+      "AtomicProfileDomainReference": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Domain",
+            "description": "所属领域标识。"
+          },
+          "reference_id": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Reference Id",
+            "description": "领域内对象标识。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "domain",
+          "reference_id"
+        ],
+        "title": "AtomicProfileDomainReference",
+        "description": "目标条目上的领域引用（画像工单 13 的领域引用管理接缝）。\n\n只保存「哪个领域、哪个对象」的引用（如学习领域的目标 id）；领域状态\n不落画像库、不复制，投影读取时经所属领域注册的提供方实时解析。没有\n接通提供方时如实标记未解析，绝不伪造学习状态。"
       },
       "AtomicProfileEvidenceQuoteStatus": {
         "type": "string",
@@ -50976,6 +51260,262 @@
         ],
         "title": "ObjectRef",
         "description": "Stable reference to an owned object.\n\nObjectRef carries enough context to re-authenticate and re-authorize a deep\nlink without relying on ambient session state alone."
+      },
+      "OngoingDomainReferenceProjection": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "title": "Domain",
+            "description": "所属领域标识。"
+          },
+          "reference_id": {
+            "type": "string",
+            "title": "Reference Id",
+            "description": "领域内对象标识。"
+          },
+          "resolved": {
+            "type": "boolean",
+            "title": "Resolved",
+            "description": "本次读取是否成功取得领域状态。"
+          },
+          "display": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display",
+            "description": "所属领域返回的展示文本；未解析时为空。"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Code",
+            "description": "所属领域的状态标记；未解析时为空。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "domain",
+          "reference_id",
+          "resolved"
+        ],
+        "title": "OngoingDomainReferenceProjection",
+        "description": "投影里的领域引用：未解析时如实留空，不伪造领域状态。"
+      },
+      "OngoingDomainReferenceUpdateRequest": {
+        "properties": {
+          "reference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AtomicProfileDomainReference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "领域引用；``null`` 表示清除。"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "操作前读到的条目版本号。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "OngoingDomainReferenceUpdateRequest",
+        "description": "设置/清除目标的领域引用请求（``null`` 表示清除）。"
+      },
+      "OngoingEntryProjection": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/OngoingItemRole",
+            "description": "本条在事项里的角色。"
+          },
+          "profile_item_id": {
+            "type": "string",
+            "title": "Profile Item Id",
+            "description": "稳定的原子条目标识。"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "操作使用的乐观锁版本号。"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "条目正文（原样，不新增摘要）。"
+          },
+          "goal_state": {
+            "$ref": "#/components/schemas/AtomicProfileGoalState",
+            "description": "目标生命周期标记。"
+          },
+          "validity_status": {
+            "$ref": "#/components/schemas/AtomicProfileValidityStatus",
+            "description": "按有效期与目标状态折算的当前时效状态。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近一次变化时间。"
+          },
+          "source_message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Message Ids",
+            "description": "证据来源消息标识；待续问题的交流依据。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "role",
+          "profile_item_id",
+          "version",
+          "text",
+          "goal_state",
+          "validity_status",
+          "updated_at"
+        ],
+        "title": "OngoingEntryProjection",
+        "description": "事项投影里的一条条目（目标是目标本身，其余是关联事实）。"
+      },
+      "OngoingGoalAction": {
+        "type": "string",
+        "enum": [
+          "pause",
+          "complete",
+          "resume"
+        ],
+        "title": "OngoingGoalAction",
+        "description": "页面对事项的明确操作；只作用于精确定位的单个目标。"
+      },
+      "OngoingItemProjection": {
+        "properties": {
+          "goal": {
+            "$ref": "#/components/schemas/OngoingEntryProjection",
+            "description": "目标条目。"
+          },
+          "progress": {
+            "items": {
+              "$ref": "#/components/schemas/OngoingEntryProjection"
+            },
+            "type": "array",
+            "title": "Progress",
+            "description": "与该目标关联、有真实交流依据的进展。"
+          },
+          "pending_questions": {
+            "items": {
+              "$ref": "#/components/schemas/OngoingEntryProjection"
+            },
+            "type": "array",
+            "title": "Pending Questions",
+            "description": "与该目标关联、有真实交流依据的待续问题。"
+          },
+          "domain_references": {
+            "items": {
+              "$ref": "#/components/schemas/OngoingDomainReferenceProjection"
+            },
+            "type": "array",
+            "title": "Domain References",
+            "description": "领域引用（状态实时解析，不落库复制）。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "goal"
+        ],
+        "title": "OngoingItemProjection",
+        "description": "一个进行中事项：目标 + 实际进展 + 待续问题 + 领域引用。"
+      },
+      "OngoingItemRole": {
+        "type": "string",
+        "enum": [
+          "goal",
+          "progress",
+          "pending_question"
+        ],
+        "title": "OngoingItemRole",
+        "description": "一条投影条目在事项里的角色：目标、进展或待续问题。"
+      },
+      "OngoingItemStateUpdateRequest": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/OngoingGoalAction",
+            "description": "要执行的操作。"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "操作前读到的条目版本号。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action",
+          "version"
+        ],
+        "title": "OngoingItemStateUpdateRequest",
+        "description": "页面对一个精确事项的暂停/完成/恢复请求。"
+      },
+      "OngoingItemsProjection": {
+        "properties": {
+          "usage_enabled": {
+            "type": "boolean",
+            "title": "Usage Enabled",
+            "description": "长期记忆使用开关；关闭时页面仍列出事项供管理，回答不使用。"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice",
+            "description": "使用开关关闭等稳定提示文案；没有时为空。"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OngoingItemProjection"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "按目标最近更新时间倒序的进行中事项。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "usage_enabled"
+        ],
+        "title": "OngoingItemsProjection",
+        "description": "「进行中事项」页面投影（加载/空态由前端按 items 渲染）。"
       },
       "Operation": {
         "type": "string",

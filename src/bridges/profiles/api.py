@@ -17,6 +17,11 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileItemProjection,
     AtomicProfileMigrationReport,
 )
+from bridges.contracts.ongoing_profile import (
+    OngoingDomainReferenceUpdateRequest,
+    OngoingItemsProjection,
+    OngoingItemStateUpdateRequest,
+)
 from bridges.contracts.profile_extraction import (
     ProfileAccountControlsProjection,
     ProfileAccountControlsUpdateRequest,
@@ -39,6 +44,7 @@ from bridges.profiles.four_dimensions import (
     FourDimensionProfileError,
     FourDimensionProfileService,
 )
+from bridges.profiles.ongoing import OngoingItemsService
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
@@ -149,23 +155,31 @@ async def get_profile_controls(
     },
 )
 async def update_profile_controls(
+    request: Request,
     service: AutomaticProfileServiceDep,
     subject: SubjectDep,
-    request: ProfileAccountControlsUpdateRequest,
+    payload: ProfileAccountControlsUpdateRequest,
 ) -> ProfileAccountControlsProjection:
     """更新当前账户的控制开关；同值重复写入幂等，至少指定一项。"""
 
-    if request.recording_enabled is None and request.usage_enabled is None:
+    if payload.recording_enabled is None and payload.usage_enabled is None:
         raise _profile_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "profile_controls_update_failed",
             PROFILE_CONTROLS_EMPTY_UPDATE_MESSAGE,
         )
-    return service.set_account_controls(
+    controls = service.set_account_controls(
         subject.account_id,
-        recording_enabled=request.recording_enabled,
-        usage_enabled=request.usage_enabled,
+        recording_enabled=payload.recording_enabled,
+        usage_enabled=payload.usage_enabled,
     )
+    # 画像工单 13：使用开关变化改变近期工作上下文的依赖，立即失效；
+    # 未装配事项服务（部分测试组合）时只跳过失效通知，控制状态照常生效。
+    if payload.usage_enabled is not None:
+        ongoing = getattr(request.app.state, "ongoing_items_service", None)
+        if ongoing is not None:
+            ongoing.invalidate(subject.account_id, reason="controls")
+    return controls
 
 
 @router.patch(
@@ -475,6 +489,96 @@ async def rollback_atomic_profile_migration(
         return service.rollback_migration(subject.account_id, run_id)
     except AtomicProfileError as exc:
         raise _atomic_error(exc, "atomic_profile_migration_rollback_failed") from exc
+
+
+# 画像工单 13：进行中事项区。投影只读明确事实（目标 + 同组进展/待续问题），
+# 暂停/完成/继续作用于精确条目（乐观锁），领域引用只存引用、状态由领域
+# 实时解析；使用开关关闭时仍可管理事项，但不代表回答会使用它们。
+
+
+def _get_ongoing_items_service(request: Request) -> OngoingItemsService:
+    service: OngoingItemsService | None = getattr(
+        request.app.state, "ongoing_items_service", None
+    )
+    if service is None:
+        raise RuntimeError("OngoingItemsService not attached to application state.")
+    return service
+
+
+OngoingItemsServiceDep = Annotated[
+    OngoingItemsService, Depends(_get_ongoing_items_service)
+]
+
+
+@router.get(
+    "/ongoing",
+    response_model=OngoingItemsProjection,
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": ProfileError}},
+)
+async def list_ongoing_items(
+    service: OngoingItemsServiceDep,
+    subject: SubjectDep,
+) -> OngoingItemsProjection:
+    """当前账户的进行中事项（目标、进展、待续问题与领域引用）。"""
+
+    return service.list_items(subject.account_id)
+
+
+@router.post(
+    "/ongoing/{item_id}/state",
+    response_model=OngoingItemsProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_409_CONFLICT: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def update_ongoing_item_state(
+    service: OngoingItemsServiceDep,
+    subject: SubjectDep,
+    item_id: str,
+    request: OngoingItemStateUpdateRequest,
+) -> OngoingItemsProjection:
+    """暂停/完成/继续进行中目标；返回刷新后的事项区。"""
+
+    try:
+        service.set_state(
+            subject.account_id, item_id, request.action, version=request.version
+        )
+    except AtomicProfileError as exc:
+        raise _atomic_error(exc, "ongoing_item_state_failed") from exc
+    return service.list_items(subject.account_id)
+
+
+@router.put(
+    "/ongoing/{item_id}/domain-reference",
+    response_model=OngoingItemsProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_409_CONFLICT: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def update_ongoing_domain_reference(
+    service: OngoingItemsServiceDep,
+    subject: SubjectDep,
+    item_id: str,
+    request: OngoingDomainReferenceUpdateRequest,
+) -> OngoingItemsProjection:
+    """设置/清除目标的领域引用；领域状态仍在读取时由领域提供方解析。"""
+
+    try:
+        service.set_domain_reference(
+            subject.account_id,
+            item_id,
+            request.reference,
+            version=request.version,
+        )
+    except AtomicProfileError as exc:
+        raise _atomic_error(exc, "ongoing_domain_reference_failed") from exc
+    return service.list_items(subject.account_id)
 
 
 __all__ = ["router"]

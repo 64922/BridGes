@@ -67,7 +67,9 @@ def test_upgrade_from_v85_adds_recall_index_tables(tmp_path: Path) -> None:
 
     database = BridgesDatabase(path)
     assert database.initialize() == SCHEMA_VERSION
-    assert SCHEMA_VERSION == 86
+    # 后续迁移（87 的进行中事项上下文）会继续推进版本号：这里只要求
+    # 升级目标不低于本票的迁移版本。
+    assert SCHEMA_VERSION >= 86
 
     tables = {
         str(row["name"])

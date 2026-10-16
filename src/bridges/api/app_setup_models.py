@@ -13,6 +13,7 @@ from bridges.ai.startup_check import log_qwen_startup_connectivity_warnings
 from bridges.ai.stream_script_fixture import ScriptedChatStreamAdapter
 from bridges.api.app_support import (
     MATERIAL_OCR_BUSINESS_OBJECT,
+    _atomic_profile_source_reader,
     _designated_material_reader,
     _material_source_checker,
     _profile_memory_reader,
@@ -28,6 +29,11 @@ from bridges.profiles import (
     InMemoryAutomaticProfileRepository,
     RuleBasedAutomaticProfileExtractor,
     SqliteAutomaticProfileRepository,
+)
+from bridges.profiles.ongoing import OngoingItemsService
+from bridges.profiles.ongoing_repository import (
+    InMemoryOngoingContextStore,
+    SqliteOngoingContextStore,
 )
 from bridges.retrieval.repository import RetrievalRepository
 
@@ -205,6 +211,31 @@ def configure_model_services(app: FastAPI) -> None:
                 getattr(app.state, "object_repository", None),
             )
         )
+    # 画像工单 13：进行中事项投影与近期工作上下文。控制读取复用自动画像
+    # 服务的同一份持久状态（改进工单 07）；来源可用性复用画像证据的来源
+    # 读取；领域提供方由后续接线（学习对接见 14），未接通时如实显示未解析。
+    # 上下文是派生数据：有持久化数据目录时落 bridges.db，内存模式不落盘。
+    app.state.ongoing_items_service = OngoingItemsService(
+        atomic=app.state.atomic_profile_service,
+        context_store=(
+            SqliteOngoingContextStore(profile_database)
+            if profile_database is not None
+            else InMemoryOngoingContextStore()
+        ),
+        controls_reader=app.state.automatic_profile_service.account_controls,
+        message_reader=(
+            _atomic_profile_source_reader(profile_conversation_repository)
+            if profile_conversation_repository is not None
+            else None
+        ),
+    )
+    # 双向接线：原子写入后立即失效上下文；编译时经同一服务取「继续事项」。
+    app.state.atomic_profile_service.set_ongoing_context_listener(
+        app.state.ongoing_items_service
+    )
+    app.state.atomic_profile_service.set_ongoing_context_provider(
+        app.state.ongoing_items_service
+    )
     # Issue 02：跨重启恢复是显式启动动作，构造不再启动业务执行；
     # 恢复时刻与外部可见行为（启动时重新入队中断的抽取）保持不变。
     app.state.automatic_profile_service.recover_inflight_runs()

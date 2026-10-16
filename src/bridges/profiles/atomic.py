@@ -44,8 +44,10 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from bridges.contracts.atomic_profile import (
+    PROFILE_TOPIC_ONGOING,
     AtomicProfileConflict,
     AtomicProfileConflictState,
+    AtomicProfileDomainReference,
     AtomicProfileEvidenceQuoteStatus,
     AtomicProfileEvidenceSource,
     AtomicProfileEvidenceSourceStatus,
@@ -84,6 +86,11 @@ from bridges.contracts.atomic_profile import (
     feedback_message_for,
 )
 from bridges.contracts.observability import AuditAction, AuditResult
+from bridges.contracts.ongoing_profile import (
+    OngoingContinuationGroup,
+    OngoingGoalAction,
+    OngoingItemRole,
+)
 from bridges.contracts.profile_adoption import (
     AdoptedProfileItem,
     AdoptedProfileSlice,
@@ -182,6 +189,9 @@ RECALL_BASIS_TASK_RULES = "task_rules"
 RECALL_BASIS_KEYWORD = "keyword"
 RECALL_BASIS_SEMANTIC = "semantic"
 RECALL_BASIS_REVIEW_HISTORY = "review_history"
+#: 画像工单 13：「继续既有事项」时同组进展/待续问题的召回依据：与目标同组
+#: 本身是相关的确定性依据，不再是「与当前问题无关」。
+RECALL_BASIS_ONGOING = "ongoing"
 #: 语义召回降级时的「未命中」排除原因：不能把服务失败说成「没有相关记忆」。
 RECALL_DEGRADED_UNRELATED_REASON = "语义召回暂不可用，关键词与任务规则未命中"
 
@@ -1025,6 +1035,109 @@ def _is_same_turn_extraction(
     return current_user_message_id in item.source_message_ids
 
 
+#: 进行中事项的目标识别（画像工单 13）：明示目标关系，或标注「持续事项」
+#: 主题。两者都来自用户明确表达的事实，不额外推断。
+def is_ongoing_goal_item(item: AtomicProfileItem) -> bool:
+    """本条是否可作为进行中事项的目标（目标事实或持续事项主题）。"""
+
+    return (
+        item.fact_relation is AtomicProfileFactRelation.GOAL
+        or PROFILE_TOPIC_ONGOING in item.topics
+    )
+
+
+#: 待续问题的确定性标记：条目原文明示「未决」（还没/不确定/待定…）。
+#: 只按原文判定，不生成新句子；没有标记的关联事实按进展展示。
+_ONGOING_PENDING_RE = re.compile(
+    r"还没|还没有|尚未|没定|未定|待定|不确定|不知道|没想好|没决定|纠结|拿不准"
+)
+
+
+def ongoing_entry_role(item: AtomicProfileItem) -> OngoingItemRole:
+    """把条目折算为事项角色：目标 / 进展 / 待续问题（确定性规则）。"""
+
+    if is_ongoing_goal_item(item):
+        return OngoingItemRole.GOAL
+    if _ONGOING_PENDING_RE.search(normalize_text(item.text)):
+        return OngoingItemRole.PENDING_QUESTION
+    return OngoingItemRole.PROGRESS
+
+
+#: 目标对象的最短长度：过短的对象（如「课」）会在无关事实里误命中，宁可
+#: 不建立关联，也不把不相关的事归到同一事项。
+_MIN_ONGOING_GOAL_OBJECT = 2
+
+
+def ongoing_goal_mentioned(item: AtomicProfileItem, text: str) -> bool:
+    """新事实原文是否明确提及该目标（目标对象完整包含在事实正文里）。
+
+    与工单 07 的目标生命周期定位同源：只承认完整包含，不用字符重合；
+    目标对象过短不参与匹配。提及目标只是归组依据，不改变任何事实内容。
+    """
+
+    objective = normalize_text(item.fact_object or item.text)
+    if len(objective) < _MIN_ONGOING_GOAL_OBJECT:
+        return False
+    return objective.casefold() in normalize_text(text).casefold()
+
+
+def _resolve_ongoing_goal_link(
+    goals: Iterable[AtomicProfileItem], text: str
+) -> str | None:
+    """确定性地为新事实选择一个进行中目标；不唯一时返回 ``None``。
+
+    歧义（多个目标同时被提及）时不猜、不批量归属；事实仍照常保存，
+    只是不进入某个事项的进展/待续问题列表。
+    """
+
+    matched = [
+        goal
+        for goal in goals
+        if goal.status == AtomicProfileItemStatus.ACTIVE
+        and goal.goal_state is not AtomicProfileGoalState.COMPLETED
+        and ongoing_goal_mentioned(goal, text)
+    ]
+    if len(matched) == 1:
+        return matched[0].profile_item_id
+    return None
+
+
+def validity_status_for(
+    item: AtomicProfileItem, now: datetime
+) -> AtomicProfileValidityStatus:
+    """公开的时效折算入口（进行中事项投影与页面共用同一规则）。"""
+
+    return _validity_status(item, now)
+
+
+class OngoingContextInvalidator(Protocol):
+    """近期工作上下文的失效接缝（画像工单 13）。
+
+    条目写入、撤回或目标生命周期变化提交后由原子画像服务调用；实现方
+    立即把该账户的派生上下文标记失效并递增代数。监听方失败只记录日志，
+    不回滚已完成的事实写入，也绝不留下「失效标记已丢但内容照发」的路径
+    ——上下文读取还会按依赖指纹二次核对。
+    """
+
+    def invalidate(self, account_id: str, *, reason: str) -> None: ...
+
+
+class OngoingContinuationProvider(Protocol):
+    """回答编译的「继续事项」接缝（画像工单 13）。
+
+    实现方按当前问题确定命中的进行中事项，返回目标与同组条目标识；这些
+    标识只让条目成为召回候选，真伪、用途、时效与权限门禁一律照旧。
+    """
+
+    def continuation_group(
+        self,
+        account_id: str,
+        *,
+        query: str,
+        semantic_item_ids: Iterable[str] = (),
+    ) -> OngoingContinuationGroup | None: ...
+
+
 #: 可靠度门禁的稳定排除原因：聊天侧据此决定是否提示「需要确认」。
 RECALL_LOW_CONFIDENCE_REASON = "可靠程度不足，暂不用于当前回答"
 #: 冲突门禁的稳定排除原因：双方说法矛盾且未确认，争议部分不作确定事实。
@@ -1680,6 +1793,18 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             goal_state=AtomicProfileGoalState(
                 str(row["goal_state"])  # type: ignore[index]
             ),
+            related_goal_item_id=(
+                str(row["related_goal_item_id"])  # type: ignore[index]
+                if row["related_goal_item_id"] is not None  # type: ignore[index]
+                else None
+            ),
+            domain_reference=(
+                AtomicProfileDomainReference.model_validate_json(
+                    str(row["domain_reference_json"])  # type: ignore[index]
+                )
+                if row["domain_reference_json"]  # type: ignore[index]
+                else None
+            ),
             supersedes_id=(
                 str(row["supersedes_id"])  # type: ignore[index]
                 if row["supersedes_id"] is not None  # type: ignore[index]
@@ -1758,13 +1883,14 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "fact_relation, fact_object, fact_scope, fact_key, evidence_quote, "
             "valid_from, valid_until, validity_anchor_at, validity_phrase, "
             "recurrence_json, goal_state, "
+            "related_goal_item_id, domain_reference_json, "
             "supersedes_id, superseded_by_id, source_record_id, "
             "source_message_ids_json, source_quotes_json, topic_hint, topics_json, "
             "usage_purpose, source_materials_json, status, write_origin, "
             "confidence, version, created_at, updated_at, user_edited_at, migration_run_id, "
             "retired_reason, conflict_state) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(profile_item_id) DO UPDATE SET text = excluded.text, "
             "identity_key = excluded.identity_key, fact_subject = excluded.fact_subject, "
             "fact_relation = excluded.fact_relation, fact_object = excluded.fact_object, "
@@ -1776,6 +1902,8 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "validity_phrase = excluded.validity_phrase, "
             "recurrence_json = excluded.recurrence_json, "
             "goal_state = excluded.goal_state, "
+            "related_goal_item_id = excluded.related_goal_item_id, "
+            "domain_reference_json = excluded.domain_reference_json, "
             "supersedes_id = excluded.supersedes_id, "
             "superseded_by_id = excluded.superseded_by_id, "
             "source_record_id = excluded.source_record_id, "
@@ -1809,6 +1937,15 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 item.validity_phrase,
                 item.recurrence.model_dump_json() if item.recurrence else None,
                 item.goal_state.value,
+                item.related_goal_item_id,
+                (
+                    json.dumps(
+                        item.domain_reference.model_dump(mode="json"),
+                        ensure_ascii=False,
+                    )
+                    if item.domain_reference is not None
+                    else None
+                ),
                 item.supersedes_id,
                 item.superseded_by_id,
                 item.source_record_id,
@@ -2162,6 +2299,10 @@ class AtomicProfileService:
         # 改进工单 18：撤回传播的消费方（摘要等派生物失效）在组合根注入；
         # 未注入时撤回本身照常成立，只是没有下游通知。
         self._revocation_listener: ProfileRevocationListener | None = None
+        # 画像工单 13：近期工作上下文的失效消费方与「继续事项」提供方在组合
+        # 根注入；未注入时事实写入照常，上下文读取仍按依赖指纹二次核对。
+        self._ongoing_context_listener: OngoingContextInvalidator | None = None
+        self._ongoing_context_provider: OngoingContinuationProvider | None = None
         # Issue 05：用户权威操作的跨记录顺序（墓碑先落地、再撤回来源）由
         # 提交 module 归属；自动提取编排器注入同一个实例时，两侧共用同一
         # 份提交规则。未注入时自建只挂载跨记录两方的实例。
@@ -2196,6 +2337,84 @@ class AtomicProfileService:
         """
 
         self._material_source_checker = checker
+
+    def set_ongoing_context_listener(
+        self, listener: OngoingContextInvalidator | None
+    ) -> None:
+        """挂载/替换近期工作上下文的失效监听（组合根注入，画像工单 13）。"""
+
+        self._ongoing_context_listener = listener
+
+    def set_ongoing_context_provider(
+        self, provider: OngoingContinuationProvider | None
+    ) -> None:
+        """挂载/替换「继续事项」的编译提供方（组合根注入，画像工单 13）。"""
+
+        self._ongoing_context_provider = provider
+
+    def _invalidate_ongoing_context(self, account_id: str, *, reason: str) -> None:
+        """写入/撤回/生命周期变化后立即让近期工作上下文失效（画像工单 13）。
+
+        在业务事务提交之后调用；监听方失败只记录日志——上下文的读取路径
+        还会按依赖指纹二次核对，不会因监听失败继续使用旧内容。
+        """
+
+        listener = self._ongoing_context_listener
+        if listener is None:
+            return
+        try:
+            listener.invalidate(account_id, reason=reason)
+        except Exception as exc:  # noqa: BLE001 - 失效通知失败不回收已完成写入
+            logger.warning(
+                "ongoing_context_listener_failed",
+                extra={
+                    "account_id": account_id,
+                    "reason": reason,
+                    "error": str(exc),
+                },
+            )
+
+    def _ongoing_link_target(
+        self, account_id: str, text: str, identity: AtomicProfileFactIdentity
+    ) -> str | None:
+        """确定性归组（画像工单 13）：目标事实不链接；其余唯一提及才链接。"""
+
+        if identity.relation is AtomicProfileFactRelation.GOAL:
+            return None
+        goals = [
+            item
+            for item in self._repository.list_items(account_id)
+            if is_ongoing_goal_item(item)
+        ]
+        return _resolve_ongoing_goal_link(goals, text)
+
+    def link_saved_facts(self, account_id: str, item_ids: Iterable[str]) -> None:
+        """同批写入的补链（画像工单 13）。
+
+        自动提取在同一事务内逐条写入：目标在同一批里后到时，先写入的进展
+        不会在 ``commit_fact`` 当次命中。本方法只对尚无链接的非目标条目做
+        一次确定性重试，必须在同一提交事务内调用；不改变任何事实正文。
+        """
+
+        with self._profile_commit.transaction():
+            goals = [
+                item
+                for item in self._repository.list_items(account_id)
+                if is_ongoing_goal_item(item)
+            ]
+            for item_id in item_ids:
+                item = self._repository.get_item(account_id, item_id)
+                if (
+                    item.status != AtomicProfileItemStatus.ACTIVE
+                    or item.related_goal_item_id is not None
+                    or is_ongoing_goal_item(item)
+                ):
+                    continue
+                target = _resolve_ongoing_goal_link(goals, item.text)
+                if target is not None:
+                    item.related_goal_item_id = target
+                    # 同一事务内本条刚写入（版本已推进），补链不再二次推进版本。
+                    self._repository.save_item(item)
 
     @staticmethod
     def _revocation_version_for(items: Iterable[AtomicProfileItem]) -> str:
@@ -2752,6 +2971,14 @@ class AtomicProfileService:
                 recurrence = parse_recurrence(text)
                 if recurrence is not None:
                     item.recurrence = recurrence
+            # 画像工单 13：编辑后归组保持确定性——条目变成目标时不再归属
+            # 其他目标；否则只在尚无链接时按新正文补一次。
+            if is_ongoing_goal_item(item):
+                item.related_goal_item_id = None
+            elif item.related_goal_item_id is None:
+                link = self._ongoing_link_target(account_id, text, identity)
+                if link != item.profile_item_id:
+                    item.related_goal_item_id = link
             item.version += 1
             item.updated_at = now
             item.user_edited_at = now
@@ -2781,6 +3008,7 @@ class AtomicProfileService:
             # 用户纠正改变事实身份或用途：依赖旧值的切片与摘要按依赖失效。
             # 通知在事务提交之后发出——摘要失效各自持有事务，事务内通知会嵌套失败。
             self._notify_revocation(account_id, revoked, reason="edited")
+        self._invalidate_ongoing_context(account_id, reason="edited")
         return saved
 
     def delete_item(self, account_id: str, item_id: str, version: int) -> None:
@@ -2802,6 +3030,7 @@ class AtomicProfileService:
         # 墓碑已提交：依赖该事实的切片与摘要立即按依赖失效（已发送的云端
         # 上下文无法收回，通知只阻止后续调用继续使用）。
         self._notify_revocation(account_id, [item], reason="deleted")
+        self._invalidate_ongoing_context(account_id, reason="deleted")
         self._audit_memory_action(
             account_id,
             AuditAction.PROFILE_DELETE,
@@ -2877,6 +3106,8 @@ class AtomicProfileService:
         recurrence = parse_recurrence(normalized)
         purpose_revoked = False
         with self._profile_commit.transaction():
+            # 画像工单 13：明确写入的事实同样按「唯一提及目标」确定性归组。
+            goal_link = self._ongoing_link_target(account_id, normalized, identity)
             existing = self._repository.find_item_by_identity(account_id, key)
             if existing is None:
                 existing = self._repository.find_item_by_fact_key(account_id, fact_key)
@@ -2937,6 +3168,9 @@ class AtomicProfileService:
                     existing.goal_state = AtomicProfileGoalState.ACTIVE
                     _apply_fact_identity(existing, identity, account_id)
                     _apply_validity(existing, window, anchor)
+                    if existing.related_goal_item_id is None:
+                        # 归组只在尚无链接时补一次；已有归属不因重写改换事项。
+                        existing.related_goal_item_id = goal_link
                     if recurrence is not None:
                         existing.recurrence = recurrence
                     if resolved_topics:
@@ -2983,6 +3217,7 @@ class AtomicProfileService:
                     validity_anchor_at=anchor if window else None,
                     validity_phrase=window.phrase if window else None,
                     recurrence=recurrence,
+                    related_goal_item_id=goal_link,
                     source_record_id=record.record_id if record is not None else None,
                     source_message_ids=[source_message_id] if source_message_id else [],
                     topic_hint=record.dimension.value if record is not None else None,
@@ -3017,6 +3252,7 @@ class AtomicProfileService:
             item_ids=[saved.profile_item_id],
             details={"superseded_count": len(superseded_items)},
         )
+        self._invalidate_ongoing_context(account_id, reason="remembered")
         return saved
 
     def forget(self, account_id: str, target: str) -> AtomicProfileMemoryResult:
@@ -3058,6 +3294,7 @@ class AtomicProfileService:
         # 墓碑已提交：依赖该事实的切片与摘要立即按依赖失效（已发送的云端
         # 上下文无法收回，通知只阻止后续调用继续使用）。
         self._notify_revocation(account_id, matched, reason="forgotten")
+        self._invalidate_ongoing_context(account_id, reason="forgotten")
         # 墓碑已提交：用户可见的删除在本轮成立。来源撤回逐条隔离——部分
         # 失败不中断其余条目，失败明细由提交 module 返回并记入日志，可
         # 幂等重试（重启后的恢复闭环由 06 完成），已删除条目不会因此复活。
@@ -3150,6 +3387,9 @@ class AtomicProfileService:
                     )
                 self._repository.save_item(item)
                 changed.append(item)
+        if changed:
+            # 目标生命周期变化改变事项内容与可见性：立即失效派生上下文。
+            self._invalidate_ongoing_context(account_id, reason="lifecycle")
         return changed or None
 
     @staticmethod
@@ -3201,6 +3441,90 @@ class AtomicProfileService:
             item for item in goals if item.goal_state == AtomicProfileGoalState.ACTIVE
         ]
         return active if len(active) == 1 else []
+
+    # -- 进行中事项的状态与领域引用（画像工单 13） ------------------------
+
+    def set_ongoing_state(
+        self,
+        account_id: str,
+        item_id: str,
+        action: OngoingGoalAction,
+        *,
+        version: int,
+    ) -> AtomicProfileItem:
+        """页面暂停/完成/继续进行中目标：精确条目 + 乐观锁。
+
+        与聊天的生命周期信号共用同一 ``goal_state`` 语义（暂停/完成）：
+        暂停中的目标仍需接续，完成的从进行中事项区消失；继续让暂停目标
+        回到活动。与信号路径不同，这里不做目标定位——条目由调用方明确
+        指定，不唯一就明确报错而不是猜。重复的相同操作是幂等空操作，不
+        推进版本。
+        """
+
+        with self._profile_commit.transaction():
+            item = self._repository.get_item(account_id, item_id)
+            if item.status != AtomicProfileItemStatus.ACTIVE:
+                raise AtomicProfileError("画像条目已删除，不能修改进行中状态。")
+            if version != item.version:
+                raise AtomicProfileError("版本冲突，请刷新后重试。")
+            if not is_ongoing_goal_item(item):
+                raise AtomicProfileError(
+                    "只有进行中事项的目标可以暂停、完成或继续。"
+                )
+            if action is OngoingGoalAction.PAUSE:
+                if item.goal_state == AtomicProfileGoalState.COMPLETED:
+                    raise AtomicProfileError("已完成的进行中事项不能暂停。")
+                if item.goal_state == AtomicProfileGoalState.PAUSED:
+                    return item
+                item.goal_state = AtomicProfileGoalState.PAUSED
+            elif action is OngoingGoalAction.COMPLETE:
+                if item.goal_state == AtomicProfileGoalState.COMPLETED:
+                    return item
+                item.goal_state = AtomicProfileGoalState.COMPLETED
+            else:
+                if item.goal_state == AtomicProfileGoalState.COMPLETED:
+                    raise AtomicProfileError("已完成的进行中事项不能继续。")
+                if item.goal_state == AtomicProfileGoalState.ACTIVE:
+                    return item
+                item.goal_state = AtomicProfileGoalState.ACTIVE
+            item.updated_at = _now()
+            item.version += 1
+            saved = self._repository.save_item(item)
+        self._invalidate_ongoing_context(account_id, reason="ongoing_state")
+        return saved
+
+    def set_domain_reference(
+        self,
+        account_id: str,
+        item_id: str,
+        reference: AtomicProfileDomainReference | None,
+        *,
+        version: int,
+    ) -> AtomicProfileItem:
+        """设置/清除目标的领域引用：精确条目 + 乐观锁（画像工单 13）。
+
+        领域对象状态（如学习项进度）不复制进画像：这里只保存引用，当前
+        状态由组合根注册的领域提供方读取时实时解析；无提供方或读取失败
+        时投影如实显示 unresolved。清除引用（``None``）对任意条目可行，
+        设置引用只允许进行中目标。
+        """
+
+        with self._profile_commit.transaction():
+            item = self._repository.get_item(account_id, item_id)
+            if item.status != AtomicProfileItemStatus.ACTIVE:
+                raise AtomicProfileError("画像条目已删除，不能修改领域引用。")
+            if version != item.version:
+                raise AtomicProfileError("版本冲突，请刷新后重试。")
+            if reference is not None and not is_ongoing_goal_item(item):
+                raise AtomicProfileError("只有进行中事项的目标可以关联领域对象。")
+            if item.domain_reference == reference:
+                return item
+            item.domain_reference = reference
+            item.updated_at = _now()
+            item.version += 1
+            saved = self._repository.save_item(item)
+        self._invalidate_ongoing_context(account_id, reason="domain_reference")
+        return saved
 
     def tombstone_audit(self, account_id: str) -> list[AtomicProfileTombstoneEntry]:
         """墓碑/被替代版本的审计投影（不含正文；账户作用域）。"""
@@ -3384,6 +3708,9 @@ class AtomicProfileService:
         )
         superseded_items: list[AtomicProfileItem] = []
         with self._profile_commit.transaction():
+            # 画像工单 13：新事实明确提及唯一进行中目标时确定性归组；只在
+            # 保存当次解析一次，不按主题或字符相似批量归属。
+            goal_link = self._ongoing_link_target(account_id, text, identity)
             existing = self._repository.find_item_by_fact_key(account_id, fact_key)
             if existing is None:
                 # 同一事实的新说法解析不出原关系时（如旧记录重放），兼容
@@ -3423,6 +3750,7 @@ class AtomicProfileService:
                     anchor=anchor,
                     now=now,
                     recurrence=recurrence,
+                    goal_link=goal_link,
                 )
                 if revision_kind is not None:
                     superseded_items.extend(
@@ -3430,7 +3758,13 @@ class AtomicProfileService:
                             account_id, text, merged, revision_kind
                         )
                     )
-                return self._repository.save_item(merged)
+                saved_merged = self._repository.save_item(merged)
+                # 归组/正文/来源可能变化：派生上下文立即失效（与本次提交
+                # 同成同败；调用方外层事务存在时并入同一边界）。
+                self._invalidate_ongoing_context(
+                    account_id, reason="fact_written"
+                )
+                return saved_merged
             # 工单 06：单值属性槽出现无标记的新说法时不猜测——双方各自保留
             # 依据并标记未解决；用户编辑过的一方保持权威，不被标冲突。
             conflicting = (
@@ -3455,6 +3789,7 @@ class AtomicProfileService:
                 validity_anchor_at=anchor if window else None,
                 validity_phrase=window.phrase if window else None,
                 recurrence=recurrence,
+                related_goal_item_id=goal_link,
                 source_record_id=None,
                 source_message_ids=list(
                     dict.fromkeys(
@@ -3519,6 +3854,7 @@ class AtomicProfileService:
             self._notify_revocation(
                 account_id, superseded_items, reason="superseded"
             )
+        self._invalidate_ongoing_context(account_id, reason="fact_written")
         return saved
 
     def correct_fact(
@@ -3629,6 +3965,13 @@ class AtomicProfileService:
                     recurrence = parse_recurrence(normalized)
                     if recurrence is not None:
                         target.recurrence = recurrence
+                # 画像工单 13：更正后归组保持确定性（同页面编辑规则）。
+                if is_ongoing_goal_item(target):
+                    target.related_goal_item_id = None
+                elif target.related_goal_item_id is None:
+                    link = self._ongoing_link_target(account_id, normalized, identity)
+                    if link != target.profile_item_id:
+                        target.related_goal_item_id = link
                 target.version += 1
                 target.updated_at = now
                 target.user_edited_at = now
@@ -3658,6 +4001,7 @@ class AtomicProfileService:
             # 纠正改变事实身份：依赖旧值的切片与摘要按依赖失效。通知在事务
             # 提交之后发出——摘要失效各自持有事务，事务内通知会嵌套失败。
             self._notify_revocation(account_id, revoked, reason="corrected")
+        self._invalidate_ongoing_context(account_id, reason="corrected")
         return saved, True
 
     # -- 切片 -------------------------------------------------------------
@@ -3788,6 +4132,25 @@ class AtomicProfileService:
                 )
         semantic_scores = recall_outcome.semantic_scores
         recall_degraded = recall_outcome.degradation_reason is not None
+        # 画像工单 13：先问「继续事项」提供方（如近期工作上下文）。提供方
+        # 故障只停用接续通道并记录告警，其余召回照旧；返回的标识只让条目
+        # 成为候选——同一轮的门禁（用途、时效、本轮刚整理、证据）一律照旧。
+        ongoing_ids: set[str] = set()
+        if self._ongoing_context_provider is not None and query:
+            try:
+                group = self._ongoing_context_provider.continuation_group(
+                    account_id,
+                    query=query,
+                    semantic_item_ids=tuple(semantic_scores),
+                )
+            except Exception:  # noqa: BLE001 - 接续通道故障不阻断回答
+                logger.warning(
+                    "进行中事项接续提供方调用失败，本轮不启用接续依据",
+                    exc_info=True,
+                )
+                group = None
+            if group is not None:
+                ongoing_ids = {group.goal_item_id, *group.entry_item_ids}
         candidates: list[_AdoptedCandidate] = []
         exclusions: list[ProfileSliceExclusion] = []
         same_turn_reason = "本轮刚整理，下一轮才使用"
@@ -3859,6 +4222,7 @@ class AtomicProfileService:
             topic_matched = _item_matches_question(item.text, query)
             slot_matched = _relation_question_matches(item, query)
             semantic_matched = item.profile_item_id in semantic_scores
+            ongoing_matched = item.profile_item_id in ongoing_ids
             generic_constraint = is_resource_constraint(item.text) and not has_task_topic(item.text)
             if decisions and not tags and not generic_constraint:
                 # 学科背景和具体目标需有主题依据；年级等通用背景除外。
@@ -3871,12 +4235,13 @@ class AtomicProfileService:
                     or topic_matched
                     or slot_matched
                     or semantic_matched
+                    or ongoing_matched
                     or task_topic_matches(item.text, effective)
                 ):
                     decisions = ()
             if decisions:
                 tier = 0
-            elif topic_matched or slot_matched or semantic_matched:
+            elif topic_matched or slot_matched or semantic_matched or ongoing_matched:
                 tier = 1
             else:
                 exclusions.append(
@@ -3908,6 +4273,8 @@ class AtomicProfileService:
                 basis_tags.append(RECALL_BASIS_KEYWORD)
             if semantic_matched:
                 basis_tags.append(RECALL_BASIS_SEMANTIC)
+            if ongoing_matched:
+                basis_tags.append(RECALL_BASIS_ONGOING)
             candidates.append(
                 _AdoptedCandidate(
                     item=item,
@@ -4520,6 +4887,7 @@ class AtomicProfileService:
         now: datetime,
         recurrence: AtomicProfileRecurrence | None = None,
         material_sources: tuple[AtomicProfileMaterialSource, ...] = (),
+        goal_link: str | None = None,
     ) -> AtomicProfileItem:
         """同一事实再次出现：补充来源、证据、主题与把握度，不产生副本。
 
@@ -4564,6 +4932,10 @@ class AtomicProfileService:
             item.recurrence = recurrence
         if topics and item.user_edited_at is None:
             item.topics = list(dict.fromkeys([*item.topics, *topics]))
+        if goal_link is not None and item.related_goal_item_id is None:
+            # 归组只在首次确定：已有链接的事实不因补证据换目标（并行事项
+            # 相互独立，不来回跳组）。
+            item.related_goal_item_id = goal_link
         item.version += 1
         item.updated_at = now
         if is_recallable_confidence(confidence) and confidence_rank(

@@ -210,7 +210,13 @@ class ProfileCommit:
             item = self._items.commit_fact(account_id, fact, source_at=source_at)
             if item is not None:
                 item_ids.append(item.profile_item_id)
-        return list(dict.fromkeys(item_ids))
+        written = list(dict.fromkeys(item_ids))
+        if written:
+            # 画像工单 13：同一批写入里目标后到时，先写入的进展/待续在批内
+            # 补一次确定性归组；只更新归组引用，不改任何事实正文，仍在本
+            # 提交边界内（失败与整批一起回滚）。
+            self._items.link_saved_facts(account_id, written)
+        return written
 
     def write_correction(
         self,

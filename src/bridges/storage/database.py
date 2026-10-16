@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 86
+SCHEMA_VERSION = 87
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3747,6 +3747,34 @@ MIGRATIONS: dict[int, list[str]] = {
             ON profile_recall_index_entries(account_id, profile_item_id)
         """,
     ],
+    # 画像工单 13：进行中事项的归组列与近期工作上下文。条目新增「关联目标」
+    # （确定性归组只在写入当次按唯一提及建立）与「领域引用」（只存引用本身，
+    # 状态由所属领域实时解析，不复制进画像库）。近期工作上下文是带代数
+    # （epoch）的派生表：条目写入、来源删除或控制变化立即递增代数使其失效，
+    # 重建以捕获的代数做 CAS 写入，迟到重建不能覆盖新状态；上下文只服务
+    # 回答编译，不持有独立事实。派生数据随账户删除与备份，不进导出。
+    87: [
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN related_goal_item_id TEXT
+        """,
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN domain_reference_json TEXT
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS profile_ongoing_context (
+            account_id TEXT PRIMARY KEY,
+            context_version TEXT NOT NULL,
+            epoch INTEGER NOT NULL,
+            dependency_fingerprint TEXT NOT NULL DEFAULT '',
+            payload_json TEXT NOT NULL DEFAULT '[]',
+            built_at TEXT,
+            invalidated_at TEXT,
+            invalidated_reason TEXT
+        )
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3818,6 +3846,10 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     # 伪装成「没有相关记忆」。索引可重建，不持有独立事实真相。
     "profile_recall_index_versions",
     "profile_recall_index_entries",
+    # 画像工单 13：近期工作上下文的派生表。回答编译与「进行中事项」页面
+    # 都会读取；迁移半执行时须在启动阶段失败关闭，而不是把上下文不可用
+    # 伪装成「没有进行中事项」。上下文可重建，不持有独立事实真相。
+    "profile_ongoing_context",
     # 改进工单 10：持久节点执行内核的产物、收据与待投递事件；通勤模块
     # 在启动装配后无条件经内核查询，迁移半执行时须在启动阶段失败关闭。
     "node_artifacts",
@@ -4150,6 +4182,8 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "usage_purpose",
         "recurrence_json",
         "source_materials_json",
+        "related_goal_item_id",
+        "domain_reference_json",
     }),
     "profile_item_migrations": frozenset({
         "run_id",
@@ -4208,6 +4242,17 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "vector_json",
         "updated_at",
     }),
+    # 画像工单 13：近期工作上下文的查询路径列（代数 + 依赖指纹 + 载荷）。
+    "profile_ongoing_context": frozenset({
+        "account_id",
+        "context_version",
+        "epoch",
+        "dependency_fingerprint",
+        "payload_json",
+        "built_at",
+        "invalidated_at",
+        "invalidated_reason",
+    }),
 }
 
 #: 由迁移为「既有表」补加的列（表名 → 列集合）。
@@ -4234,6 +4279,8 @@ MIGRATION_ADDED_COLUMNS: dict[str, frozenset[str]] = {
         "usage_purpose",
         "recurrence_json",
         "source_materials_json",
+        "related_goal_item_id",
+        "domain_reference_json",
     }),
     "profile_item_migrations": frozenset({"identity_backfilled"}),
     # Issue 06：v76 为用户控制状态与撤回标记补加列。

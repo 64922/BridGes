@@ -127,6 +127,8 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     # 派生数据随账户删除与备份快照，不进导出（边界说明见模块 docstring）。
     "profile_recall_index_entries",
     "profile_recall_index_versions",
+    # 画像工单 13：近期工作上下文（可重建派生视图，不持有独立事实真相）。
+    "profile_ongoing_context",
     "profile_items",
     "profile_item_migrations",
     # 工单 01：逐条对账台账（账户级迁移审计），随账户删除并进入导出。

@@ -1,4 +1,5 @@
 import { AtomicProfileCenter } from "@/components/account/profile/AtomicProfileCenter";
+import { OngoingItemsCard } from "@/components/account/profile/OngoingItemsCard";
 import { ProfileControlsCard } from "@/components/account/profile/ProfileControlsCard";
 import { MainContent } from "@/components/layout/MainContent";
 
@@ -15,11 +16,15 @@ export const metadata = {
  *
  * 改进工单 07：页面顶部提供记录与使用两个独立控制，文案分别解释各自
  * 含义——停止记录不妨碍主动管理，关闭使用不删除信息。
+ *
+ * 画像工单 13：控制区下方是进行中事项区（目标／进展／待续问题与暂停、
+ * 完成、继续），逐条信息列表仍在其后。
  */
 export default function ProfileCenterPage() {
   return (
     <MainContent>
       <ProfileControlsCard />
+      <OngoingItemsCard />
       <AtomicProfileCenter />
     </MainContent>
   );

@@ -130,6 +130,22 @@ class AtomicProfileRecurrence(BaseModel):
     phrase: str = Field(max_length=100, description="原文明示的周期表达。")
 
 
+class AtomicProfileDomainReference(BaseModel):
+    """目标条目上的领域引用（画像工单 13 的领域引用管理接缝）。
+
+    只保存「哪个领域、哪个对象」的引用（如学习领域的目标 id）；领域状态
+    不落画像库、不复制，投影读取时经所属领域注册的提供方实时解析。没有
+    接通提供方时如实标记未解析，绝不伪造学习状态。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    domain: str = Field(min_length=1, max_length=40, description="所属领域标识。")
+    reference_id: str = Field(
+        min_length=1, max_length=120, description="领域内对象标识。"
+    )
+
+
 class AtomicProfileFactIdentity(BaseModel):
     """一条完整事实的主体/关系/对象/范围身份（内部合同，不进入页面）。"""
 
@@ -434,6 +450,21 @@ class AtomicProfileItem(BaseModel):
     goal_state: AtomicProfileGoalState = Field(
         default=AtomicProfileGoalState.ACTIVE,
         description="目标生命周期标记；普通事实恒为 active。",
+    )
+    related_goal_item_id: str | None = Field(
+        default=None,
+        description=(
+            "画像工单 13：本条归属的进行中目标条目标识。只为「明确提及该目标」"
+            "的非目标事实建立，确定性唯一匹配才写入；歧义不链接。仅是归组，"
+            "不改变事实身份与事实内容。"
+        ),
+    )
+    domain_reference: AtomicProfileDomainReference | None = Field(
+        default=None,
+        description=(
+            "画像工单 13：目标条目的领域引用（如学习目标）。只存引用坐标；"
+            "领域状态经所属领域提供方实时解析，不复制落库。"
+        ),
     )
     source_record_id: str | None = Field(
         default=None, description="产生该条目的四维记录标识，可为空。"
@@ -941,6 +972,7 @@ class AtomicProfileMigrationReport(BaseModel):
 __all__ = [
     "AtomicProfileConflict",
     "AtomicProfileConflictState",
+    "AtomicProfileDomainReference",
     "AtomicProfileEvidenceQuoteStatus",
     "AtomicProfileEvidenceSource",
     "AtomicProfileEvidenceSourceStatus",

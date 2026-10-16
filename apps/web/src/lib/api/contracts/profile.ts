@@ -57,3 +57,21 @@ export type AtomicProfileItemFeedbackRequest =
 // 改进工单 07：账户级画像记录/使用控制（两个开关互相独立）。
 export type ProfileAccountControlsProjection =
   components["schemas"]["ProfileAccountControlsProjection"];
+
+// 画像工单 13：进行中事项投影与暂停/完成/继续、领域引用管理。
+export type OngoingItemsProjection =
+  components["schemas"]["OngoingItemsProjection"];
+
+export type OngoingItemProjection =
+  components["schemas"]["OngoingItemProjection"];
+
+export type OngoingEntryProjection =
+  components["schemas"]["OngoingEntryProjection"];
+
+export type OngoingGoalAction = components["schemas"]["OngoingGoalAction"];
+
+export type OngoingItemStateUpdateRequest =
+  components["schemas"]["OngoingItemStateUpdateRequest"];
+
+export type OngoingDomainReferenceUpdateRequest =
+  components["schemas"]["OngoingDomainReferenceUpdateRequest"];
