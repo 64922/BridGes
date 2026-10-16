@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import re
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -11,10 +13,22 @@ from fastapi import FastAPI
 from bridges.ai import CapabilityRegistry, CapabilityRegistryError
 from bridges.api import commute as commute_api
 from bridges.chat import ConversationRepository
+from bridges.chat.attachments import CHAT_ATTACHMENT_MEDIA_TYPES, PHOTO_MEDIA_TYPES
+from bridges.chat.attachments_repository import AttachmentRepository
 from bridges.config import Settings
-from bridges.contracts.ai import CapabilityKind, CapabilityRecord, CapabilityStatus
-from bridges.contracts.atomic_profile import AtomicProfileItemStatus
-from bridges.contracts.workflows import WorkflowRunStatus
+from bridges.contracts.ai import (
+    CapabilityKind,
+    CapabilityRecord,
+    CapabilityStatus,
+    ModelCallStatus,
+)
+from bridges.contracts.atomic_profile import (
+    AtomicProfileItemStatus,
+    AtomicProfileMaterialSource,
+    AtomicProfileMaterialSourceStatus,
+)
+from bridges.contracts.projects import ObjectDomain
+from bridges.contracts.workflows import RunContextEnvelope, WorkflowRunStatus
 from bridges.credentials.global_credential import is_global_qwen_key_configured
 from bridges.credentials.store import CredentialStorePort, build_credential_store
 from bridges.domain import (
@@ -28,6 +42,11 @@ from bridges.domain import (
     create_physics_chemistry_pack,
     create_standards_datasets_pack,
 )
+from bridges.ingestion.ocr import (
+    OCR_CAPABILITY_NAME,
+    OCR_CAPABILITY_VERSION,
+    OCR_IMAGE_PROMPT,
+)
 from bridges.invalidation import AffectedDownstream, InvalidationService
 from bridges.paper.sources import ENRICH_TIMEOUT_SECONDS
 from bridges.profiles import (
@@ -37,6 +56,16 @@ from bridges.profiles import (
     ProfileNeighborMessage,
     ProfileSourceMessage,
 )
+from bridges.profiles.automatic import AutomaticProfileError
+from bridges.profiles.materials import (
+    MATERIAL_READ_FAILED_ERROR,
+    DesignatedMaterial,
+    MaterialKind,
+    MaterialRead,
+    MaterialSegment,
+    material_readiness,
+)
+from bridges.retrieval.repository import RetrievalRepository
 from bridges.workflows import WorkflowService
 
 RETIRED_EXPRESSION_CAPABILITY = "expression_draft_generation"
@@ -357,3 +386,285 @@ def _atomic_profile_source_reader(
         )
 
     return read
+
+
+#: 材料 OCR 运行锁的业务引用标签（审计里可区分「画像材料识别」调用）。
+MATERIAL_OCR_BUSINESS_OBJECT = "profile_material_read"
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+class _DesignatedMaterialReader:
+    """生产组合的指定材料读取器（工单 10）。
+
+    材料来源=绑定在当前账户/会话消息上的聊天附件：当前消息优先，没有
+    附件时按前文窗口回看「随后明确要求」的材料（有界条数）。草稿附件
+    （未绑定消息）、其他会话与其他账户的材料绝不会返回；文件类读解析
+    完成的分块（页码/章节/片段），图片类经固定 OCR 能力整图识别。
+    读取一律经属主仓库：``chat_attachments`` → AttachmentRepository、
+    ``document_chunks`` → RetrievalRepository、对象内容 → storage 域
+    只读入口（``get_content``）。
+    """
+
+    def __init__(
+        self,
+        *,
+        attachments: AttachmentRepository,
+        conversations: ConversationRepository,
+        retrieval: RetrievalRepository,
+        objects: Any,
+        gateway: Any,
+        ocr_lock_sink: Callable[[str, Any], None] | None = None,
+    ) -> None:
+        self._attachments = attachments
+        self._conversations = conversations
+        self._retrieval = retrieval
+        self._objects = objects
+        self._gateway = gateway
+        self._ocr_lock_sink = ocr_lock_sink
+
+    def list_designated_materials(
+        self,
+        account_id: str,
+        *,
+        conversation_id: str,
+        message_id: str,
+        lookback: int,
+        max_materials: int,
+    ) -> list[DesignatedMaterial]:
+        materials = self._materials_for_message(
+            account_id, conversation_id, message_id, max_materials
+        )
+        if materials:
+            return materials
+        # 当前消息没有附件：按前文窗口回看最近一条带附件的用户消息，
+        # 支持「先传简历，随后明确要求用它更新」的自然说法。
+        try:
+            messages = list(
+                self._conversations.list_messages(account_id, conversation_id)
+            )
+        except Exception:  # noqa: BLE001 - 回看失败按没有材料处理
+            return []
+        index = next(
+            (
+                position
+                for position, message in enumerate(messages)
+                if message.message_id == message_id
+            ),
+            None,
+        )
+        if index is None:
+            return []
+        for message in reversed(messages[max(0, index - lookback) : index]):
+            role = str(getattr(message.role, "value", message.role))
+            if role != "user":
+                continue
+            materials = self._materials_for_message(
+                account_id, conversation_id, message.message_id, max_materials
+            )
+            if materials:
+                return materials
+        return []
+
+    def _materials_for_message(
+        self,
+        account_id: str,
+        conversation_id: str,
+        message_id: str,
+        max_materials: int,
+    ) -> list[DesignatedMaterial]:
+        try:
+            rows = self._attachments.rows_for_message(
+                account_id, conversation_id, message_id
+            )
+        except Exception:  # noqa: BLE001 - 绑定读取失败按没有材料处理
+            return []
+        materials: list[DesignatedMaterial] = []
+        for row in rows:
+            media_type = str(row["media_type"] or "")
+            if media_type not in CHAT_ATTACHMENT_MEDIA_TYPES:
+                continue
+            kind = (
+                MaterialKind.PHOTO
+                if media_type in PHOTO_MEDIA_TYPES
+                else MaterialKind.FILE
+            )
+            raw_status = row["ingestion_raw_status"]
+            materials.append(
+                DesignatedMaterial(
+                    object_id=str(row["object_id"]),
+                    message_id=str(row["message_id"]),
+                    conversation_id=str(row["conversation_id"]),
+                    ordinal=int(row["ordinal"] or 0),
+                    filename=str(row["original_filename"] or ""),
+                    media_type=media_type,
+                    kind=kind,
+                    content_hash=(
+                        str(row["content_hash"])
+                        if row["content_hash"] is not None
+                        else None
+                    ),
+                    readiness=material_readiness(
+                        kind, str(raw_status) if raw_status is not None else None
+                    ),
+                )
+            )
+            if len(materials) >= max_materials:
+                break
+        return materials
+
+    def read_material(
+        self, account_id: str, material: DesignatedMaterial
+    ) -> MaterialRead | None:
+        if material.kind is MaterialKind.PHOTO:
+            return self._read_photo(account_id, material)
+        try:
+            rows = self._retrieval.material_segments(
+                account_id, object_id=material.object_id
+            )
+        except Exception:  # noqa: BLE001 - 分块读取失败不伪造内容
+            return None
+        segments = tuple(
+            MaterialSegment(
+                text=str(row["content"]),
+                page_number=(
+                    int(row["page_number"])
+                    if row["page_number"] is not None
+                    else None
+                ),
+                section_title=(
+                    str(row["section_title"])
+                    if row["section_title"] is not None
+                    else None
+                ),
+                part_index=int(row["chunk_index"]),
+            )
+            for row in rows
+        )
+        if not segments:
+            return None
+        return MaterialRead(content_hash=material.content_hash, segments=segments)
+
+    def _read_photo(
+        self, account_id: str, material: DesignatedMaterial
+    ) -> MaterialRead | None:
+        if self._objects is None:
+            return None
+        try:
+            content = self._objects.get_content(account_id, material.object_id)
+        except Exception:  # noqa: BLE001 - 对象不可读不伪造内容
+            return None
+        context = RunContextEnvelope(
+            run_id=material.object_id,
+            account_id=account_id,
+            project_id=material.conversation_id,
+            workflow_name="profile-material-read",
+            workflow_version="1",
+            object_domain=ObjectDomain.PERSONAL_VAULT,
+            submitted_at=_now(),
+        )
+        result = self._gateway.invoke(
+            OCR_CAPABILITY_NAME,
+            OCR_CAPABILITY_VERSION,
+            context,
+            payload={
+                "image_base64": base64.b64encode(content).decode("ascii"),
+                "mime_type": material.media_type,
+                "prompt": OCR_IMAGE_PROMPT,
+                "temperature": 0.01,
+                "max_tokens": 4096,
+            },
+        )
+        if result.lock is None:
+            # 网关没有产生运行锁：与既有 OCR 端口同一失败关闭口径，绝不在
+            # 没有审计证据的情况下把识别结果当作事实来源。
+            raise AutomaticProfileError(
+                MATERIAL_READ_FAILED_ERROR,
+                "材料图片识别失败：OCR 服务调用未成功。",
+                retryable=True,
+            )
+        if self._ocr_lock_sink is not None:
+            # 落锁失败向上传播（失败关闭）：没有审计锁就不采用本次识别结果。
+            self._ocr_lock_sink(material.object_id, result.lock)
+        if result.status != ModelCallStatus.SUCCESS or result.output is None:
+            raise AutomaticProfileError(
+                result.error_code or MATERIAL_READ_FAILED_ERROR,
+                result.error_message
+                or "材料图片识别失败。",
+                retryable=result.status == ModelCallStatus.RETRYABLE_FAIL,
+            )
+        text = str(result.output.get("content", ""))
+        if not text.strip():
+            return None
+        return MaterialRead(
+            content_hash=material.content_hash,
+            segments=(MaterialSegment(text=text, part_index=0),),
+        )
+
+
+def _designated_material_reader(
+    *,
+    attachments: AttachmentRepository,
+    conversations: ConversationRepository,
+    retrieval: RetrievalRepository,
+    objects: Any,
+    gateway: Any,
+    ocr_lock_sink: Callable[[str, Any], None] | None = None,
+) -> _DesignatedMaterialReader:
+    """组合根构造指定材料读取器；未接线时调用方传 ``None``（按无材料处理）。"""
+
+    return _DesignatedMaterialReader(
+        attachments=attachments,
+        conversations=conversations,
+        retrieval=retrieval,
+        objects=objects,
+        gateway=gateway,
+        ocr_lock_sink=ocr_lock_sink,
+    )
+
+
+def _material_source_checker(
+    attachments: AttachmentRepository,
+    objects: Any | None,
+) -> Callable[[str, AtomicProfileMaterialSource], AtomicProfileMaterialSourceStatus]:
+    """材料据再核验：绑定仍在、对象活跃、内容版本一致才算可得（工单 10）。
+
+    材料编辑（对象被替换为新版本）或删除、消息撤回（绑定行消失）都使旧
+    引用失效；核验本身出错时按「无法核验」如实返回，绝不默认材料仍存在。
+    """
+
+    def check(
+        account_id: str, source: AtomicProfileMaterialSource
+    ) -> AtomicProfileMaterialSourceStatus:
+        try:
+            rows = attachments.rows_for_message(
+                account_id, source.conversation_id, source.message_id
+            )
+            row = next(
+                (
+                    entry
+                    for entry in rows
+                    if str(entry["object_id"]) == source.object_id
+                ),
+                None,
+            )
+            if row is None:
+                return AtomicProfileMaterialSourceStatus.DELETED
+            row_hash = row["content_hash"]
+            if (
+                source.content_hash
+                and row_hash is not None
+                and str(row_hash) != source.content_hash
+            ):
+                return AtomicProfileMaterialSourceStatus.DELETED
+            if objects is not None:
+                status = objects.object_status(account_id, source.object_id)
+                if status != "active":
+                    return AtomicProfileMaterialSourceStatus.DELETED
+            return AtomicProfileMaterialSourceStatus.AVAILABLE
+        except Exception:  # noqa: BLE001 - 核验失败按无法核验处理
+            return AtomicProfileMaterialSourceStatus.UNREADABLE
+
+    return check

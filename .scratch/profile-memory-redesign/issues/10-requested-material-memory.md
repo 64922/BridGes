@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-**发布状态：** 2026-10-15 用户已确认拆分与依赖，正式发布；尚未实施。
+**发布状态：** 2026-10-15 用户已确认拆分与依赖，正式发布；实施已完成，待合并。
 
 **对应合同：** D02、D04、D10；T05、T14、T19。参见[定稿](../PRD.md)、[共同执行约束](../README.md)。
 
@@ -44,3 +44,16 @@
 ## Comments
 
 2026-10-15：用户回复「按此发布」，确认本次拆分与依赖。已发布为 ready-for-agent，尚无实施记录。
+
+2026-10-16：实施完成（分支 `codex/issue-10-requested-material-memory`）。
+- 交付：指令解析与读取端口（`profiles/materials.py`）、材料运行编排
+  （同步登记 + 有界解析等待 + 引用核验 + 提交前复核）、材料来源契约与
+  证据投影、迁移 85（`source_materials_json` / `run_kind`）、组合根读取器
+  与来源核验接线、聊天如实约束文案。
+- 验证：`tests/profiles/test_issue10_requested_material_memory.py` 17 项；
+  定向回归 `tests/profiles tests/storage tests/chat` 与 main 失败集逐条
+  一致（94 项预存失败，无回归）；契约同步 `tests/api tests/contracts` 通过
+  （`openapi.json` / `generated.ts` 已再生）；确定性走查 7 个旅程全部通过
+  （见 `validation/10-requested-material-memory/verification-record.md`）。
+- 已知边界：回看窗口 3 条消息；照片定位为「整图」；模型遵从性未做真实
+  评测（与 08/09 同）。

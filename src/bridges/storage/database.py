@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 84
+SCHEMA_VERSION = 85
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3693,6 +3693,19 @@ MIGRATIONS: dict[int, list[str]] = {
         ADD COLUMN recurrence_json TEXT
         """,
     ],
+    # 画像工单 10：指定材料的来源据（对象、绑定消息/会话、版本、定位与已核验
+    # 片段）。既有行以空列表启始（没有材料据不改变任何事实）；材料删除或
+    # 权限失效后按来源核验失效，派生采用同步排除、片段不再展示。
+    85: [
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN source_materials_json TEXT NOT NULL DEFAULT '[]'
+        """,
+        """
+        ALTER TABLE profile_extraction_runs
+        ADD COLUMN run_kind TEXT NOT NULL DEFAULT 'ordinary'
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -4087,6 +4100,7 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "topics_json",
         "usage_purpose",
         "recurrence_json",
+        "source_materials_json",
     }),
     "profile_item_migrations": frozenset({
         "run_id",
@@ -4149,6 +4163,7 @@ MIGRATION_ADDED_COLUMNS: dict[str, frozenset[str]] = {
         "source_quotes_json",
         "usage_purpose",
         "recurrence_json",
+        "source_materials_json",
     }),
     "profile_item_migrations": frozenset({"identity_backfilled"}),
     # Issue 06：v76 为用户控制状态与撤回标记补加列。

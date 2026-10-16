@@ -222,6 +222,107 @@ class AtomicProfileMemoryBlockedReason(StrEnum):
     PURPOSE_REQUIRED = "purpose_required"
 
 
+class AtomicProfileMaterialStatus(StrEnum):
+    """一次「据指定材料更新画像」的同步状态（工单 10）。
+
+    ``PROCESSING``：材料已定位并登记后台处理（解析完成后才提取）；
+    ``UNRESOLVED``：本次无法启动或完成受控处理，原因见 ``blocked_reason``。
+    """
+
+    PROCESSING = "processing"
+    UNRESOLVED = "unresolved"
+
+
+class AtomicProfileMaterialBlockedReason(StrEnum):
+    """材料更新未完成的确定性原因（工单 10）；只给原因，不携带材料正文。
+
+    ``MATERIAL_MISSING``：没有找到可处理（已绑定且可访问）的材料；
+    ``MATERIAL_NOT_OWNED``：指令指向的材料明确属于他人，不猜测归属；
+    ``MATERIAL_UNREADABLE``：材料解析完成但没有可用文字；
+    ``MATERIAL_PARSE_FAILED``：材料解析失败；
+    ``MATERIAL_SUBJECT_UNCERTAIN``：材料主体无法确认是用户本人；
+    ``MATERIAL_INVALIDATED``：处理期间材料被删除或权限失效，旧结果作废。
+    """
+
+    MATERIAL_MISSING = "material_missing"
+    MATERIAL_NOT_OWNED = "material_not_owned"
+    MATERIAL_UNREADABLE = "material_unreadable"
+    MATERIAL_PARSE_FAILED = "material_parse_failed"
+    MATERIAL_SUBJECT_UNCERTAIN = "material_subject_uncertain"
+    MATERIAL_INVALIDATED = "material_invalidated"
+
+
+class AtomicProfileMaterialResult(BaseModel):
+    """本轮「据指定材料更新画像」的同步结果（不携带正文）。
+
+    只进入聊天上下文元数据：后台处理期间不得声称已记住材料内容，失败或
+    找不到材料时如实说明原因。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: AtomicProfileMaterialStatus = Field(description="处理状态。")
+    material_count: int = Field(default=0, ge=0, description="已定位的材料条数。")
+    blocked_reason: AtomicProfileMaterialBlockedReason | None = Field(
+        default=None,
+        description="未完成时的确定性原因；已登记处理时为空。",
+    )
+
+    def context_metadata(self) -> dict[str, str | int]:
+        """返回允许进入聊天提示词的最小脱敏元数据。"""
+
+        metadata: dict[str, str | int] = {
+            "memory_kind": "material",
+            "status": self.status.value,
+            "material_count": self.material_count,
+        }
+        if self.blocked_reason is not None:
+            metadata["blocked_reason"] = self.blocked_reason.value
+        return metadata
+
+
+class AtomicProfileMaterialSourceStatus(StrEnum):
+    """一条已保存材料引用的当前可得状态（工单 10）。
+
+    ``AVAILABLE``：绑定与对象仍有效且内容版本一致；``DELETED``：材料被
+    删除或权限失效；``UNREADABLE``：当前无法核验（未接线读取）。
+    """
+
+    AVAILABLE = "available"
+    DELETED = "deleted"
+    UNREADABLE = "unreadable"
+
+
+class AtomicProfileMaterialSource(BaseModel):
+    """一条画像事实的材料据（工单 10；只保留可核验的定位与片段）。
+
+    材料正文不整段保存：只记录对象标识、绑定消息/会话、文件名、内容版本、
+    人类可读定位与已核验的原话片段；片段展示前按内容版本与绑定状态重新
+    核验，失效时不回传副本。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    object_id: str = Field(description="材料对象标识。")
+    message_id: str = Field(description="绑定该材料的消息标识。")
+    conversation_id: str = Field(description="材料所在会话标识。")
+    ordinal: int = Field(default=0, ge=0, description="该消息内的附件页序。")
+    filename: str = Field(default="", max_length=300, description="材料文件名。")
+    media_type: str = Field(default="", max_length=200, description="材料媒体类型。")
+    content_hash: str | None = Field(
+        default=None, description="读取时的材料内容版本；核验失效的坐标。"
+    )
+    locator: str = Field(
+        max_length=200,
+        description="人类可读定位：如「第 2 页 · 教育经历」或「整图」。",
+    )
+    quote: str | None = Field(
+        default=None,
+        max_length=500,
+        description="材料中已核验的原话片段；展示前仍按版本核验。",
+    )
+
+
 class AtomicProfileMigrationStatus(StrEnum):
     """账户级原子化迁移状态；成功与可重试失败分开，便于页面给出准确结论。"""
 
@@ -345,6 +446,13 @@ class AtomicProfileItem(BaseModel):
         description=(
             "工单 05：来源消息 → 已核验原话片段（跨轮多片段证据）。"
             "只保存来源中真实出现的片段；页面按来源逐条核验后展示。"
+        ),
+    )
+    source_materials: list[AtomicProfileMaterialSource] = Field(
+        default_factory=list,
+        description=(
+            "工单 10：指定材料依据（对象、绑定、版本、定位与已核验片段）。"
+            "材料删除或权限失效后不再展示片段，派生采用同步排除。"
         ),
     )
     topic_hint: str | None = Field(
@@ -529,6 +637,31 @@ class AtomicProfileEvidenceSource(BaseModel):
     )
 
 
+class AtomicProfileMaterialEvidence(BaseModel):
+    """一条材料据的按需展开投影（工单 10）。
+
+    只有材料绑定与内容版本仍可核验时才展示保存的片段；材料被删除或
+    权限失效时不回传副本，如实标注状态。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    object_id: str = Field(description="材料对象标识。")
+    message_id: str = Field(description="绑定该材料的消息标识。")
+    conversation_id: str = Field(description="材料所在会话标识。")
+    filename: str = Field(default="", description="材料文件名。")
+    media_type: str = Field(default="", description="材料媒体类型。")
+    locator: str = Field(description="人类可读定位（页码/章节或整图）。")
+    status: AtomicProfileMaterialSourceStatus = Field(description="当前可得状态。")
+    quote: str | None = Field(
+        default=None, description="仍可核验的原话片段；失效或未记录时为空。"
+    )
+    quote_status: AtomicProfileEvidenceQuoteStatus = Field(
+        default=AtomicProfileEvidenceQuoteStatus.NOT_RECORDED,
+        description="材料片段的展示状态。",
+    )
+
+
 class AtomicProfileValidityStatus(StrEnum):
     """条目当前时效状态（由有效期与目标生命周期折算，页面直接展示）。"""
 
@@ -680,6 +813,10 @@ class AtomicProfileItemEvidenceProjection(BaseModel):
     sources: list[AtomicProfileEvidenceSource] = Field(
         default_factory=list, description="来源消息定位与可得状态。"
     )
+    material_sources: list[AtomicProfileMaterialEvidence] = Field(
+        default_factory=list,
+        description="工单 10：材料据定位与当前可得状态（失效时不回传片段）。",
+    )
     feedback: list[AtomicProfileFeedbackProjection] = Field(
         default_factory=list, description="该条目已有的反馈（按时间倒序）。"
     )
@@ -823,6 +960,12 @@ __all__ = [
     "AtomicProfileItemModifyRequest",
     "AtomicProfileItemProjection",
     "AtomicProfileItemStatus",
+    "AtomicProfileMaterialBlockedReason",
+    "AtomicProfileMaterialEvidence",
+    "AtomicProfileMaterialResult",
+    "AtomicProfileMaterialSource",
+    "AtomicProfileMaterialSourceStatus",
+    "AtomicProfileMaterialStatus",
     "AtomicProfileMemoryKind",
     "AtomicProfileMemoryResult",
     "AtomicProfileMemoryStatus",

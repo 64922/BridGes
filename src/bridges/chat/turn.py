@@ -1823,13 +1823,41 @@ _MEMORY_BLOCKED_COPY: dict[str, str] = {
     ),
 }
 
+#: 材料更新结果约束（工单 10）：解析完成前不得声称已记住材料内容；
+#: 不可用时按确定性原因如实回应，不猜测材料里写了什么。
+_MATERIAL_RESULT_COPY: dict[str, str] = {
+    "processing": (
+        "本轮用户明确要求根据材料更新个人记忆，材料已进入后台处理；解析"
+        "完成后才会提取。不得声称已经记住材料内容或已更新完成，也不得"
+        "凭文件名猜测内容；只能说明正在处理，提示之后可在用户画像页"
+        "查看与修改。"
+    ),
+    "unresolved": (
+        "本轮用户要求根据材料更新个人记忆，但材料不可用，没有写入任何"
+        "内容。不得声称已记住或已更新；请如实说明原因并给出可执行建议。"
+    ),
+}
+_MATERIAL_BLOCKED_COPY: dict[str, str] = {
+    "material_not_owned": (
+        "用户指定的材料明确属于他人（如朋友的简历）。系统不会把它当成"
+        "用户本人的信息。不得声称已记住其中的内容；请如实说明只能处理"
+        "用户本人的材料，可邀请用户上传自己的材料。"
+    ),
+    "material_missing": (
+        "没有找到本次指令对应的可处理材料（可能未附带、材料不受当前"
+        "会话支持或已被删除）。不得声称已记住；请如实说明没有找到材料，"
+        "可邀请用户重新上传或在消息中带上材料。"
+    ),
+}
+
 
 def profile_memory_context(metadata: dict[str, Any] | None) -> str | None:
-    """把本轮「记住／忘掉」结果编译为只含结果状态的模型上下文。
+    """把本轮「记住／忘掉／材料更新」结果编译为只含结果状态的模型上下文。
 
     V2 Issue 08：删除与写入都已在本轮生成前生效，模型只能据此如实回应；
     上下文不携带被记住或被删除的正文，正文另有当前用户消息作为唯一来源。
     工单 09：未保存的「记住」按 ``blocked_reason`` 给出差异化约束。
+    工单 10：材料更新在解析完成前不得声称已记住材料内容。
     """
 
     if not metadata:
@@ -1837,6 +1865,18 @@ def profile_memory_context(metadata: dict[str, Any] | None) -> str | None:
     kind = str(metadata.get("memory_kind") or "")
     status = str(metadata.get("status") or "")
     blocked_reason = str(metadata.get("blocked_reason") or "")
+    if kind == "material":
+        material_copy = _MATERIAL_RESULT_COPY.get(status)
+        if status == "unresolved" and blocked_reason:
+            material_copy = _MATERIAL_BLOCKED_COPY.get(blocked_reason, material_copy)
+        if material_copy is None:
+            return None
+        lines = ["【本轮材料更新结果】"]
+        count = metadata.get("material_count")
+        if isinstance(count, int) and count > 0:
+            lines.append(f"已定位的材料条数：{count}")
+        lines.append(f"回复约束：{material_copy}")
+        return "\n".join(lines)
     copy: str | None = None
     if kind == "remember" and status == "unresolved" and blocked_reason:
         copy = _MEMORY_BLOCKED_COPY.get(blocked_reason)

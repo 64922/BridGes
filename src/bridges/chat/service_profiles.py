@@ -7,7 +7,10 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING
 
-from bridges.contracts.atomic_profile import AtomicProfileMemoryResult
+from bridges.contracts.atomic_profile import (
+    AtomicProfileMaterialResult,
+    AtomicProfileMemoryResult,
+)
 from bridges.contracts.chat import (
     ChatMode,
 )
@@ -63,6 +66,10 @@ class _ServiceProfilesMixin:
                 if result is not None and result.memory is not None:
                     self._persist_profile_memory_result(
                         account_id, run_id, result.memory
+                    )
+                if result is not None and result.material is not None:
+                    self._persist_profile_material_result(
+                        account_id, run_id, result.material
                     )
                 return result
             except Exception as exc:  # noqa: BLE001 - 聊天主流程对画像提取保持 fail-open
@@ -131,6 +138,25 @@ class _ServiceProfilesMixin:
             return
         config = dict(run.config or {})
         config["profile_memory"] = memory.context_metadata()
+        self._repo.update_generation_config(account_id, run_id, config)
+    def _persist_profile_material_result(
+        self: ChatService,
+        account_id: str,
+        run_id: str,
+        material: AtomicProfileMaterialResult,
+    ) -> None:
+        """记录本轮材料更新结果（工单 10）。
+
+        与记忆指令结果共用 ``profile_memory`` 元数据键：两者互斥（同一轮
+        至多一种指令），元数据里的 ``memory_kind`` 区分种类，模型上下文
+        按同一读取路径如实渲染。
+        """
+
+        run = self._repo.get_generation_run(account_id, run_id)
+        if run is None:
+            return
+        config = dict(run.config or {})
+        config["profile_memory"] = material.context_metadata()
         self._repo.update_generation_config(account_id, run_id, config)
     def profile_notifications_for_message(
         self: ChatService, account_id: str, conversation_id: str, message_id: str

@@ -63,7 +63,10 @@ from bridges.profiles.adapters import ProfileError
 if TYPE_CHECKING:
     # 自动提取编排器与原子画像服务都会在运行时导入本模块，因此实现类型
     # 只在这里取名字，避免运行时循环导入。
-    from bridges.contracts.atomic_profile import AtomicProfileItem
+    from bridges.contracts.atomic_profile import (
+        AtomicProfileItem,
+        AtomicProfileMaterialSource,
+    )
     from bridges.contracts.profiles import FourDimensionProfileRecord
     from bridges.profiles.atomic import AtomicProfileService
     from bridges.profiles.automatic import AutomaticProfileRepository
@@ -114,6 +117,8 @@ class ProfileFactSubmission:
     evidence_message_id: str | None = None
     #: 跨轮附属证据片段（已核验）；通常引用当前消息之前的用户消息。
     evidence_fragments: tuple[ProfileEvidenceFragment, ...] = ()
+    #: 工单 10：指定材料的来源据（已核验对象/绑定/版本/定位/片段）。
+    material_sources: tuple[AtomicProfileMaterialSource, ...] = ()
 
 
 class SourceWithdrawalStatus(Enum):
