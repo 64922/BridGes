@@ -93,6 +93,9 @@ class ProfileExtractionOutcome(StrEnum):
     SUCCEEDED_CORRECTION_UNRESOLVED = "succeeded_correction_unresolved"
     SUCCEEDED_CORRECTION_NO_ACTIVE = "succeeded_correction_no_active"
     SUCCEEDED_MEMORY_DIRECTIVE = "succeeded_memory_directive"
+    #: 画像工单 09：明确要求保存被隐私门拒绝（凭据或敏感缺少用途）。
+    #: 指令被确定性处理完成、如实未保存；不重试、不落长期存储。
+    SUCCEEDED_MEMORY_UNRESOLVED = "succeeded_memory_unresolved"
     SUCCEEDED_LIFECYCLE_SIGNAL = "succeeded_lifecycle_signal"
     #: 画像工单 08：本轮明确要求不使用长期画像；控制消息不进入自动抽取。
     SUCCEEDED_TURN_CONTROL = "succeeded_turn_control"

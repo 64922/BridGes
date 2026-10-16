@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 82
+SCHEMA_VERSION = 83
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3674,6 +3674,15 @@ MIGRATIONS: dict[int, list[str]] = {
         ADD COLUMN conflict_state TEXT NOT NULL DEFAULT 'none'
         """,
     ],
+    # 画像工单 09：敏感自述的使用用途。只有说明用途（且用途与当前任务匹配）
+    # 的敏感自述才进入回答；凭据类信息在任何路径都不写入（因此本列只会出现在
+    # 普通或敏感条目上）。既有行以 NULL 启始：未说明用途的敏感自述不用于回答。
+    83: [
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN usage_purpose TEXT
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -4066,6 +4075,7 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "validity_phrase",
         "goal_state",
         "topics_json",
+        "usage_purpose",
     }),
     "profile_item_migrations": frozenset({
         "run_id",
@@ -4126,6 +4136,7 @@ MIGRATION_ADDED_COLUMNS: dict[str, frozenset[str]] = {
         "goal_state",
         "topics_json",
         "source_quotes_json",
+        "usage_purpose",
     }),
     "profile_item_migrations": frozenset({"identity_backfilled"}),
     # Issue 06：v76 为用户控制状态与撤回标记补加列。

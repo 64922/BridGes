@@ -29889,6 +29889,19 @@
             ],
             "title": "Topics",
             "description": "可选主题（多选、可扩展）；不传或空列表表示无主题。"
+          },
+          "usage_purpose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Purpose",
+            "description": "可选用途；敏感自述（健康、心理等）必须说明用途才能保存。"
           }
         },
         "additionalProperties": false,
@@ -29964,6 +29977,18 @@
             "type": "array",
             "title": "Topics",
             "description": "开放主题；可空、多选，只组织浏览。"
+          },
+          "usage_purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Purpose",
+            "description": "工单 09：敏感自述的使用用途；没有说明用途时为空。"
           },
           "fact_scope": {
             "$ref": "#/components/schemas/AtomicProfileFactScope",
@@ -30120,6 +30145,19 @@
             ],
             "title": "Topics",
             "description": "替换后的主题；不传表示不修改主题，空列表表示清空主题。"
+          },
+          "usage_purpose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Purpose",
+            "description": "替换后的用途；不传表示不修改，空字符串表示清除用途。清除后敏感自述不再进入回答上下文。"
           }
         },
         "additionalProperties": false,
@@ -30129,7 +30167,7 @@
           "version"
         ],
         "title": "AtomicProfileItemModifyRequest",
-        "description": "行内编辑的乐观锁请求；主题可选修改，不改变事实身份。"
+        "description": "行内编辑的乐观锁请求；主题与用途可选修改，不改变事实身份。"
       },
       "AtomicProfileItemProjection": {
         "properties": {
@@ -30175,6 +30213,18 @@
             "type": "array",
             "title": "Topics",
             "description": "开放主题；可空、多选，只组织浏览。"
+          },
+          "usage_purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Purpose",
+            "description": "工单 09：敏感自述的使用用途；没有说明用途时为空。"
           },
           "source_message_ids": {
             "items": {

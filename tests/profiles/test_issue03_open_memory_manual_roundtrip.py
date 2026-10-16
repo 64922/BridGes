@@ -231,16 +231,16 @@ def test_deletion_suppresses_automatic_revival_after_restart(tmp_path: Path) -> 
     path = tmp_path / "open-memory-delete.db"
     stack = _SqliteStack(path)
     proposal = ProfileFactSubmission(
-        text="我对花生过敏",
+        text="我每周三晚上打羽毛球",
         confidence=FourDimensionConfidence.MEDIUM,
-        evidence_message_id="msg-auto-allergy",
+        evidence_message_id="msg-auto-badminton",
     )
     stack.atomic.commit_fact(ALICE, proposal)
-    assert any("花生" in text for text in _adopted_texts(stack, "花生过敏"))
+    assert any("羽毛球" in text for text in _adopted_texts(stack, "羽毛球"))
 
     item = stack.atomic.list_items(ALICE)[0]
     stack.atomic.delete_item(ALICE, item.profile_item_id, item.version)
-    assert all("花生" not in text for text in _adopted_texts(stack, "花生过敏"))
+    assert all("羽毛球" not in text for text in _adopted_texts(stack, "羽毛球"))
     stack.close()
 
     reopened = _SqliteStack(path)

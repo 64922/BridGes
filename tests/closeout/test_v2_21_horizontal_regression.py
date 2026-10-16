@@ -176,7 +176,7 @@ def test_deleted_profile_item_does_not_come_back_from_old_messages() -> None:
     client = TestClient(create_app())
     account_id = _register(client, "profiledelete")["id"]
     service = client.app.state.atomic_profile_service
-    item = service.remember(account_id, "我对花生过敏")
+    item = service.remember(account_id, "我养了一只叫团子的猫")
 
     deleted = client.request(
         "DELETE", f"/profiles/items/{item.profile_item_id}", json={"version": item.version}
@@ -188,7 +188,7 @@ def test_deleted_profile_item_does_not_come_back_from_old_messages() -> None:
     service.commit_fact(
         account_id,
         ProfileFactSubmission(
-            text="我对花生过敏",
+            text="我养了一只叫团子的猫",
             confidence=FourDimensionConfidence.MEDIUM,
             evidence_message_id="msg-deleted",
         ),

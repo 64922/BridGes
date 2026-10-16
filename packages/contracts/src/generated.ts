@@ -7702,6 +7702,11 @@ export interface components {
              * @description 可选主题（多选、可扩展）；不传或空列表表示无主题。
              */
             topics?: string[] | null;
+            /**
+             * Usage Purpose
+             * @description 可选用途；敏感自述（健康、心理等）必须说明用途才能保存。
+             */
+            usage_purpose?: string | null;
         };
         /**
          * AtomicProfileItemDeleteRequest
@@ -7755,6 +7760,11 @@ export interface components {
              * @description 开放主题；可空、多选，只组织浏览。
              */
             topics?: string[];
+            /**
+             * Usage Purpose
+             * @description 工单 09：敏感自述的使用用途；没有说明用途时为空。
+             */
+            usage_purpose?: string | null;
             /** @description 适用范围。 */
             fact_scope: components["schemas"]["AtomicProfileFactScope"];
             /** @description 目标生命周期标记。 */
@@ -7809,7 +7819,7 @@ export interface components {
         };
         /**
          * AtomicProfileItemModifyRequest
-         * @description 行内编辑的乐观锁请求；主题可选修改，不改变事实身份。
+         * @description 行内编辑的乐观锁请求；主题与用途可选修改，不改变事实身份。
          */
         AtomicProfileItemModifyRequest: {
             /**
@@ -7827,6 +7837,11 @@ export interface components {
              * @description 替换后的主题；不传表示不修改主题，空列表表示清空主题。
              */
             topics?: string[] | null;
+            /**
+             * Usage Purpose
+             * @description 替换后的用途；不传表示不修改，空字符串表示清除用途。清除后敏感自述不再进入回答上下文。
+             */
+            usage_purpose?: string | null;
         };
         /**
          * AtomicProfileItemProjection
@@ -7864,6 +7879,11 @@ export interface components {
              * @description 开放主题；可空、多选，只组织浏览。
              */
             topics?: string[];
+            /**
+             * Usage Purpose
+             * @description 工单 09：敏感自述的使用用途；没有说明用途时为空。
+             */
+            usage_purpose?: string | null;
             /**
              * Source Message Ids
              * @description 证据来源消息标识。

@@ -115,7 +115,7 @@ def test_delete_route_writes_tombstone_and_hides_the_row() -> None:
     client = TestClient(create_app())
     account_id = _register(client, "issue08-atomic-delete", "080004@qq.com")
     service = _service(client)
-    item = service.remember(account_id, "我对花生过敏")
+    item = service.remember(account_id, "我喜欢摄影")
 
     response = client.request(
         "DELETE",

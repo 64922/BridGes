@@ -127,6 +127,12 @@
   list-style: none;
 }
 
+.purpose {
+  margin: 10px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
 .topic {
   border: 1px solid var(--color-text-tertiary);
   border-radius: 999px;
