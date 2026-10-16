@@ -1,4 +1,4 @@
-import type { Account, AtomicProfileFeedbackProjection, AtomicProfileItemCreateRequest, AtomicProfileItemEvidenceProjection, AtomicProfileItemFeedbackRequest, AtomicProfileItemModifyRequest, AtomicProfileItemProjection, FourDimensionProfileModifyRequest, FourDimensionProfileRecord, OngoingItemStateUpdateRequest, OngoingItemsProjection, ProfileAccountControlsProjection, ProfileOverviewProjection, ProfileStatusProjection } from "./types";
+import type { Account, AtomicProfileFeedbackProjection, AtomicProfileItemCreateRequest, AtomicProfileItemEvidenceProjection, AtomicProfileItemFeedbackRequest, AtomicProfileItemModifyRequest, AtomicProfileItemProjection, FourDimensionProfileModifyRequest, FourDimensionProfileRecord, LearningReferencesProjection, OngoingItemStateUpdateRequest, OngoingItemsProjection, ProfileAccountControlsProjection, ProfileOverviewProjection, ProfileStatusProjection } from "./types";
 import { API_BASE, parseApiError } from "./core";
 
 // ---------- 画像中心（Issue 25） ----------
@@ -208,6 +208,17 @@ export async function updateOngoingItemState(
       body: JSON.stringify(request),
     }
   );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+// ---------- 学习引用区（画像工单 14） ----------
+
+export async function fetchLearningReferences(): Promise<LearningReferencesProjection> {
+  const res = await fetch(`${API_BASE}/profiles/learning-references`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
   if (!res.ok) throw await parseApiError(res);
   return res.json();
 }

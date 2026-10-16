@@ -15376,7 +15376,7 @@
           "profiles"
         ],
         "summary": "Update Ongoing Item State",
-        "description": "暂停/完成/继续进行中目标；返回刷新后的事项区。",
+        "description": "暂停/完成/继续进行中目标；返回刷新后的事项区。\n\n条目关联学习等领域时状态由所属领域执行：请求须带页面读到的领域版本\n（``reference_version``），领域冲突/不可用按领域错误如实映射，不把\n失败显示为成功，也不在画像侧写第二份状态。",
         "operationId": "update_ongoing_item_state_profiles_ongoing__item_id__state_post",
         "parameters": [
           {
@@ -15564,6 +15564,76 @@
               }
             },
             "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/profiles/learning-references": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Get Learning References",
+        "description": "当前账户的学习引用：真实目标与学情判断的只读实时投影。",
+        "operationId": "get_learning_references_profiles_learning_references_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningReferencesProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -48074,6 +48144,148 @@
         "title": "LearningError",
         "description": "Uniform learning-domain error response."
       },
+      "LearningEvidenceReference": {
+        "properties": {
+          "record_id": {
+            "type": "string",
+            "title": "Record Id",
+            "description": "学习领域内的稳定记录标识。"
+          },
+          "record_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Record Version",
+            "description": "记录版本。"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "学科。"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "知识点标题。"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/StudyDiagnosisVerdict",
+            "description": "上次核验结论。"
+          },
+          "state": {
+            "$ref": "#/components/schemas/StudyRecordState",
+            "description": "记录状态：active 或 corrected（已删除不进入投影）。"
+          },
+          "verified": {
+            "type": "boolean",
+            "title": "Verified",
+            "description": "是否依据实际作答处于已核验状态；用户纠正后为假。"
+          },
+          "pending_confirmation": {
+            "type": "boolean",
+            "title": "Pending Confirmation",
+            "description": "是否待进一步验证（不确定，不作确定学情）。"
+          },
+          "source_available": {
+            "type": "boolean",
+            "title": "Source Available",
+            "description": "来源消息是否仍可读。"
+          },
+          "uncertainty": {
+            "type": "string",
+            "title": "Uncertainty",
+            "description": "学习领域记录的未确认说明；没有时为空。",
+            "default": ""
+          },
+          "user_note": {
+            "type": "string",
+            "title": "User Note",
+            "description": "用户主动纠正内容；未纠正时为空。",
+            "default": ""
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新时间。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "record_id",
+          "record_version",
+          "subject",
+          "title",
+          "verdict",
+          "state",
+          "verified",
+          "pending_confirmation",
+          "source_available",
+          "updated_at"
+        ],
+        "title": "LearningEvidenceReference",
+        "description": "一条学习学情判断的只读引用（所有权在学习领域）。\n\n``verified`` 为真表示该判断仍处于活动状态且来源可读（依据实际作答\n核验）；用户纠正（``corrected``）、来源不可读与待进一步验证都不构成\n已核验掌握。阅读、单次答对或用户自评不会出现在该字段语义里。"
+      },
+      "LearningGoalReference": {
+        "properties": {
+          "goal_id": {
+            "type": "string",
+            "title": "Goal Id",
+            "description": "学习领域内的稳定目标标识。"
+          },
+          "statement": {
+            "type": "string",
+            "title": "Statement",
+            "description": "用户目标原话（学习领域所有）。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "completed"
+            ],
+            "title": "Status",
+            "description": "目标状态：活动/暂停/完成。"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "目标版本（并发操作守卫依据）。"
+          },
+          "current_node_title": {
+            "type": "string",
+            "title": "Current Node Title",
+            "description": "当前路线节点名称；未形成路线时为空。",
+            "default": ""
+          },
+          "route_version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Route Version",
+            "description": "当前路线版本；未形成时为 0。",
+            "default": 0
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新时间。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "goal_id",
+          "statement",
+          "status",
+          "version",
+          "updated_at"
+        ],
+        "title": "LearningGoalReference",
+        "description": "一条学习目标的只读引用（所有权在学习领域）。"
+      },
       "LearningMission": {
         "properties": {
           "mission_id": {
@@ -49169,6 +49381,42 @@
         ],
         "title": "LearningRecordType",
         "description": "Kind of observable learning evidence that may update a knowledge state.\n\nBrowsing and completion-only activities are deliberately excluded; they are\nstored as ``LearningActivity`` and never promoted to learning records."
+      },
+      "LearningReferencesProjection": {
+        "properties": {
+          "owner": {
+            "type": "string",
+            "title": "Owner",
+            "description": "字段所有权：所有条目由本标识的领域拥有，这里只是引用。",
+            "default": "study"
+          },
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "description": "引用投影合同版本。",
+            "default": "learning-references-v1"
+          },
+          "goals": {
+            "items": {
+              "$ref": "#/components/schemas/LearningGoalReference"
+            },
+            "type": "array",
+            "title": "Goals",
+            "description": "本人活动/暂停的学习目标，最近更新在前。"
+          },
+          "evidences": {
+            "items": {
+              "$ref": "#/components/schemas/LearningEvidenceReference"
+            },
+            "type": "array",
+            "title": "Evidences",
+            "description": "未被删除的学情判断（纠正与未核验如实标注），最近更新在前。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LearningReferencesProjection",
+        "description": "记忆页的学习引用区投影：目标与学情分别列出，来源实时读取。"
       },
       "LearningResourcesProjection": {
         "properties": {
@@ -51507,6 +51755,18 @@
             ],
             "title": "State Code",
             "description": "所属领域的状态标记；未解析时为空。"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "所属领域对象的当前版本（画像工单 14）；未解析或领域不提供时为空。"
           }
         },
         "additionalProperties": false,
@@ -51676,6 +51936,19 @@
             "minimum": 1.0,
             "title": "Version",
             "description": "操作前读到的条目版本号。"
+          },
+          "reference_version": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Version",
+            "description": "操作前读到的所属领域对象版本（画像工单 14）；关联领域的条目必填，未关联领域时省略。"
           }
         },
         "additionalProperties": false,
@@ -51685,7 +51958,7 @@
           "version"
         ],
         "title": "OngoingItemStateUpdateRequest",
-        "description": "页面对一个精确事项的暂停/完成/恢复请求。"
+        "description": "页面对一个精确事项的暂停/完成/恢复请求。\n\n条目未关联领域时 ``version`` 就是条目版本；已关联领域（如学习目标）时\n状态由所属领域管理：``version`` 仍须匹配页面读到的条目版本（防止页面\n基于过期引用操作），``reference_version`` 必须是投影里领域对象的版本\n（跨会话并发守卫；缺失时如实拒绝，不盲目覆盖领域新状态）。"
       },
       "OngoingItemsProjection": {
         "properties": {

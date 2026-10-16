@@ -40,6 +40,7 @@ from bridges.profiles.four_dimensions import (
     FourDimensionProfileError,
     FourDimensionProfileService,
 )
+from bridges.profiles.learning_api import router as _learning_references_router
 from bridges.profiles.ongoing_api import router as _ongoing_router
 from bridges.profiles.overview_api import router as _overview_router
 
@@ -473,8 +474,9 @@ async def rollback_atomic_profile_migration(
 
 
 # 进行中事项区路由在独立模块（画像工单 13），沿用同一前缀与标签；放在文末
-# 保持既有路由在 OpenAPI 中的顺序不变。
+# 保持既有路由在 OpenAPI 中的顺序不变。学习引用区路由同理（画像工单 14）。
 router.include_router(_ongoing_router)
+router.include_router(_learning_references_router)
 
 # 整体概览路由同样在独立模块（画像工单 15），并入同一前缀与标签。
 router.include_router(_overview_router)

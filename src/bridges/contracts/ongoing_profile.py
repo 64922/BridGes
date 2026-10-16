@@ -29,7 +29,9 @@ from bridges.contracts.atomic_profile import (
 )
 
 #: 上下文派生合同的版本标识；派生逻辑变化时旧快照一律视为失效重建。
-ONGOING_CONTEXT_CONTRACT_VERSION = "ongoing-context-v1"
+#: v2（画像工单 14）：指纹加入领域引用解析结果（状态、版本），学习领域的
+#: 纠正/删除/暂停/切换会让个人近期上下文立即失效。
+ONGOING_CONTEXT_CONTRACT_VERSION = "ongoing-context-v2"
 
 
 class OngoingItemRole(StrEnum):
@@ -61,6 +63,14 @@ class OngoingDomainReferenceState(BaseModel):
         max_length=40,
         description="所属领域自己的状态标记（如 active/paused），原文透传。",
     )
+    version: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "所属领域对象的当前版本（画像工单 14）；展示与跨会话并发操作"
+            "的守卫依据，领域不提供版本时为空。"
+        ),
+    )
 
 
 class OngoingDomainReferenceProjection(BaseModel):
@@ -77,6 +87,26 @@ class OngoingDomainReferenceProjection(BaseModel):
     state_code: str | None = Field(
         default=None, description="所属领域的状态标记；未解析时为空。"
     )
+    version: int | None = Field(
+        default=None,
+        description=(
+            "所属领域对象的当前版本（画像工单 14）；未解析或领域不提供时为空。"
+        ),
+    )
+
+
+class OngoingDomainReferenceError(Exception):
+    """领域引用状态操作的域错误（跨领域接缝；画像工单 14）。
+
+    学习等所属领域在代理个人记忆页的状态操作时抛出，由个人记忆 API 映射
+    为稳定 HTTP 状态；错误必须如实说明冲突或不可用，不能静默改写领域状态。
+    """
+
+    def __init__(self, code: str, message: str, status_code: int) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.status_code = status_code
 
 
 class OngoingEntryProjection(BaseModel):
@@ -132,12 +162,26 @@ class OngoingItemsProjection(BaseModel):
 
 
 class OngoingItemStateUpdateRequest(BaseModel):
-    """页面对一个精确事项的暂停/完成/恢复请求。"""
+    """页面对一个精确事项的暂停/完成/恢复请求。
+
+    条目未关联领域时 ``version`` 就是条目版本；已关联领域（如学习目标）时
+    状态由所属领域管理：``version`` 仍须匹配页面读到的条目版本（防止页面
+    基于过期引用操作），``reference_version`` 必须是投影里领域对象的版本
+    （跨会话并发守卫；缺失时如实拒绝，不盲目覆盖领域新状态）。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     action: OngoingGoalAction = Field(description="要执行的操作。")
     version: int = Field(ge=1, description="操作前读到的条目版本号。")
+    reference_version: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "操作前读到的所属领域对象版本（画像工单 14）；关联领域的条目"
+            "必填，未关联领域时省略。"
+        ),
+    )
 
 
 class OngoingDomainReferenceUpdateRequest(BaseModel):
@@ -200,6 +244,7 @@ __all__ = [
     "OngoingContextSnapshot",
     "OngoingContextState",
     "OngoingContinuationGroup",
+    "OngoingDomainReferenceError",
     "OngoingDomainReferenceProjection",
     "OngoingDomainReferenceState",
     "OngoingDomainReferenceUpdateRequest",

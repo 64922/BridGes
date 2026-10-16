@@ -115,12 +115,20 @@ export function OngoingItemsCard() {
   const runAction = async (item: OngoingItemProjection, action: OngoingGoalAction) => {
     if (action === "complete" && !window.confirm(COMPLETE_CONFIRM)) return;
     const goalId = item.goal.profile_item_id;
+    // 画像工单 14：关联学习等领域的目标由其领域执有状态；把页面读到的
+    // 领域对象版本一并交给后端做跨会话并发守卫（未接通领域时不伪造版本）。
+    const referenceVersion = (item.domain_references ?? []).find(
+      (reference) => reference.resolved && reference.version != null
+    )?.version;
     try {
       setBusyId(goalId);
       setError(null);
       const next = await updateOngoingItemState(goalId, {
         action,
         version: item.goal.version,
+        ...(referenceVersion != null
+          ? { reference_version: referenceVersion }
+          : {}),
       });
       setData(next);
       setNotice(`「${item.goal.text}」${ACTION_NOTICES[action]}。`);
@@ -221,7 +229,13 @@ export function OngoingItemsCard() {
                       <li key={`${reference.domain}:${reference.reference_id}`}>
                         {reference.resolved
                           ? `所属领域进展：${reference.display}${
-                              reference.state_code ? `（${reference.state_code}）` : ""
+                              reference.state_code
+                                ? `（${
+                                    GOAL_STATE_LABELS[
+                                      reference.state_code as keyof typeof GOAL_STATE_LABELS
+                                    ] ?? reference.state_code
+                                  }）`
+                                : ""
                             }`
                           : "已关联所属领域的对象；该领域尚未接通，暂时无法显示状态。"}
                       </li>

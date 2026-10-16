@@ -3420,6 +3420,10 @@ export interface paths {
         /**
          * Update Ongoing Item State
          * @description 暂停/完成/继续进行中目标；返回刷新后的事项区。
+         *
+         *     条目关联学习等领域时状态由所属领域执行：请求须带页面读到的领域版本
+         *     （``reference_version``），领域冲突/不可用按领域错误如实映射，不把
+         *     失败显示为成功，也不在画像侧写第二份状态。
          */
         post: operations["update_ongoing_item_state_profiles_ongoing__item_id__state_post"];
         delete?: never;
@@ -3441,6 +3445,26 @@ export interface paths {
          * @description 设置/清除目标的领域引用；领域状态仍在读取时由领域提供方解析。
          */
         put: operations["update_ongoing_domain_reference_profiles_ongoing__item_id__domain_reference_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/learning-references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Learning References
+         * @description 当前账户的学习引用：真实目标与学情判断的只读实时投影。
+         */
+        get: operations["get_learning_references_profiles_learning_references_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -18622,6 +18646,118 @@ export interface components {
             };
         };
         /**
+         * LearningEvidenceReference
+         * @description 一条学习学情判断的只读引用（所有权在学习领域）。
+         *
+         *     ``verified`` 为真表示该判断仍处于活动状态且来源可读（依据实际作答
+         *     核验）；用户纠正（``corrected``）、来源不可读与待进一步验证都不构成
+         *     已核验掌握。阅读、单次答对或用户自评不会出现在该字段语义里。
+         */
+        LearningEvidenceReference: {
+            /**
+             * Record Id
+             * @description 学习领域内的稳定记录标识。
+             */
+            record_id: string;
+            /**
+             * Record Version
+             * @description 记录版本。
+             */
+            record_version: number;
+            /**
+             * Subject
+             * @description 学科。
+             */
+            subject: string;
+            /**
+             * Title
+             * @description 知识点标题。
+             */
+            title: string;
+            /** @description 上次核验结论。 */
+            verdict: components["schemas"]["StudyDiagnosisVerdict"];
+            /** @description 记录状态：active 或 corrected（已删除不进入投影）。 */
+            state: components["schemas"]["StudyRecordState"];
+            /**
+             * Verified
+             * @description 是否依据实际作答处于已核验状态；用户纠正后为假。
+             */
+            verified: boolean;
+            /**
+             * Pending Confirmation
+             * @description 是否待进一步验证（不确定，不作确定学情）。
+             */
+            pending_confirmation: boolean;
+            /**
+             * Source Available
+             * @description 来源消息是否仍可读。
+             */
+            source_available: boolean;
+            /**
+             * Uncertainty
+             * @description 学习领域记录的未确认说明；没有时为空。
+             * @default
+             */
+            uncertainty: string;
+            /**
+             * User Note
+             * @description 用户主动纠正内容；未纠正时为空。
+             * @default
+             */
+            user_note: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * LearningGoalReference
+         * @description 一条学习目标的只读引用（所有权在学习领域）。
+         */
+        LearningGoalReference: {
+            /**
+             * Goal Id
+             * @description 学习领域内的稳定目标标识。
+             */
+            goal_id: string;
+            /**
+             * Statement
+             * @description 用户目标原话（学习领域所有）。
+             */
+            statement: string;
+            /**
+             * Status
+             * @description 目标状态：活动/暂停/完成。
+             * @enum {string}
+             */
+            status: "active" | "paused" | "completed";
+            /**
+             * Version
+             * @description 目标版本（并发操作守卫依据）。
+             */
+            version: number;
+            /**
+             * Current Node Title
+             * @description 当前路线节点名称；未形成路线时为空。
+             * @default
+             */
+            current_node_title: string;
+            /**
+             * Route Version
+             * @description 当前路线版本；未形成时为 0。
+             * @default 0
+             */
+            route_version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新时间。
+             */
+            updated_at: string;
+        };
+        /**
          * LearningMission
          * @description A user's real learning goal and the contract that teaching must serve.
          */
@@ -19380,6 +19516,34 @@ export interface components {
          * @enum {string}
          */
         LearningRecordType: "exercise_attempt" | "misconception_correction" | "prerequisite_evidence" | "delayed_retrieval" | "transfer_task";
+        /**
+         * LearningReferencesProjection
+         * @description 记忆页的学习引用区投影：目标与学情分别列出，来源实时读取。
+         */
+        LearningReferencesProjection: {
+            /**
+             * Owner
+             * @description 字段所有权：所有条目由本标识的领域拥有，这里只是引用。
+             * @default study
+             */
+            owner: string;
+            /**
+             * Contract Version
+             * @description 引用投影合同版本。
+             * @default learning-references-v1
+             */
+            contract_version: string;
+            /**
+             * Goals
+             * @description 本人活动/暂停的学习目标，最近更新在前。
+             */
+            goals?: components["schemas"]["LearningGoalReference"][];
+            /**
+             * Evidences
+             * @description 未被删除的学情判断（纠正与未核验如实标注），最近更新在前。
+             */
+            evidences?: components["schemas"]["LearningEvidenceReference"][];
+        };
         /**
          * LearningResourcesProjection
          * @description 资料模块随助手消息持久化的完整投影。
@@ -20816,6 +20980,11 @@ export interface components {
              * @description 所属领域的状态标记；未解析时为空。
              */
             state_code?: string | null;
+            /**
+             * Version
+             * @description 所属领域对象的当前版本（画像工单 14）；未解析或领域不提供时为空。
+             */
+            version?: number | null;
         };
         /**
          * OngoingDomainReferenceUpdateRequest
@@ -20906,6 +21075,11 @@ export interface components {
         /**
          * OngoingItemStateUpdateRequest
          * @description 页面对一个精确事项的暂停/完成/恢复请求。
+         *
+         *     条目未关联领域时 ``version`` 就是条目版本；已关联领域（如学习目标）时
+         *     状态由所属领域管理：``version`` 仍须匹配页面读到的条目版本（防止页面
+         *     基于过期引用操作），``reference_version`` 必须是投影里领域对象的版本
+         *     （跨会话并发守卫；缺失时如实拒绝，不盲目覆盖领域新状态）。
          */
         OngoingItemStateUpdateRequest: {
             /** @description 要执行的操作。 */
@@ -20915,6 +21089,11 @@ export interface components {
              * @description 操作前读到的条目版本号。
              */
             version: number;
+            /**
+             * Reference Version
+             * @description 操作前读到的所属领域对象版本（画像工单 14）；关联领域的条目必填，未关联领域时省略。
+             */
+            reference_version?: number | null;
         };
         /**
          * OngoingItemsProjection
@@ -41265,6 +41444,55 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    get_learning_references_profiles_learning_references_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningReferencesProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

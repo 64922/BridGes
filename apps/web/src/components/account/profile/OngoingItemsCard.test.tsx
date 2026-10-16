@@ -253,6 +253,128 @@ describe("OngoingItemsCard", () => {
     );
   });
 
+  it("关联领域的目标提交状态时带上领域对象版本", async () => {
+    api.fetchOngoingItems.mockResolvedValue(
+      projection({
+        items: [
+          {
+            goal: entry({
+              role: "goal",
+              profile_item_id: "goal-1",
+              text: "我在准备考研英语",
+            }),
+            progress: [],
+            pending_questions: [],
+            domain_references: [
+              {
+                domain: "study",
+                reference_id: "goal-1",
+                resolved: true,
+                display: "学习目标「考研英语」；当前知识点：阅读",
+                state_code: "active",
+                version: 3,
+              },
+            ],
+          },
+        ],
+      })
+    );
+    api.updateOngoingItemState.mockResolvedValue(
+      projection({
+        items: [
+          {
+            goal: entry({
+              role: "goal",
+              profile_item_id: "goal-1",
+              text: "我在准备考研英语",
+              goal_state: "paused",
+              version: 2,
+            }),
+            progress: [],
+            pending_questions: [],
+            domain_references: [
+              {
+                domain: "study",
+                reference_id: "goal-1",
+                resolved: true,
+                display: "学习目标「考研英语」；当前已暂停",
+                state_code: "paused",
+                version: 4,
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    render(<OngoingItemsCard />);
+    fireEvent.click(await screen.findByRole("button", { name: "暂停" }));
+
+    // 画像工单 14：跨会话并发守卫需要页面读到的领域对象版本。
+    expect(api.updateOngoingItemState).toHaveBeenCalledWith("goal-1", {
+      action: "pause",
+      version: 1,
+      reference_version: 3,
+    });
+    expect(
+      (await screen.findByTestId("ongoing-domain")).textContent
+    ).toContain("所属领域进展：学习目标「考研英语」；当前已暂停（已暂停）");
+  });
+
+  it("领域引用未解析时不伪造领域版本", async () => {
+    api.fetchOngoingItems.mockResolvedValue(
+      projection({
+        items: [
+          {
+            goal: entry({
+              role: "goal",
+              profile_item_id: "goal-1",
+              text: "我在准备考研英语",
+            }),
+            progress: [],
+            pending_questions: [],
+            domain_references: [
+              {
+                domain: "study",
+                reference_id: "goal-1",
+                resolved: false,
+                display: null,
+                state_code: null,
+                version: null,
+              },
+            ],
+          },
+        ],
+      })
+    );
+    api.updateOngoingItemState.mockResolvedValue(
+      projection({
+        items: [
+          {
+            goal: entry({
+              role: "goal",
+              profile_item_id: "goal-1",
+              text: "我在准备考研英语",
+              goal_state: "paused",
+              version: 2,
+            }),
+            progress: [],
+            pending_questions: [],
+            domain_references: [],
+          },
+        ],
+      })
+    );
+
+    render(<OngoingItemsCard />);
+    fireEvent.click(await screen.findByRole("button", { name: "暂停" }));
+
+    expect(api.updateOngoingItemState).toHaveBeenCalledWith("goal-1", {
+      action: "pause",
+      version: 1,
+    });
+  });
+
   it("操作控件均为键盘可达的原生按钮", async () => {
     api.fetchOngoingItems.mockResolvedValue(projection());
     api.updateOngoingItemState.mockResolvedValue(

@@ -1,4 +1,5 @@
 import { AtomicProfileCenter } from "@/components/account/profile/AtomicProfileCenter";
+import { LearningReferencesCard } from "@/components/account/profile/LearningReferencesCard";
 import { OngoingItemsCard } from "@/components/account/profile/OngoingItemsCard";
 import { ProfileControlsCard } from "@/components/account/profile/ProfileControlsCard";
 import { ProfileOverviewCard } from "@/components/account/profile/ProfileOverviewCard";
@@ -23,6 +24,9 @@ export const metadata = {
  *
  * 画像工单 15：顶部是整体概览（按主题原样汇总、每句可定位依据），其后是
  * 进行中事项与可编辑条目；条目列表按开放主题筛选，多主题不复制事实。
+ *
+ * 画像工单 14：事项区下方是学习引用区（学习模块自己的目标与学情判断，
+ * 只读实时反映；自述条目仍只在上方「你的信息」里）。
  */
 export default function ProfileCenterPage() {
   return (
@@ -30,6 +34,7 @@ export default function ProfileCenterPage() {
       <ProfileControlsCard />
       <ProfileOverviewCard />
       <OngoingItemsCard />
+      <LearningReferencesCard />
       <AtomicProfileCenter />
     </MainContent>
   );

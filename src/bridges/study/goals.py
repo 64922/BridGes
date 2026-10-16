@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
-import json
-import sqlite3
 from datetime import datetime
-
-from pydantic import ValidationError
 
 from bridges.contracts.study_goals import (
     StudyGoalProjection,
     StudyRouteProjection,
 )
-from bridges.storage.database import BridgesDatabase, ScopedConnection
+from bridges.storage.database import BridgesDatabase
+from bridges.study.goals_rows import (
+    goal_from_row as _goal_from_row,
+)
+from bridges.study.goals_rows import (
+    insert_route_row as _insert_route_row,
+)
+from bridges.study.goals_rows import (
+    nodes_json as _nodes_json,
+)
+from bridges.study.goals_rows import (
+    route_from_row as _route_from_row,
+)
 
 _GOAL_COLUMNS = (
     "goal_id, statement, observable_result, scope, constraints, status, version,"
@@ -215,6 +223,30 @@ class StudyGoalRepository:
             "UPDATE study_goals SET status = 'active', version = version + 1,"
             " updated_at = ? WHERE account_id = ? AND goal_id = ?"
             " AND version = ? AND status = 'paused'",
+            (now.isoformat(), account_id, goal_id, expected_version),
+        )
+        return cursor.rowcount == 1
+
+    def complete_goal_in_transaction(
+        self,
+        *,
+        account_id: str,
+        goal_id: str,
+        expected_version: int,
+        now: datetime,
+    ) -> bool:
+        """把活动或暂停目标标记为完成并递增版本（画像工单 14 接入）。
+
+        用户明确完成时由所属领域执行：完成的目标不再进入续学与目标列表，
+        会话引用与历史路线保持原样（只读可回溯）；版本不符时拒绝，
+        不覆盖其他会话刚发生的暂停/切换/恢复。已完成时重复提交返回
+        False（幂等由调用方按目标状态判定）。
+        """
+
+        cursor = self._database.scoped(account_id).execute(
+            "UPDATE study_goals SET status = 'completed', version = version + 1,"
+            " updated_at = ? WHERE account_id = ? AND goal_id = ?"
+            " AND version = ? AND status IN ('active', 'paused')",
             (now.isoformat(), account_id, goal_id, expected_version),
         )
         return cursor.rowcount == 1
@@ -423,69 +455,3 @@ class StudyGoalRepository:
             ),
         )
         return cursor.rowcount == 1
-
-
-def _insert_route_row(
-    scoped: ScopedConnection, account_id: str, goal_id: str, route: StudyRouteProjection
-) -> None:
-    scoped.execute(
-        "INSERT INTO study_goal_routes"
-        " (account_id, goal_id, version, nodes_json, current_node_id,"
-        " revision_reason, origin, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            account_id,
-            goal_id,
-            route.version,
-            _nodes_json(route),
-            route.current_node_id,
-            route.revision_reason,
-            route.origin,
-            route.created_at.isoformat(),
-        ),
-    )
-
-
-def _nodes_json(route: StudyRouteProjection) -> str:
-    return json.dumps(
-        [node.model_dump(mode="json") for node in route.nodes], ensure_ascii=False
-    )
-
-
-def _goal_from_row(row: sqlite3.Row) -> StudyGoalProjection | None:
-    try:
-        return StudyGoalProjection.model_validate(
-            {
-                "goal_id": row["goal_id"],
-                "statement": row["statement"],
-                "observable_result": row["observable_result"],
-                "scope": row["scope"],
-                "constraints": row["constraints"],
-                "status": row["status"],
-                "version": row["version"],
-                "source_message_id": row["source_message_id"],
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-            }
-        )
-    except (TypeError, ValueError, ValidationError, KeyError):
-        return None
-
-
-def _route_from_row(row: sqlite3.Row) -> StudyRouteProjection | None:
-    try:
-        nodes = json.loads(row["nodes_json"])
-    except (TypeError, ValueError):
-        return None
-    try:
-        return StudyRouteProjection.model_validate(
-            {
-                "version": row["version"],
-                "nodes": nodes,
-                "current_node_id": row["current_node_id"],
-                "revision_reason": row["revision_reason"],
-                "origin": row["origin"],
-                "created_at": row["created_at"],
-            }
-        )
-    except (TypeError, ValueError, ValidationError, KeyError):
-        return None

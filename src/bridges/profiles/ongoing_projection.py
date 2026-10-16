@@ -16,7 +16,10 @@ from bridges.contracts.atomic_profile import (
 )
 from bridges.contracts.ongoing_profile import (
     ONGOING_CONTEXT_CONTRACT_VERSION,
+    OngoingDomainReferenceProjection,
     OngoingEntryProjection,
+    OngoingItemProjection,
+    OngoingItemRole,
 )
 from bridges.profiles.atomic import (
     is_ongoing_goal_item,
@@ -59,17 +62,59 @@ def _group_items(items: Sequence[AtomicProfileItem]) -> list[_OngoingGroup]:
 
 
 def _entry_projection(
-    item: AtomicProfileItem, *, now: datetime
+    item: AtomicProfileItem,
+    *,
+    now: datetime,
+    goal_state: AtomicProfileGoalState | None = None,
 ) -> OngoingEntryProjection:
+    """条目投影；关联领域的目标可传入领域实时状态作为有效状态。
+
+    只有目标的展示状态可以取领域实时值（画像工单 14）；时效仍按同一
+    规则折算，不新增事实、不修改条目本身。
+    """
+
+    effective = item
+    if goal_state is not None and item.goal_state is not goal_state:
+        effective = item.model_copy(update={"goal_state": goal_state})
     return OngoingEntryProjection(
         role=ongoing_entry_role(item),
-        profile_item_id=item.profile_item_id,
-        version=item.version,
-        text=item.text,
-        goal_state=item.goal_state,
-        validity_status=validity_status_for(item, now),
-        updated_at=item.updated_at,
-        source_message_ids=list(item.source_message_ids),
+        profile_item_id=effective.profile_item_id,
+        version=effective.version,
+        text=effective.text,
+        goal_state=effective.goal_state,
+        validity_status=validity_status_for(effective, now),
+        updated_at=effective.updated_at,
+        source_message_ids=list(effective.source_message_ids),
+    )
+
+
+def _item_projection(
+    group: _OngoingGroup,
+    *,
+    now: datetime,
+    reference: OngoingDomainReferenceProjection | None,
+    effective_goal_state: AtomicProfileGoalState,
+) -> OngoingItemProjection:
+    """一个事项的页面投影；领域引用只展示实时解析结果，不复制领域状态。"""
+
+    progress: list[OngoingEntryProjection] = []
+    pending: list[OngoingEntryProjection] = []
+    for entry in sorted(
+        group.entries,
+        key=lambda item: (-item.updated_at.timestamp(), item.profile_item_id),
+    ):
+        projection = _entry_projection(entry, now=now)
+        if projection.role is OngoingItemRole.PENDING_QUESTION:
+            pending.append(projection)
+        else:
+            progress.append(projection)
+    return OngoingItemProjection(
+        goal=_entry_projection(
+            group.goal, now=now, goal_state=effective_goal_state
+        ),
+        progress=progress,
+        pending_questions=pending,
+        domain_references=[reference] if reference is not None else [],
     )
 
 

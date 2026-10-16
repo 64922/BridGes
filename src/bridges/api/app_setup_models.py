@@ -30,6 +30,7 @@ from bridges.profiles import (
     RuleBasedAutomaticProfileExtractor,
     SqliteAutomaticProfileRepository,
 )
+from bridges.profiles.learning_references import LearningReferencesService
 from bridges.profiles.ongoing import OngoingItemsService
 from bridges.profiles.ongoing_repository import (
     InMemoryOngoingContextStore,
@@ -41,6 +42,10 @@ from bridges.profiles.overview_repository import (
     SqliteProfileOverviewStore,
 )
 from bridges.retrieval.repository import RetrievalRepository
+from bridges.study.profile_links import (
+    STUDY_PROFILE_DOMAIN,
+    StudyProfileLinkService,
+)
 
 
 def _material_ocr_lock_sink(recorder: SqliteModelRunLockRecorder) -> Any:
@@ -218,8 +223,10 @@ def configure_model_services(app: FastAPI) -> None:
         )
     # 画像工单 13：进行中事项投影与近期工作上下文。控制读取复用自动画像
     # 服务的同一份持久状态（改进工单 07）；来源可用性复用画像证据的来源
-    # 读取；领域提供方由后续接线（学习对接见 14），未接通时如实显示未解析。
-    # 上下文是派生数据：有持久化数据目录时落 bridges.db，内存模式不落盘。
+    # 读取；上下文是派生数据：有持久化数据目录时落 bridges.db，内存模式
+    # 不落盘。画像工单 14：学习领域的引用解析与状态操作在组合根接线——
+    # 目标状态实时解析，页面暂停/继续/完成经学习领域守卫执行（不双写）；
+    # 数据库未就绪时保持未接通，页面如实显示未解析、操作如实拒绝。
     app.state.ongoing_items_service = OngoingItemsService(
         atomic=app.state.atomic_profile_service,
         context_store=(
@@ -234,6 +241,16 @@ def configure_model_services(app: FastAPI) -> None:
             else None
         ),
     )
+    app.state.learning_references_service = LearningReferencesService()
+    if profile_database is not None:
+        study_profile_links = StudyProfileLinkService(profile_database)
+        app.state.ongoing_items_service.register_domain_provider(
+            STUDY_PROFILE_DOMAIN, study_profile_links
+        )
+        app.state.ongoing_items_service.register_domain_state_provider(
+            STUDY_PROFILE_DOMAIN, study_profile_links
+        )
+        app.state.learning_references_service.set_reader(study_profile_links)
     # 双向接线：原子写入后立即失效上下文；编译时经同一服务取「继续事项」。
     app.state.atomic_profile_service.set_ongoing_context_listener(
         app.state.ongoing_items_service
