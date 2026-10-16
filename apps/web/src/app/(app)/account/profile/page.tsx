@@ -1,6 +1,7 @@
 import { AtomicProfileCenter } from "@/components/account/profile/AtomicProfileCenter";
 import { OngoingItemsCard } from "@/components/account/profile/OngoingItemsCard";
 import { ProfileControlsCard } from "@/components/account/profile/ProfileControlsCard";
+import { ProfileOverviewCard } from "@/components/account/profile/ProfileOverviewCard";
 import { MainContent } from "@/components/layout/MainContent";
 
 export const metadata = {
@@ -19,11 +20,15 @@ export const metadata = {
  *
  * 画像工单 13：控制区下方是进行中事项区（目标／进展／待续问题与暂停、
  * 完成、继续），逐条信息列表仍在其后。
+ *
+ * 画像工单 15：顶部是整体概览（按主题原样汇总、每句可定位依据），其后是
+ * 进行中事项与可编辑条目；条目列表按开放主题筛选，多主题不复制事实。
  */
 export default function ProfileCenterPage() {
   return (
     <MainContent>
       <ProfileControlsCard />
+      <ProfileOverviewCard />
       <OngoingItemsCard />
       <AtomicProfileCenter />
     </MainContent>

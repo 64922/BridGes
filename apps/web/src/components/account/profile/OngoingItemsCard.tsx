@@ -11,6 +11,7 @@ import {
   type OngoingItemsProjection,
 } from "@/lib/api";
 
+import { emitProfileDataChanged } from "./profile-events";
 import styles from "./OngoingItemsCard.module.css";
 
 const GOAL_STATE_LABELS = {
@@ -123,6 +124,8 @@ export function OngoingItemsCard() {
       });
       setData(next);
       setNotice(`「${item.goal.text}」${ACTION_NOTICES[action]}。`);
+      // 画像工单 15：事项状态变化同样让整体概览失效，概览区据此重读。
+      emitProfileDataChanged();
     } catch (reason) {
       // 版本冲突等失败：先重读真实状态，再如实报错，不假装操作成功。
       await load();

@@ -44,6 +44,44 @@
   background: var(--color-surface);
 }
 
+.item:focus-visible {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: 2px;
+}
+
+/* 概览点击定位到本条：高亮到用户继续操作，指示「就是这一条」。 */
+.item[data-located="true"] {
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 0 3px var(--color-accent-primary-soft);
+}
+
+.topicFilter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.topicFilter button {
+  border: 1px solid var(--color-text-tertiary);
+  border-radius: 999px;
+  padding: 5px 12px;
+  color: var(--color-text-primary);
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.topicFilter button:hover {
+  border-color: var(--color-accent-primary);
+}
+
+.topicFilter button[aria-pressed="true"] {
+  border-color: var(--color-accent-primary);
+  color: var(--color-text-on-accent);
+  background: var(--color-accent-primary);
+}
+
 .text {
   margin: 0;
   line-height: 1.65;

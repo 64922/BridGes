@@ -3448,6 +3448,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profiles/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Profile Overview
+         * @description 当前账户的整体概览（主题成组、逐段可定位；状态如实）。
+         */
+        get: operations["get_profile_overview_profiles_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/profiles/observations": {
         parameters: {
             query?: never;
@@ -21895,6 +21915,87 @@ export interface components {
             details?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * ProfileOverviewProjection
+         * @description 「整体概览」页面投影（加载/空态/整理中由前端按 ``state`` 渲染）。
+         */
+        ProfileOverviewProjection: {
+            /** @description 概览当前状态。 */
+            state: components["schemas"]["ProfileOverviewState"];
+            /**
+             * Usage Enabled
+             * @description 长期记忆使用开关；关闭时回答不使用记忆，概览仍可查看管理。
+             */
+            usage_enabled: boolean;
+            /**
+             * Notice
+             * @description 使用关闭或部分可用等稳定提示文案；没有时为空。
+             */
+            notice?: string | null;
+            /**
+             * Statements
+             * @description 概览陈述（主题成组、每条目只出现在一处）；无法保证新版本时为空，绝不回退旧内容冒充当前。
+             */
+            statements?: components["schemas"]["ProfileOverviewStatementProjection"][];
+            /**
+             * Generated At
+             * @description 最近一次成功重建时间；从未重建时为空。
+             */
+            generated_at?: string | null;
+        };
+        /**
+         * ProfileOverviewSegmentProjection
+         * @description 概览陈述的一段：对应一条原子条目（点击可定位依据与编辑入口）。
+         */
+        ProfileOverviewSegmentProjection: {
+            /**
+             * Profile Item Id
+             * @description 稳定的原子条目标识。
+             */
+            profile_item_id: string;
+            /**
+             * Version
+             * @description 该段生成时依赖的条目版本。
+             */
+            version: number;
+            /**
+             * Text
+             * @description 条目正文原样（不摘要、不改写）。
+             */
+            text: string;
+        };
+        /**
+         * ProfileOverviewState
+         * @description 概览的当前状态：如实反映能否取得可信内容。
+         * @enum {string}
+         */
+        ProfileOverviewState: "current" | "partial" | "rebuilding" | "empty";
+        /**
+         * ProfileOverviewStatementProjection
+         * @description 一条概览陈述：某个主题下若干条目原文的忠实拼接。
+         */
+        ProfileOverviewStatementProjection: {
+            /**
+             * Statement Id
+             * @description 本次生成的稳定陈述标识。
+             */
+            statement_id: string;
+            /**
+             * Topic
+             * @description 陈述归属的浏览主题；无主题条目的陈述为空。
+             */
+            topic?: string | null;
+            /**
+             * Text
+             * @description 陈述文本：各段原文原样拼接，不产生新事实。
+             */
+            text: string;
+            /**
+             * Segments
+             * @description 陈述依赖的条目段（逐段可定位依据与编辑入口）。
+             */
+            segments: components["schemas"]["ProfileOverviewSegmentProjection"][];
         };
         /**
          * ProfilePageStatus
@@ -41169,6 +41270,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    get_profile_overview_profiles_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOverviewProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

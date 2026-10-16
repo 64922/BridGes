@@ -1,0 +1,152 @@
+.card {
+  width: min(880px, 100%);
+  margin: 0 auto 18px;
+  border: 1px solid var(--color-text-tertiary);
+  border-radius: 18px;
+  padding: 22px;
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+}
+
+.title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.lead {
+  margin: 10px 0 0;
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+.notice {
+  margin: 12px 0 0;
+  border-left: 3px solid var(--color-accent-primary);
+  border-radius: 0 8px 8px 0;
+  padding: 6px 10px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.actionNotice {
+  margin: 12px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  border: 1px solid var(--color-status-error);
+  border-radius: 14px;
+  padding: 10px 12px;
+  color: var(--color-status-error);
+  background: var(--color-status-error-bg);
+  font-size: 13px;
+}
+
+.error button,
+.rebuilding button {
+  border: 1px solid var(--color-text-tertiary);
+  border-radius: 999px;
+  padding: 5px 12px;
+  color: var(--color-text-primary);
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.error button:hover,
+.rebuilding button:hover {
+  border-color: var(--color-accent-primary);
+}
+
+.state,
+.empty {
+  margin: 14px 0 0;
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+.empty {
+  border: 1px dashed var(--color-text-tertiary);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.rebuilding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.rebuilding .state {
+  margin: 0;
+}
+
+.statements {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.statement {
+  border: 1px solid var(--color-text-tertiary);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.topic {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+
+.text {
+  margin: 8px 0 0;
+  line-height: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.separator {
+  color: var(--color-text-tertiary);
+}
+
+.segment {
+  border: none;
+  border-bottom: 1px dashed var(--color-text-tertiary);
+  border-radius: 4px;
+  padding: 1px 2px;
+  color: var(--color-text-primary);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.segment:hover,
+.segment:focus-visible {
+  border-bottom-color: var(--color-accent-primary);
+  background: var(--color-bg-secondary);
+}
+
+.meta {
+  margin: 14px 0 0;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}

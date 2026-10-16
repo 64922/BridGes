@@ -162,8 +162,8 @@ class AtomicProfileFactIdentity(BaseModel):
 
 
 #: 默认浏览主题（开放词汇）：主题可扩展、可空、多选，不构成保存事实的门槛，
-#: 也不复制同内容的多个条目；主题修改不改变事实身份。近义主题的归一化与
-#: 按主题浏览由后续概览票实现。
+#: 也不复制同内容的多个条目；主题修改不改变事实身份。近义主题的精确归一化
+#: 见 ``PROFILE_TOPIC_ALIASES``，按主题浏览由画像工单 15 的页面筛选实现。
 PROFILE_TOPIC_BACKGROUND = "基本背景与称呼"
 PROFILE_TOPIC_COMMUNICATION = "交流与协作偏好"
 PROFILE_TOPIC_INTERESTS = "兴趣与喜好"
@@ -185,6 +185,51 @@ DEFAULT_PROFILE_TOPICS: tuple[str, ...] = (
     PROFILE_TOPIC_ONGOING,
     PROFILE_TOPIC_LEARNING,
 )
+
+#: 近义主题的确定性归一映射（画像工单 15）：只做**精确匹配**的常用近义写法
+#: → 默认主题，不做模糊猜测；不在映射里的主题原样保留（开放词汇）。归一
+#: 只影响浏览组织（写入规范化与概览分组），不改变事实身份与授权范围。
+PROFILE_TOPIC_ALIASES: dict[str, str] = {
+    "基本背景": PROFILE_TOPIC_BACKGROUND,
+    "基本信息": PROFILE_TOPIC_BACKGROUND,
+    "背景": PROFILE_TOPIC_BACKGROUND,
+    "背景信息": PROFILE_TOPIC_BACKGROUND,
+    "称呼": PROFILE_TOPIC_BACKGROUND,
+    "交流偏好": PROFILE_TOPIC_COMMUNICATION,
+    "沟通偏好": PROFILE_TOPIC_COMMUNICATION,
+    "交流习惯": PROFILE_TOPIC_COMMUNICATION,
+    "协作偏好": PROFILE_TOPIC_COMMUNICATION,
+    "兴趣": PROFILE_TOPIC_INTERESTS,
+    "爱好": PROFILE_TOPIC_INTERESTS,
+    "兴趣爱好": PROFILE_TOPIC_INTERESTS,
+    "喜好": PROFILE_TOPIC_INTERESTS,
+    "习惯": PROFILE_TOPIC_HABITS,
+    "日常习惯": PROFILE_TOPIC_HABITS,
+    "生活习惯": PROFILE_TOPIC_HABITS,
+    "现实约束": PROFILE_TOPIC_HABITS,
+    "目标": PROFILE_TOPIC_GOALS,
+    "计划": PROFILE_TOPIC_GOALS,
+    "阶段目标": PROFILE_TOPIC_GOALS,
+    "经历": PROFILE_TOPIC_EXPERIENCES,
+    "重要经历": PROFILE_TOPIC_EXPERIENCES,
+    "重要事件": PROFILE_TOPIC_EXPERIENCES,
+    "经历与事件": PROFILE_TOPIC_EXPERIENCES,
+    "关系": PROFILE_TOPIC_RELATIONS,
+    "人际关系": PROFILE_TOPIC_RELATIONS,
+    "亲友关系": PROFILE_TOPIC_RELATIONS,
+    "进行中事项": PROFILE_TOPIC_ONGOING,
+    "持续目标": PROFILE_TOPIC_ONGOING,
+    "学习背景": PROFILE_TOPIC_LEARNING,
+    "学情": PROFILE_TOPIC_LEARNING,
+    "学习情况": PROFILE_TOPIC_LEARNING,
+}
+
+
+def canonical_profile_topic(topic: str) -> str:
+    """把一个主题折叠为其默认主题；未知主题原样返回（不做猜测）。"""
+
+    return PROFILE_TOPIC_ALIASES.get(topic, topic)
+
 
 #: 旧四维抽取提示对应的默认主题；04 的自然表达覆盖会给出更细的主题，
 #: 这里只覆盖当前抽取合同能确定的确定映射，不做推断。
@@ -1012,6 +1057,7 @@ __all__ = [
     "AtomicProfileValidityStatus",
     "AtomicProfileWriteOrigin",
     "DEFAULT_PROFILE_TOPICS",
+    "PROFILE_TOPIC_ALIASES",
     "PROFILE_TOPIC_BACKGROUND",
     "PROFILE_TOPIC_COMMUNICATION",
     "PROFILE_TOPIC_EXPERIENCES",
@@ -1021,6 +1067,7 @@ __all__ = [
     "PROFILE_TOPIC_LEARNING",
     "PROFILE_TOPIC_ONGOING",
     "PROFILE_TOPIC_RELATIONS",
+    "canonical_profile_topic",
     "default_topics_for_dimension",
     "feedback_effect_for",
     "feedback_message_for",

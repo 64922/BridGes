@@ -8,6 +8,7 @@ import {
   type ProfileAccountControlsProjection,
 } from "@/lib/api";
 
+import { emitProfileDataChanged } from "./profile-events";
 import styles from "./ProfileControlsCard.module.css";
 
 type ControlKey = "recording_enabled" | "usage_enabled";
@@ -66,6 +67,8 @@ export function ProfileControlsCard() {
       setBusyKey(key);
       setError(null);
       setControls(await updateProfileControls({ [key]: next }));
+      // 画像工单 15：使用开关变化让服务端概览立即失效；概览区据此重读。
+      if (key === "usage_enabled") emitProfileDataChanged();
     } catch (reason) {
       // 先重拉当前真实状态，再如实报错；不假装切换成功。
       await load();

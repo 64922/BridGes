@@ -129,6 +129,8 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "profile_recall_index_versions",
     # 画像工单 13：近期工作上下文（可重建派生视图，不持有独立事实真相）。
     "profile_ongoing_context",
+    # 画像工单 15：整体概览（可重建派生视图，不持有独立事实真相）。
+    "profile_overview",
     "profile_items",
     "profile_item_migrations",
     # 工单 01：逐条对账台账（账户级迁移审计），随账户删除并进入导出。

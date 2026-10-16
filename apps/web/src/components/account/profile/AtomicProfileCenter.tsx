@@ -1,157 +1,71 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   createAtomicProfileItem,
-  deleteAtomicProfileItem,
-  fetchAtomicProfileItemEvidence,
   listAtomicProfileItems,
-  modifyAtomicProfileItem,
-  submitAtomicProfileItemFeedback,
-  type AtomicProfileEvidenceSource,
-  type AtomicProfileFeedbackKind,
-  type AtomicProfileItemEvidenceProjection,
   type AtomicProfileItemProjection,
-  type AtomicProfileRecurrence,
-  type AtomicProfileValidityStatus,
-  type AtomicProfileWriteOrigin,
 } from "@/lib/api";
 
+import { AtomicProfileItemRow } from "./AtomicProfileItemRow";
+import { emitProfileDataChanged, onProfileItemLocate } from "./profile-events";
+import { parseTopics } from "./profile-format";
 import styles from "./AtomicProfileCenter.module.css";
-
-const ORIGIN_LABELS: Record<AtomicProfileWriteOrigin, string> = {
-  automatic: "从对话里整理",
-  user: "你手动记住",
-  migration: "从旧列表迁移",
-};
 
 const EMPTY_COPY =
   "这里还没有长期信息。点「添加一条信息」可以自己记下一条，" +
   "也可以像平常一样聊天——系统只从你明确说过、能引用原话的消息里整理稳定" +
   "事实，不会推断人格或心理状态；聊到相关内容的下一轮，也会按任务需要少量取用。";
 
-const DELETE_CONFIRM =
-  "删除后这条信息会从后续对话的上下文里移除，旧消息重放也不会让它回来。继续吗？";
+type TopicFilter =
+  | { kind: "all" }
+  | { kind: "topic"; topic: string }
+  | { kind: "untopiced" };
 
-/** 主题输入按逗号/顿号分隔；空主题不构成保存门槛，多主题不复制条目。 */
-function parseTopics(value: string): string[] {
-  const seen = new Set<string>();
-  const topics: string[] = [];
-  for (const raw of value.split(/[,，、;；]/)) {
-    const topic = raw.trim();
-    if (!topic || seen.has(topic)) continue;
-    seen.add(topic);
-    topics.push(topic);
-  }
-  return topics;
-}
-
-function topicsToInput(topics: string[] | undefined): string {
-  return (topics ?? []).join("，");
-}
-
-const FEEDBACK_OPTIONS: Array<{
-  kind: AtomicProfileFeedbackKind;
-  label: string;
-}> = [
-  { kind: "fact_wrong", label: "事实记错" },
-  { kind: "expired", label: "信息过期" },
-  { kind: "scope_inapplicable", label: "范围不适用" },
-  { kind: "preference_not_followed", label: "回答没执行偏好" },
-];
-
-const FEEDBACK_LABELS = Object.fromEntries(
-  FEEDBACK_OPTIONS.map(({ kind, label }) => [kind, label])
-) as Record<AtomicProfileFeedbackKind, string>;
-
-const VALIDITY_LABELS: Record<AtomicProfileValidityStatus, string> = {
-  unbounded: "没有明确期限",
-  scheduled: "尚未生效",
-  active: "当前有效",
-  expired: "已过期",
-  paused: "目标已暂停",
-  completed: "目标已完成",
-};
-
-const SCOPE_LABELS = {
-  long_term: "长期适用",
-  current: "仅提出当时适用",
-} as const;
-
-type EvidenceEntry =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; data: AtomicProfileItemEvidenceProjection };
-
-function formatUpdatedTime(value: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
-function formatMoment(value: string | null | undefined): string | null {
-  if (!value) return null;
-  return formatUpdatedTime(value);
-}
-
-/** 来源标注：只说明有几条对话来源，可得性在展开后逐条如实展示。 */
-function sourceLabel(item: AtomicProfileItemProjection): string | null {
-  const count = item.source_message_ids?.length ?? 0;
-  if (count === 0) return null;
-  return `有 ${count} 条对话来源，展开可核对`;
-}
-
-function sourceStatusText(source: AtomicProfileEvidenceSource): string {
-  const moment = formatMoment(source.created_at);
-  if (source.status === "available") {
-    return moment ? `来自 ${moment} 的对话` : "来源消息可查看";
-  }
-  if (source.status === "deleted") {
-    return "这条来源消息已删除，无法再定位原文。";
-  }
-  return moment
-    ? `这条来源发生于 ${moment}，但消息未完成或无法读取。`
-    : "这条来源暂时无法读取。";
-}
-
-function validityText(evidence: AtomicProfileItemEvidenceProjection): string {
-  const status = VALIDITY_LABELS[evidence.validity_status];
-  if (evidence.validity_status === "unbounded") {
-    // R01：未明示期限按未知处理，不承诺长期有效；据此制定计划前先确认。
-    return "没有明确期限（系统不设统一过期时间；据此制定具体计划前会先与你确认）。";
-  }
-  const range: string[] = [];
-  const from = formatMoment(evidence.valid_from);
-  const until = formatMoment(evidence.valid_until);
-  if (from) range.push(`从 ${from} 起`);
-  if (until) range.push(`到 ${until} 止`);
-  const phrase = evidence.validity_phrase
-    ? `原文说「${evidence.validity_phrase}」：`
-    : "";
-  return `${phrase}${range.join("，")}（${status}）`;
-}
-
-const RECURRENCE_WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
+type TopicFacet = { topic: string; count: number };
 
 /**
- * 画像工单 07：周期安排是长期固定的节奏（每周三晚上…），本身没有期限，
- * 不按统一 TTL 过期；页面只展示原文写明的周期与时段，不做日历推算。
+ * 画像工单 15：开放主题筛选的确定性汇总。
+ *
+ * 主题是开放、多选词汇：多主题条目在每个命中主题下都能找到，但同一次
+ * 浏览中每条只出现一次（不复制事实）；没有主题的条目单独成组，不被丢弃。
  */
-function recurrenceText(recurrence: AtomicProfileRecurrence): string {
-  const days = recurrence.weekdays
-    .map((index) => RECURRENCE_WEEKDAY_LABELS[index] ?? `第 ${index + 1} 天`)
-    .join("、");
-  const when =
-    recurrence.kind === "daily"
-      ? `每天${recurrence.time_of_day ?? ""}`
-      : `每周${days}${recurrence.time_of_day ?? ""}`;
-  return `${when}固定进行（长期有效，不设统一过期时间）。`;
+function buildTopicFacets(items: AtomicProfileItemProjection[]): {
+  topics: TopicFacet[];
+  untopicedCount: number;
+} {
+  const counts = new Map<string, number>();
+  let untopicedCount = 0;
+  for (const item of items) {
+    const topics = Array.from(new Set(item.topics ?? []));
+    if (topics.length === 0) {
+      untopicedCount += 1;
+      continue;
+    }
+    for (const topic of topics) {
+      counts.set(topic, (counts.get(topic) ?? 0) + 1);
+    }
+  }
+  const topics = Array.from(counts.entries()).map(([topic, count]) => ({
+    topic,
+    count,
+  }));
+  topics.sort(
+    (a, b) =>
+      b.count - a.count || (a.topic < b.topic ? -1 : a.topic > b.topic ? 1 : 0)
+  );
+  return { topics, untopicedCount };
+}
+
+function matchesFilter(
+  item: AtomicProfileItemProjection,
+  filter: TopicFilter
+): boolean {
+  const topics = item.topics ?? [];
+  if (filter.kind === "all") return true;
+  if (filter.kind === "untopiced") return topics.length === 0;
+  return topics.includes(filter.topic);
 }
 
 /**
@@ -161,34 +75,21 @@ function recurrenceText(recurrence: AtomicProfileRecurrence): string {
  * 删除先经确认，成功后从列表移除（后台写入删除墓碑，旧消息重放不会复活）。
  * 列表不分组、不展示类别与把握度，空态说明提取边界。
  *
- * 改进工单 20：每行增加可聚焦的「查看依据」展开入口，按需拉取该条的真实
- * 原话、来源时间与定位、适用范围、明确期限/状态，并可提交四类反馈。来源
- * 已删除或不可读时如实说明，不伪造引语；反馈绝不自动删除仍正确的事实；
- * 修改/删除不随展开状态隐藏，也不增加逐条授权确认弹窗。
+ * 画像工单 15：列表顶部提供开放主题筛选（全部、各主题、无主题），多主题
+ * 条目在任一所选主题下都能找到且只出现一次；主题调整不改变事实身份。整体
+ * 概览点击某句时定位到对应条目：滚动、聚焦并展开其依据。
  */
 export function AtomicProfileCenter() {
-  const router = useRouter();
   const [items, setItems] = useState<AtomicProfileItemProjection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [evidence, setEvidence] = useState<Record<string, EvidenceEntry>>({});
-  const evidenceRequests = useRef<Record<string, number>>({});
-  const [feedbackBusy, setFeedbackBusy] = useState<string | null>(null);
-  const [feedbackNotice, setFeedbackNotice] = useState<{
-    itemId: string;
-    text: string;
-    ok: boolean;
-  } | null>(null);
+  const [filter, setFilter] = useState<TopicFilter>({ kind: "all" });
+  const [locatedId, setLocatedId] = useState<string | null>(null);
+  const [locateNonce, setLocateNonce] = useState(0);
   const [adding, setAdding] = useState(false);
   const [addDraft, setAddDraft] = useState("");
   const [addTopics, setAddTopics] = useState("");
   const [addPurpose, setAddPurpose] = useState("");
   const [addBusy, setAddBusy] = useState(false);
-  const [draftTopics, setDraftTopics] = useState("");
-  const [draftPurpose, setDraftPurpose] = useState("");
 
   const load = async () => {
     try {
@@ -211,143 +112,59 @@ export function AtomicProfileCenter() {
     void load();
   }, []);
 
-  const clearEvidence = (itemId: string) => {
-    evidenceRequests.current[itemId] = (evidenceRequests.current[itemId] ?? 0) + 1;
-    setEvidence((previous) => {
-      if (!(itemId in previous)) return previous;
-      const next = { ...previous };
-      delete next[itemId];
-      return next;
-    });
-  };
+  // 概览点击定位：切回「全部」保证目标可见，再由对应行滚动、聚焦并展开依据。
+  useEffect(
+    () =>
+      onProfileItemLocate((itemId) => {
+        setFilter({ kind: "all" });
+        setLocatedId(itemId);
+        setLocateNonce((value) => value + 1);
+      }),
+    []
+  );
 
-  const loadEvidence = async (itemId: string) => {
-    const request = (evidenceRequests.current[itemId] ?? 0) + 1;
-    evidenceRequests.current[itemId] = request;
-    setEvidence((previous) => ({ ...previous, [itemId]: { status: "loading" } }));
-    try {
-      const data = await fetchAtomicProfileItemEvidence(itemId);
-      if (evidenceRequests.current[itemId] !== request) return;
-      setEvidence((previous) => ({
-        ...previous,
-        [itemId]: { status: "ready", data },
-      }));
-    } catch (reason) {
-      if (evidenceRequests.current[itemId] !== request) return;
-      setEvidence((previous) => ({
-        ...previous,
-        [itemId]: {
-          status: "error",
-          message:
-            reason instanceof Error
-              ? reason.message
-              : "这条信息的依据暂时无法加载，请重试。",
-        },
-      }));
+  const facets = useMemo(() => buildTopicFacets(items ?? []), [items]);
+  // 选中主题在条目变化后不存在时，如实回到「全部」，不留一个空列表。
+  const activeFilter = useMemo<TopicFilter>(() => {
+    if (
+      filter.kind === "topic" &&
+      !facets.topics.some((facet) => facet.topic === filter.topic)
+    ) {
+      return { kind: "all" };
     }
-  };
-
-  const toggleEvidence = async (item: AtomicProfileItemProjection) => {
-    const itemId = item.profile_item_id;
-    if (expandedId === itemId) {
-      clearEvidence(itemId);
-      setExpandedId(null);
-      return;
+    if (filter.kind === "untopiced" && facets.untopicedCount === 0) {
+      return { kind: "all" };
     }
-    setExpandedId(itemId);
-    setFeedbackNotice(null);
-    // 每次展开都重新读取：来源可能在两次展开之间被删除或变得不可读。
-    await loadEvidence(itemId);
+    return filter;
+  }, [filter, facets]);
+  const visibleItems = useMemo(
+    () => (items ?? []).filter((item) => matchesFilter(item, activeFilter)),
+    [items, activeFilter]
+  );
+
+  const handleItemUpdated = (updated: AtomicProfileItemProjection) => {
+    setItems(
+      (previous) =>
+        previous?.map((item) =>
+          item.profile_item_id === updated.profile_item_id ? updated : item
+        ) ?? previous
+    );
+    // 条目变化让服务端概览立即失效；概览区据此重读，不继续展示旧内容。
+    emitProfileDataChanged();
   };
 
-  const retryEvidence = (itemId: string) => {
-    void loadEvidence(itemId);
-  };
-
-  const startEdit = (item: AtomicProfileItemProjection) => {
-    setError(null);
-    setEditingId(item.profile_item_id);
-    setDraft(item.text);
-    setDraftTopics(topicsToInput(item.topics));
-    setDraftPurpose(item.usage_purpose ?? "");
-    if (expandedId === item.profile_item_id) setExpandedId(null);
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setDraft("");
-    setDraftTopics("");
-    setDraftPurpose("");
-  };
-
-  const saveEdit = async () => {
-    if (editingId === null) return;
-    const text = draft.trim();
-    if (!text) return;
-    const current = items?.find((item) => item.profile_item_id === editingId);
-    if (current === undefined) return;
-    try {
-      setBusyId(editingId);
-      // 用途：空输入即清除；清除后敏感自述不再进入回答上下文。
-      const updated = await modifyAtomicProfileItem(editingId, {
-        text,
-        version: current.version,
-        topics: parseTopics(draftTopics),
-        usage_purpose: draftPurpose.trim(),
-      });
-      setItems(
-        (previous) =>
-          previous?.map((item) =>
-            item.profile_item_id === updated.profile_item_id ? updated : item
-          ) ?? previous
-      );
-      clearEvidence(updated.profile_item_id);
-      cancelEdit();
-    } catch (reason) {
-      // 版本冲突说明页面读到的是旧快照：先重新拉取，再如实报错，让用户在新
-      // 版本上重试（重新加载成功不掩盖这条提示）。
-      await load();
-      clearEvidence(editingId);
-      setError(
-        reason instanceof Error ? reason.message : "长期信息修改失败，请重试。"
-      );
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const remove = async (item: AtomicProfileItemProjection) => {
-    if (!window.confirm(DELETE_CONFIRM)) return;
-    try {
-      setBusyId(item.profile_item_id);
-      await deleteAtomicProfileItem(item.profile_item_id, item.version);
-      setItems(
-        (previous) =>
-          previous?.filter(
-            (candidate) => candidate.profile_item_id !== item.profile_item_id
-          ) ?? previous
-      );
-      clearEvidence(item.profile_item_id);
-      if (editingId === item.profile_item_id) cancelEdit();
-      if (expandedId === item.profile_item_id) setExpandedId(null);
-    } catch (reason) {
-      await load();
-      setError(
-        reason instanceof Error ? reason.message : "长期信息删除失败，请重试。"
-      );
-    } finally {
-      setBusyId(null);
-    }
+  const handleItemDeleted = (itemId: string) => {
+    setItems(
+      (previous) =>
+        previous?.filter((item) => item.profile_item_id !== itemId) ?? previous
+    );
+    if (locatedId === itemId) setLocatedId(null);
+    emitProfileDataChanged();
   };
 
   const startAdd = () => {
     setError(null);
     setAdding(true);
-    cancelEdit();
-    if (expandedId !== null) {
-      clearEvidence(expandedId);
-      setExpandedId(null);
-    }
   };
 
   const cancelAdd = () => {
@@ -380,8 +197,8 @@ export function AtomicProfileCenter() {
             )
           : [...previous, created];
       });
-      clearEvidence(created.profile_item_id);
       cancelAdd();
+      emitProfileDataChanged();
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "长期信息添加失败，请重试。"
@@ -391,209 +208,6 @@ export function AtomicProfileCenter() {
     }
   };
 
-  const submitFeedback = async (
-    itemId: string,
-    kind: AtomicProfileFeedbackKind
-  ) => {
-    setFeedbackBusy(`${itemId}:${kind}`);
-    setFeedbackNotice(null);
-    try {
-      const result = await submitAtomicProfileItemFeedback(itemId, { kind });
-      // 反馈落库后重读，避免重展开的旧快照丢掉已提交反馈。
-      await loadEvidence(itemId);
-      setEvidence((previous) => {
-        const entry = previous[itemId];
-        if (entry?.status !== "ready") return previous;
-        const remaining = (entry.data.feedback ?? []).filter(
-          (existing) => existing.kind !== result.kind
-        );
-        return {
-          ...previous,
-          [itemId]: {
-            status: "ready",
-            data: { ...entry.data, feedback: [result, ...remaining] },
-          },
-        };
-      });
-      setFeedbackNotice({ itemId, text: result.message, ok: true });
-    } catch (reason) {
-      setFeedbackNotice({
-        itemId,
-        text:
-          reason instanceof Error
-            ? reason.message
-            : "反馈提交失败，请重试。",
-        ok: false,
-      });
-    } finally {
-      setFeedbackBusy(null);
-    }
-  };
-
-  const renderEvidence = (item: AtomicProfileItemProjection, entry: EvidenceEntry) => {
-    if (entry.status === "loading") {
-      return (
-        <p className={styles.state} data-testid="atomic-evidence-loading">
-          正在加载这条信息的依据…
-        </p>
-      );
-    }
-    if (entry.status === "error") {
-      return (
-        <div className={styles.evidenceError} role="alert">
-          <span>{entry.message}</span>
-          <button type="button" onClick={() => retryEvidence(item.profile_item_id)}>
-            重试
-          </button>
-        </div>
-      );
-    }
-    const data = entry.data;
-    const sources = data.sources ?? [];
-    const feedback = data.feedback ?? [];
-    const hasReadableSource = sources.some(
-      (source) => source.status === "available"
-    );
-    // 合同要求删除聊天原文时同步失效派生原话副本：没有可读来源就不展示原话，
-    // 即使服务端仍带着保存时的记录（防止回归时把已删内容当成现行依据）。
-    const quoteAvailable =
-      Boolean(data.evidence_quote) &&
-      data.evidence_quote_status === "recorded" &&
-      hasReadableSource;
-    const quoteInvalidated =
-      data.evidence_quote_status === "source_unavailable" ||
-      (Boolean(data.evidence_quote) && !quoteAvailable);
-    return (
-      <div className={styles.evidenceBody}>
-        <div className={styles.evidenceSection}>
-          <p className={styles.evidenceLabel}>原话依据</p>
-          {quoteAvailable ? (
-            <blockquote className={styles.quote}>
-              {data.evidence_quote}
-            </blockquote>
-          ) : quoteInvalidated ? (
-            <p className={styles.evidenceNote}>
-              来源消息已删除或不可读，保存的原话不再展示。
-            </p>
-          ) : (
-            <p className={styles.evidenceNote}>
-              这条信息没有保存聊天原话（旧记录，或正文由你手动修改过）。
-            </p>
-          )}
-        </div>
-
-        <div className={styles.evidenceSection}>
-          <p className={styles.evidenceLabel}>来源</p>
-          {sources.length === 0 ? (
-            <p className={styles.evidenceNote}>
-              没有可定位的对话来源；这条信息可能由你在聊天中直接记住。
-            </p>
-          ) : (
-            <ul className={styles.sourceList}>
-              {sources.map((source) => (
-                <li key={source.message_id} className={styles.sourceItem}>
-                  <div className={styles.sourceRow}>
-                    <span>{sourceStatusText(source)}</span>
-                    {source.status === "available" && source.conversation_id ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          router.push(
-                            `/chat/${encodeURIComponent(
-                              source.conversation_id as string
-                            )}?message=${encodeURIComponent(source.message_id)}`
-                          )
-                        }
-                      >
-                        查看原文
-                      </button>
-                    ) : null}
-                  </div>
-                  {source.quote && source.quote !== data.evidence_quote ? (
-                    <blockquote
-                      className={styles.sourceQuote}
-                      data-testid="atomic-source-quote"
-                    >
-                      {source.quote}
-                    </blockquote>
-                  ) : null}
-                  {source.quote_status === "source_unavailable" ? (
-                    <span
-                      className={styles.sourceQuoteNote}
-                      data-testid="atomic-source-quote-invalidated"
-                    >
-                      该来源保存的片段已不可核对。
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className={styles.evidenceSection}>
-          <p className={styles.evidenceLabel}>范围与时效</p>
-          <p className={styles.evidenceNote}>
-            适用范围：{SCOPE_LABELS[data.fact_scope]}。
-          </p>
-          <p className={styles.evidenceNote}>
-            有效期：{validityText(data)}
-          </p>
-          {data.recurrence ? (
-            <p
-              className={styles.evidenceNote}
-              data-testid="atomic-evidence-recurrence"
-            >
-              固定安排：原文说「{data.recurrence.phrase}」：
-              {recurrenceText(data.recurrence)}
-            </p>
-          ) : null}
-        </div>
-
-        <div className={styles.evidenceSection}>
-          <p className={styles.evidenceLabel}>反馈这条信息</p>
-          <div className={styles.feedbackActions}>
-            {FEEDBACK_OPTIONS.map(({ kind, label }) => (
-              <button
-                key={kind}
-                type="button"
-                disabled={feedbackBusy === `${item.profile_item_id}:${kind}`}
-                onClick={() => void submitFeedback(item.profile_item_id, kind)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <p className={styles.evidenceNote}>
-            反馈只记录问题类型；信息是否删除或修改仍由你决定，系统不会自动删除。
-          </p>
-          {feedbackNotice?.itemId === item.profile_item_id ? (
-            <p
-              className={
-                feedbackNotice.ok ? styles.feedbackNotice : styles.feedbackError
-              }
-              role={feedbackNotice.ok ? "status" : "alert"}
-              data-testid="atomic-feedback-notice"
-            >
-              {feedbackNotice.text}
-            </p>
-          ) : null}
-          {feedback.length > 0 ? (
-            <ul className={styles.feedbackList}>
-              {feedback.map((entryFeedback) => (
-                <li key={entryFeedback.feedback_id}>
-                  已反馈「{FEEDBACK_LABELS[entryFeedback.kind]}」 ·{" "}
-                  {formatUpdatedTime(entryFeedback.created_at)}：
-                  {entryFeedback.message}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <section className={styles.page} aria-labelledby="atomic-profile-title">
       <header className={styles.header}>
@@ -601,7 +215,8 @@ export function AtomicProfileCenter() {
         <h1 id="atomic-profile-title">你的信息</h1>
         <p className={styles.lead}>
           这些是系统从对话里整理出的长期信息，按条列出。你可以逐条修改或删除，
-          你的修改优先于自动整理；展开某条可以查看它的原话依据、来源与有效期。
+          你的修改优先于自动整理；展开某条可以查看它的原话依据、来源与有效期，
+          也可以按主题筛选查看。
         </p>
       </header>
 
@@ -676,140 +291,62 @@ export function AtomicProfileCenter() {
       ) : null}
 
       {items !== null && items.length > 0 ? (
+        <div
+          className={styles.topicFilter}
+          role="group"
+          aria-label="按主题筛选信息"
+          data-testid="atomic-topic-filter"
+        >
+          <button
+            type="button"
+            aria-pressed={activeFilter.kind === "all"}
+            onClick={() => setFilter({ kind: "all" })}
+          >
+            全部（{items.length} 条）
+          </button>
+          {facets.topics.map((facet) => (
+            <button
+              key={facet.topic}
+              type="button"
+              aria-pressed={
+                activeFilter.kind === "topic" &&
+                activeFilter.topic === facet.topic
+              }
+              aria-label={`${facet.topic}，共 ${facet.count} 条`}
+              data-testid="atomic-topic-facet"
+              onClick={() => setFilter({ kind: "topic", topic: facet.topic })}
+            >
+              {facet.topic}
+            </button>
+          ))}
+          {facets.untopicedCount > 0 ? (
+            <button
+              type="button"
+              aria-pressed={activeFilter.kind === "untopiced"}
+              aria-label={`无主题，共 ${facets.untopicedCount} 条`}
+              data-testid="atomic-untopiced-filter"
+              onClick={() => setFilter({ kind: "untopiced" })}
+            >
+              无主题
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {items !== null && items.length > 0 ? (
         <ul className={styles.items}>
-          {items.map((item) => {
-            const editing = editingId === item.profile_item_id;
-            const expanded = expandedId === item.profile_item_id;
-            const source = sourceLabel(item);
-            const entry = evidence[item.profile_item_id];
-            return (
-              <li
-                className={styles.item}
-                key={item.profile_item_id}
-                data-testid="atomic-item"
-              >
-                {editing ? (
-                  <>
-                    <textarea
-                      className={styles.editor}
-                      value={draft}
-                      maxLength={1000}
-                      rows={3}
-                      aria-label="长期信息内容"
-                      onChange={(event) => setDraft(event.target.value)}
-                    />
-                    <input
-                      className={styles.topicsInput}
-                      value={draftTopics}
-                      maxLength={200}
-                      aria-label="长期信息主题"
-                      placeholder="主题（可选，用逗号分隔；清空表示无主题）"
-                      onChange={(event) => setDraftTopics(event.target.value)}
-                    />
-                    <input
-                      className={styles.topicsInput}
-                      value={draftPurpose}
-                      maxLength={60}
-                      aria-label="长期信息用途"
-                      placeholder="用途（可选；清空表示不设用途，敏感信息将不再用于回答）"
-                      onChange={(event) => setDraftPurpose(event.target.value)}
-                    />
-                    <div className={styles.actions}>
-                      <button
-                        type="button"
-                        onClick={cancelEdit}
-                        disabled={busyId === item.profile_item_id}
-                      >
-                        取消
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.primary}
-                        disabled={!draft.trim() || busyId === item.profile_item_id}
-                        onClick={() => void saveEdit()}
-                      >
-                        保存
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className={styles.text}>{item.text}</p>
-                    {item.conflict_state === "unresolved" ? (
-                      // 冲突标记：与同属性的另一条说法不一致，确认前不作确定
-                      // 信息使用；用户直接修改本条或删除其一即可消除。
-                      <p
-                        className={styles.conflict}
-                        data-testid="atomic-conflict-badge"
-                        role="status"
-                      >
-                        待确认：还有一条说法与此不一致。确认之前，这部分不会作为确定信息使用；
-                        你可以直接修改成正确的说法，或删除不需要的那条。
-                      </p>
-                    ) : null}
-                    <p className={styles.meta}>
-                      {ORIGIN_LABELS[item.write_origin]}
-                      {source ? ` · ${source}` : ""}
-                      {item.user_edited_at ? " · 已由你修改" : ""} · 最近更新于{" "}
-                      {formatUpdatedTime(item.updated_at)}
-                    </p>
-                    {(item.topics ?? []).length > 0 ? (
-                      <ul className={styles.topics} data-testid="atomic-topics">
-                        {(item.topics ?? []).map((topic) => (
-                          <li key={topic} className={styles.topic}>
-                            {topic}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    {item.usage_purpose ? (
-                      // 工单 09：用途是敏感自述的采用范围；清空后不再进入回答。
-                      <p
-                        className={styles.purpose}
-                        data-testid="atomic-usage-purpose"
-                      >
-                        用途：{item.usage_purpose}
-                      </p>
-                    ) : null}
-                    <div className={styles.actions}>
-                      <button
-                        type="button"
-                        aria-expanded={expanded}
-                        aria-controls={`atomic-evidence-${item.profile_item_id}`}
-                        onClick={() => void toggleEvidence(item)}
-                      >
-                        {expanded ? "收起依据" : "查看依据"}
-                      </button>
-                      <button type="button" onClick={() => startEdit(item)}>
-                        修改
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.delete}
-                        disabled={busyId === item.profile_item_id}
-                        onClick={() => void remove(item)}
-                      >
-                        删除
-                      </button>
-                    </div>
-                    {expanded ? (
-                      <div
-                        className={styles.evidence}
-                        id={`atomic-evidence-${item.profile_item_id}`}
-                        role="region"
-                        aria-label="这条信息的依据"
-                        data-testid="atomic-evidence"
-                      >
-                        {entry
-                          ? renderEvidence(item, entry)
-                          : renderEvidence(item, { status: "loading" })}
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </li>
-            );
-          })}
+          {visibleItems.map((item) => (
+            <AtomicProfileItemRow
+              key={item.profile_item_id}
+              item={item}
+              located={locatedId === item.profile_item_id}
+              locateNonce={locateNonce}
+              onItemUpdated={handleItemUpdated}
+              onItemDeleted={handleItemDeleted}
+              onRefresh={load}
+              onError={setError}
+            />
+          ))}
         </ul>
       ) : null}
     </section>

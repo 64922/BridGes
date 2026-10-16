@@ -15568,6 +15568,66 @@
         }
       }
     },
+    "/profiles/overview": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Get Profile Overview",
+        "description": "当前账户的整体概览（主题成组、逐段可定位；状态如实）。",
+        "operationId": "get_profile_overview_profiles_overview_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOverviewProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/profiles/observations": {
       "post": {
         "tags": [
@@ -53488,6 +53548,144 @@
         ],
         "title": "ProfileError",
         "description": "Uniform profile error response."
+      },
+      "ProfileOverviewProjection": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/ProfileOverviewState",
+            "description": "概览当前状态。"
+          },
+          "usage_enabled": {
+            "type": "boolean",
+            "title": "Usage Enabled",
+            "description": "长期记忆使用开关；关闭时回答不使用记忆，概览仍可查看管理。"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice",
+            "description": "使用关闭或部分可用等稳定提示文案；没有时为空。"
+          },
+          "statements": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileOverviewStatementProjection"
+            },
+            "type": "array",
+            "title": "Statements",
+            "description": "概览陈述（主题成组、每条目只出现在一处）；无法保证新版本时为空，绝不回退旧内容冒充当前。"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At",
+            "description": "最近一次成功重建时间；从未重建时为空。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "usage_enabled"
+        ],
+        "title": "ProfileOverviewProjection",
+        "description": "「整体概览」页面投影（加载/空态/整理中由前端按 ``state`` 渲染）。"
+      },
+      "ProfileOverviewSegmentProjection": {
+        "properties": {
+          "profile_item_id": {
+            "type": "string",
+            "title": "Profile Item Id",
+            "description": "稳定的原子条目标识。"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "该段生成时依赖的条目版本。"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "条目正文原样（不摘要、不改写）。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "profile_item_id",
+          "version",
+          "text"
+        ],
+        "title": "ProfileOverviewSegmentProjection",
+        "description": "概览陈述的一段：对应一条原子条目（点击可定位依据与编辑入口）。"
+      },
+      "ProfileOverviewState": {
+        "type": "string",
+        "enum": [
+          "current",
+          "partial",
+          "rebuilding",
+          "empty"
+        ],
+        "title": "ProfileOverviewState",
+        "description": "概览的当前状态：如实反映能否取得可信内容。"
+      },
+      "ProfileOverviewStatementProjection": {
+        "properties": {
+          "statement_id": {
+            "type": "string",
+            "title": "Statement Id",
+            "description": "本次生成的稳定陈述标识。"
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic",
+            "description": "陈述归属的浏览主题；无主题条目的陈述为空。"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "陈述文本：各段原文原样拼接，不产生新事实。"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileOverviewSegmentProjection"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Segments",
+            "description": "陈述依赖的条目段（逐段可定位依据与编辑入口）。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "statement_id",
+          "text",
+          "segments"
+        ],
+        "title": "ProfileOverviewStatementProjection",
+        "description": "一条概览陈述：某个主题下若干条目原文的忠实拼接。"
       },
       "ProfilePageStatus": {
         "type": "string",

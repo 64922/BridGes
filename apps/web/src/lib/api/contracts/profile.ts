@@ -75,3 +75,16 @@ export type OngoingItemStateUpdateRequest =
 
 export type OngoingDomainReferenceUpdateRequest =
   components["schemas"]["OngoingDomainReferenceUpdateRequest"];
+
+// 画像工单 15：整体概览（逐段携带条目标识与版本，点击可定位依据）。
+export type ProfileOverviewProjection =
+  components["schemas"]["ProfileOverviewProjection"];
+
+export type ProfileOverviewState =
+  components["schemas"]["ProfileOverviewState"];
+
+export type ProfileOverviewStatementProjection =
+  components["schemas"]["ProfileOverviewStatementProjection"];
+
+export type ProfileOverviewSegmentProjection =
+  components["schemas"]["ProfileOverviewSegmentProjection"];

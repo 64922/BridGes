@@ -7,6 +7,7 @@ import type {
 } from "@/lib/api";
 
 import { AtomicProfileCenter } from "./AtomicProfileCenter";
+import { emitProfileItemLocate, onProfileDataChanged } from "./profile-events";
 
 const api = vi.hoisted(() => ({
   listAtomicProfileItems: vi.fn(),
@@ -660,5 +661,110 @@ describe("AtomicProfileCenter", () => {
     render(<AtomicProfileCenter />);
     await screen.findByText("我在准备雅思考试");
     expect(screen.queryByTestId("atomic-conflict-badge")).toBeNull();
+  });
+
+  it("按主题筛选：多主题条目只出现一次，无主题单独成组", async () => {
+    api.listAtomicProfileItems.mockResolvedValue([
+      item({ profile_item_id: "item-1", text: "喜欢徒步", topics: ["兴趣与喜好"] }),
+      item({
+        profile_item_id: "item-2",
+        text: "对花生过敏",
+        topics: ["健康", "兴趣与喜好"],
+      }),
+      item({ profile_item_id: "item-3", text: "住在一楼", topics: [] }),
+    ]);
+
+    render(<AtomicProfileCenter />);
+    await screen.findByTestId("atomic-topic-filter");
+    expect(screen.getAllByTestId("atomic-item")).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "兴趣与喜好，共 2 条" }));
+    await waitFor(() =>
+      expect(screen.getAllByTestId("atomic-item")).toHaveLength(2)
+    );
+    expect(screen.getByText("喜欢徒步")).toBeTruthy();
+    expect(screen.getByText("对花生过敏")).toBeTruthy();
+    expect(screen.queryByText("住在一楼")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "健康，共 1 条" }));
+    await waitFor(() =>
+      expect(screen.getAllByTestId("atomic-item")).toHaveLength(1)
+    );
+    expect(screen.getByText("对花生过敏")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "无主题，共 1 条" }));
+    await waitFor(() =>
+      expect(screen.getAllByTestId("atomic-item")).toHaveLength(1)
+    );
+    expect(screen.getByText("住在一楼")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "全部（3 条）" }));
+    await waitFor(() =>
+      expect(screen.getAllByTestId("atomic-item")).toHaveLength(3)
+    );
+  });
+
+  it("概览定位事件切回全部筛选、高亮并展开对应条目依据", async () => {
+    api.listAtomicProfileItems.mockResolvedValue([
+      item({ profile_item_id: "item-1", text: "喜欢徒步", topics: ["兴趣与喜好"] }),
+      item({ profile_item_id: "item-2", text: "对花生过敏", topics: ["健康"] }),
+    ]);
+    api.fetchAtomicProfileItemEvidence.mockResolvedValue(
+      evidence({
+        profile_item_id: "item-1",
+        text: "喜欢徒步",
+        evidence_quote: "我平时喜欢徒步",
+      })
+    );
+
+    render(<AtomicProfileCenter />);
+    await screen.findByTestId("atomic-topic-filter");
+
+    // 先筛到「健康」，目标条目 item-1 不在其中；定位应自动回到「全部」。
+    fireEvent.click(screen.getByRole("button", { name: "健康，共 1 条" }));
+    await waitFor(() =>
+      expect(screen.getAllByTestId("atomic-item")).toHaveLength(1)
+    );
+
+    act(() => {
+      emitProfileItemLocate("item-1");
+    });
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId("atomic-item")).toHaveLength(2)
+    );
+    const rows = screen.getAllByTestId("atomic-item");
+    expect(rows[0].getAttribute("data-located")).toBe("true");
+    await waitFor(() =>
+      expect(api.fetchAtomicProfileItemEvidence).toHaveBeenCalledWith("item-1")
+    );
+    expect(screen.getByTestId("atomic-evidence").textContent).toContain(
+      "我平时喜欢徒步"
+    );
+  });
+
+  it("条目修改或删除后广播画像数据变化，概览可据此重读", async () => {
+    let changes = 0;
+    const unsubscribe = onProfileDataChanged(() => {
+      changes += 1;
+    });
+    api.listAtomicProfileItems.mockResolvedValue([item()]);
+    api.modifyAtomicProfileItem.mockResolvedValue(
+      item({ version: 2, text: "我在准备雅思考试，十月考" })
+    );
+    api.deleteAtomicProfileItem.mockResolvedValue(undefined);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<AtomicProfileCenter />);
+    fireEvent.click(await screen.findByText("修改"));
+    fireEvent.change(screen.getByLabelText("长期信息内容"), {
+      target: { value: "我在准备雅思考试，十月考" },
+    });
+    fireEvent.click(screen.getByText("保存"));
+    await waitFor(() => expect(changes).toBe(1));
+
+    fireEvent.click(screen.getByText("删除"));
+    await waitFor(() => expect(changes).toBe(2));
+    unsubscribe();
   });
 });

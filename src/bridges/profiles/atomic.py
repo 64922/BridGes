@@ -82,6 +82,7 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileTombstoneEntry,
     AtomicProfileValidityStatus,
     AtomicProfileWriteOrigin,
+    canonical_profile_topic,
     feedback_effect_for,
     feedback_message_for,
 )
@@ -269,16 +270,18 @@ _MAX_TOPIC_LENGTH = 30
 
 
 def normalize_topics(topics: Iterable[str]) -> list[str]:
-    """规范化开放主题：折叠空白、去重保序；空主题丢弃，超限拒绝。
+    """规范化开放主题：折叠空白、近义归一、去重保序；空主题丢弃，超限拒绝。
 
-    主题是开放词汇，不做白名单或归一化猜测（近义主题的归一化属于概览票）；
-    这里只保证同一事实不会因为重复输入或空白差异产生多个主题，也不会因
-    主题为空拒绝事实。
+    主题是开放词汇，不做白名单或模糊猜测：只把与默认主题**精确匹配**的常用
+    近义写法折叠为默认主题（画像工单 15 的浏览归一，见
+    ``PROFILE_TOPIC_ALIASES``），未知主题原样保留。归一不改变事实身份与
+    授权范围；这里也只保证同一事实不会因为重复输入或空白差异产生多个主题，
+    不会因主题为空拒绝事实。
     """
 
     normalized: list[str] = []
     for raw in topics:
-        value = normalize_text(str(raw))
+        value = canonical_profile_topic(normalize_text(str(raw)))
         if not value:
             continue
         if len(value) > _MAX_TOPIC_LENGTH:
@@ -1136,6 +1139,18 @@ class OngoingContinuationProvider(Protocol):
         query: str,
         semantic_item_ids: Iterable[str] = (),
     ) -> OngoingContinuationGroup | None: ...
+
+
+class ProfileOverviewInvalidator(Protocol):
+    """整体概览的失效接缝（画像工单 15）。
+
+    条目写入、撤回或使用控制变化提交后由原子画像服务调用；实现方立即把
+    该账户的概览派生视图标记失效并递增代数。监听方失败只记录日志，不回滚
+    已完成的事实写入，也绝不留下「失效标记已丢但内容照发」的路径——概览
+    读取还会按依赖指纹二次核对。
+    """
+
+    def invalidate(self, account_id: str, *, reason: str) -> None: ...
 
 
 #: 可靠度门禁的稳定排除原因：聊天侧据此决定是否提示「需要确认」。
@@ -2303,6 +2318,9 @@ class AtomicProfileService:
         # 根注入；未注入时事实写入照常，上下文读取仍按依赖指纹二次核对。
         self._ongoing_context_listener: OngoingContextInvalidator | None = None
         self._ongoing_context_provider: OngoingContinuationProvider | None = None
+        # 画像工单 15：整体概览的失效消费方在组合根注入（与工单 13 的上下文
+        # 各自独立接缝）；未注入时事实写入照常，概览读取仍按依赖指纹二次核对。
+        self._profile_overview_listener: ProfileOverviewInvalidator | None = None
         # Issue 05：用户权威操作的跨记录顺序（墓碑先落地、再撤回来源）由
         # 提交 module 归属；自动提取编排器注入同一个实例时，两侧共用同一
         # 份提交规则。未注入时自建只挂载跨记录两方的实例。
@@ -2352,27 +2370,39 @@ class AtomicProfileService:
 
         self._ongoing_context_provider = provider
 
-    def _invalidate_ongoing_context(self, account_id: str, *, reason: str) -> None:
-        """写入/撤回/生命周期变化后立即让近期工作上下文失效（画像工单 13）。
+    def set_profile_overview_listener(
+        self, listener: ProfileOverviewInvalidator | None
+    ) -> None:
+        """挂载/替换整体概览的失效监听（组合根注入，画像工单 15）。"""
 
-        在业务事务提交之后调用；监听方失败只记录日志——上下文的读取路径
-        还会按依赖指纹二次核对，不会因监听失败继续使用旧内容。
+        self._profile_overview_listener = listener
+
+    def _invalidate_derived_views(self, account_id: str, *, reason: str) -> None:
+        """写入/撤回/生命周期变化后立即让派生视图失效（画像工单 13、15）。
+
+        同时通知近期工作上下文（13）与整体概览（15）；在业务事务提交之后
+        调用。监听方失败只记录日志——派生视图的读取路径还会按依赖指纹
+        二次核对，不会因监听失败继续使用旧内容。
         """
 
-        listener = self._ongoing_context_listener
-        if listener is None:
-            return
-        try:
-            listener.invalidate(account_id, reason=reason)
-        except Exception as exc:  # noqa: BLE001 - 失效通知失败不回收已完成写入
-            logger.warning(
-                "ongoing_context_listener_failed",
-                extra={
-                    "account_id": account_id,
-                    "reason": reason,
-                    "error": str(exc),
-                },
-            )
+        for derived_view, listener in (
+            ("ongoing_context", self._ongoing_context_listener),
+            ("overview", self._profile_overview_listener),
+        ):
+            if listener is None:
+                continue
+            try:
+                listener.invalidate(account_id, reason=reason)
+            except Exception as exc:  # noqa: BLE001 - 失效通知失败不回收已完成写入
+                logger.warning(
+                    "profile_derived_view_invalidation_failed",
+                    extra={
+                        "derived_view": derived_view,
+                        "account_id": account_id,
+                        "reason": reason,
+                        "error": str(exc),
+                    },
+                )
 
     def _active_ongoing_goals(self, account_id: str) -> list[AtomicProfileItem]:
         """账户内进行中事项的目标条目（画像工单 13 的归组候选）。"""
@@ -2507,7 +2537,9 @@ class AtomicProfileService:
             version=item.version,
             updated_at=item.updated_at,
             user_edited_at=item.user_edited_at,
-            topics=list(item.topics),
+            # 展示同样做浏览归一（画像工单 15）：旧数据里未归一的近义写法
+            # 与新写入保持同样的分组标签，只影响浏览，不改事实身份与授权。
+            topics=normalize_topics(item.topics),
             usage_purpose=item.usage_purpose,
             source_message_ids=list(item.source_message_ids),
             # 原话仅由按需依据接口核验后返回，列表不复制可能已失效的来源内容。
@@ -3008,7 +3040,7 @@ class AtomicProfileService:
             # 用户纠正改变事实身份或用途：依赖旧值的切片与摘要按依赖失效。
             # 通知在事务提交之后发出——摘要失效各自持有事务，事务内通知会嵌套失败。
             self._notify_revocation(account_id, revoked, reason="edited")
-        self._invalidate_ongoing_context(account_id, reason="edited")
+        self._invalidate_derived_views(account_id, reason="edited")
         return saved
 
     def delete_item(self, account_id: str, item_id: str, version: int) -> None:
@@ -3030,7 +3062,7 @@ class AtomicProfileService:
         # 墓碑已提交：依赖该事实的切片与摘要立即按依赖失效（已发送的云端
         # 上下文无法收回，通知只阻止后续调用继续使用）。
         self._notify_revocation(account_id, [item], reason="deleted")
-        self._invalidate_ongoing_context(account_id, reason="deleted")
+        self._invalidate_derived_views(account_id, reason="deleted")
         self._audit_memory_action(
             account_id,
             AuditAction.PROFILE_DELETE,
@@ -3252,7 +3284,7 @@ class AtomicProfileService:
             item_ids=[saved.profile_item_id],
             details={"superseded_count": len(superseded_items)},
         )
-        self._invalidate_ongoing_context(account_id, reason="remembered")
+        self._invalidate_derived_views(account_id, reason="remembered")
         return saved
 
     def forget(self, account_id: str, target: str) -> AtomicProfileMemoryResult:
@@ -3294,7 +3326,7 @@ class AtomicProfileService:
         # 墓碑已提交：依赖该事实的切片与摘要立即按依赖失效（已发送的云端
         # 上下文无法收回，通知只阻止后续调用继续使用）。
         self._notify_revocation(account_id, matched, reason="forgotten")
-        self._invalidate_ongoing_context(account_id, reason="forgotten")
+        self._invalidate_derived_views(account_id, reason="forgotten")
         # 墓碑已提交：用户可见的删除在本轮成立。来源撤回逐条隔离——部分
         # 失败不中断其余条目，失败明细由提交 module 返回并记入日志，可
         # 幂等重试（重启后的恢复闭环由 06 完成），已删除条目不会因此复活。
@@ -3389,7 +3421,7 @@ class AtomicProfileService:
                 changed.append(item)
         if changed:
             # 目标生命周期变化改变事项内容与可见性：立即失效派生上下文。
-            self._invalidate_ongoing_context(account_id, reason="lifecycle")
+            self._invalidate_derived_views(account_id, reason="lifecycle")
         return changed or None
 
     @staticmethod
@@ -3490,7 +3522,7 @@ class AtomicProfileService:
             item.updated_at = _now()
             item.version += 1
             saved = self._repository.save_item(item)
-        self._invalidate_ongoing_context(account_id, reason="ongoing_state")
+        self._invalidate_derived_views(account_id, reason="ongoing_state")
         return saved
 
     def set_domain_reference(
@@ -3523,7 +3555,7 @@ class AtomicProfileService:
             item.updated_at = _now()
             item.version += 1
             saved = self._repository.save_item(item)
-        self._invalidate_ongoing_context(account_id, reason="domain_reference")
+        self._invalidate_derived_views(account_id, reason="domain_reference")
         return saved
 
     def tombstone_audit(self, account_id: str) -> list[AtomicProfileTombstoneEntry]:
@@ -3759,9 +3791,9 @@ class AtomicProfileService:
                         )
                     )
                 saved_merged = self._repository.save_item(merged)
-                # 归组/正文/来源可能变化：派生上下文立即失效（与本次提交
-                # 同成同败；调用方外层事务存在时并入同一边界）。
-                self._invalidate_ongoing_context(
+                # 归组/正文/来源可能变化：派生视图（上下文与概览）立即失效
+                # （与本次提交同成同败；调用方外层事务存在时并入同一边界）。
+                self._invalidate_derived_views(
                     account_id, reason="fact_written"
                 )
                 return saved_merged
@@ -3854,7 +3886,7 @@ class AtomicProfileService:
             self._notify_revocation(
                 account_id, superseded_items, reason="superseded"
             )
-        self._invalidate_ongoing_context(account_id, reason="fact_written")
+        self._invalidate_derived_views(account_id, reason="fact_written")
         return saved
 
     def correct_fact(
@@ -4001,7 +4033,7 @@ class AtomicProfileService:
             # 纠正改变事实身份：依赖旧值的切片与摘要按依赖失效。通知在事务
             # 提交之后发出——摘要失效各自持有事务，事务内通知会嵌套失败。
             self._notify_revocation(account_id, revoked, reason="corrected")
-        self._invalidate_ongoing_context(account_id, reason="corrected")
+        self._invalidate_derived_views(account_id, reason="corrected")
         return saved, True
 
     def correct_item(

@@ -41,6 +41,7 @@ from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
 )
 from bridges.profiles.ongoing_api import router as _ongoing_router
+from bridges.profiles.overview_api import router as _overview_router
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
@@ -162,12 +163,16 @@ async def update_profile_controls(
         recording_enabled=payload.recording_enabled,
         usage_enabled=payload.usage_enabled,
     )
-    # 画像工单 13：使用开关变化改变近期工作上下文的依赖，立即失效；
-    # 未装配事项服务（部分测试组合）时只跳过失效通知，控制状态照常生效。
+    # 画像工单 13/15：使用开关变化改变派生视图（进行中事项上下文与整体
+    # 概览）的依赖，立即失效；未装配对应服务（部分测试组合）时只跳过失效
+    # 通知，控制状态照常生效。
     if payload.usage_enabled is not None:
         ongoing = getattr(request.app.state, "ongoing_items_service", None)
         if ongoing is not None:
             ongoing.invalidate(subject.account_id, reason="controls")
+        overview = getattr(request.app.state, "profile_overview_service", None)
+        if overview is not None:
+            overview.invalidate(subject.account_id, reason="controls")
     return controls
 
 
@@ -470,5 +475,8 @@ async def rollback_atomic_profile_migration(
 # 进行中事项区路由在独立模块（画像工单 13），沿用同一前缀与标签；放在文末
 # 保持既有路由在 OpenAPI 中的顺序不变。
 router.include_router(_ongoing_router)
+
+# 整体概览路由同样在独立模块（画像工单 15），并入同一前缀与标签。
+router.include_router(_overview_router)
 
 __all__ = ["router"]

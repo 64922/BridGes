@@ -35,6 +35,11 @@ from bridges.profiles.ongoing_repository import (
     InMemoryOngoingContextStore,
     SqliteOngoingContextStore,
 )
+from bridges.profiles.overview import ProfileOverviewService
+from bridges.profiles.overview_repository import (
+    InMemoryProfileOverviewStore,
+    SqliteProfileOverviewStore,
+)
 from bridges.retrieval.repository import RetrievalRepository
 
 
@@ -235,6 +240,27 @@ def configure_model_services(app: FastAPI) -> None:
     )
     app.state.atomic_profile_service.set_ongoing_context_provider(
         app.state.ongoing_items_service
+    )
+    # 画像工单 15：整体概览（依赖有效条目与事项引用）。与事项上下文同一份
+    # 控制状态与来源读取；条目/来源/控制变化后立即失效，读取时按依赖指纹
+    # 重建并以捕获世代做 CAS，迟到结果不能覆盖新状态。概览只服务页面展示，
+    # 绝不进入提取证据或回答编译。有持久化数据目录时落 bridges.db。
+    app.state.profile_overview_service = ProfileOverviewService(
+        atomic=app.state.atomic_profile_service,
+        overview_store=(
+            SqliteProfileOverviewStore(profile_database)
+            if profile_database is not None
+            else InMemoryProfileOverviewStore()
+        ),
+        controls_reader=app.state.automatic_profile_service.account_controls,
+        message_reader=(
+            _atomic_profile_source_reader(profile_conversation_repository)
+            if profile_conversation_repository is not None
+            else None
+        ),
+    )
+    app.state.atomic_profile_service.set_profile_overview_listener(
+        app.state.profile_overview_service
     )
     # Issue 02：跨重启恢复是显式启动动作，构造不再启动业务执行；
     # 恢复时刻与外部可见行为（启动时重新入队中断的抽取）保持不变。

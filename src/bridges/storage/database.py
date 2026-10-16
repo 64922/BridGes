@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 87
+SCHEMA_VERSION = 88
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3775,6 +3775,25 @@ MIGRATIONS: dict[int, list[str]] = {
         )
         """,
     ],
+    # 画像工单 15：整体概览的派生表。概览由有效原子条目原样组成（逐段保存
+    # 条目标识与版本），是带代数（epoch）的可重建视图：条目写入/编辑/删除、
+    # 来源变化或使用控制变化立即递增代数使其失效，重建以捕获的代数做 CAS
+    # 写入，迟到重建不能覆盖新状态。概览不持有独立事实，绝不进入提取证据
+    # 或回答编译；派生数据随账户删除与备份，不进导出。
+    88: [
+        """
+        CREATE TABLE IF NOT EXISTS profile_overview (
+            account_id TEXT PRIMARY KEY,
+            context_version TEXT NOT NULL,
+            epoch INTEGER NOT NULL,
+            dependency_fingerprint TEXT NOT NULL DEFAULT '',
+            payload_json TEXT NOT NULL DEFAULT '[]',
+            built_at TEXT,
+            invalidated_at TEXT,
+            invalidated_reason TEXT
+        )
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3850,6 +3869,10 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     # 都会读取；迁移半执行时须在启动阶段失败关闭，而不是把上下文不可用
     # 伪装成「没有进行中事项」。上下文可重建，不持有独立事实真相。
     "profile_ongoing_context",
+    # 画像工单 15：整体概览的派生表。「关于我的记忆」页面无条件读取；迁移
+    # 半执行时须在启动阶段失败关闭，而不是把概览不可用伪装成「没有记忆」。
+    # 概览可重建，不持有独立事实真相，也不进入提取或回答编译。
+    "profile_overview",
     # 改进工单 10：持久节点执行内核的产物、收据与待投递事件；通勤模块
     # 在启动装配后无条件经内核查询，迁移半执行时须在启动阶段失败关闭。
     "node_artifacts",
@@ -4244,6 +4267,17 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
     }),
     # 画像工单 13：近期工作上下文的查询路径列（代数 + 依赖指纹 + 载荷）。
     "profile_ongoing_context": frozenset({
+        "account_id",
+        "context_version",
+        "epoch",
+        "dependency_fingerprint",
+        "payload_json",
+        "built_at",
+        "invalidated_at",
+        "invalidated_reason",
+    }),
+    # 画像工单 15：整体概览的查询路径列（代数 + 依赖指纹 + 载荷）。
+    "profile_overview": frozenset({
         "account_id",
         "context_version",
         "epoch",
