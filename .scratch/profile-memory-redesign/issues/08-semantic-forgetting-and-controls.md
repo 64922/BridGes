@@ -25,13 +25,13 @@
 
 ## 验收标准
 
-- [ ] 普通同义新提及和历史重整不恢复删除事实，不确定近义暂缓处理。
-- [ ] 历史可按用户明确查看历史用途读取，但不因此用于普通个性化。
-- [ ] 尚未发送的旧切片遇删除/关闭使用时失效，已经发送的内容不虚报可收回。
-- [ ] 恢复只解除指定范围，其他墓碑和来源抑制继续有效。
-- [ ] 关闭记录期间不自动保存，重新开启不自动补录；本轮新自述及必要任务前文不被一刀切丢弃。
-- [ ] 账号删除后迟到 worker 不重建内容，跨账户 ID 和来源访问拒绝。
-- [ ] 日志和审计提供原因与引用，不泄露被删除正文或敏感值。
+- [x] 普通同义新提及和历史重整不恢复删除事实，不确定近义暂缓处理。
+- [x] 历史可按用户明确查看历史用途读取，但不因此用于普通个性化。
+- [x] 尚未发送的旧切片遇删除/关闭使用时失效，已经发送的内容不虚报可收回。
+- [x] 恢复只解除指定范围，其他墓碑和来源抑制继续有效。
+- [x] 关闭记录期间不自动保存，重新开启不自动补录；本轮新自述及必要任务前文不被一刀切丢弃。
+- [x] 账号删除后迟到 worker 不重建内容，跨账户 ID 和来源访问拒绝。
+- [x] 日志和审计提供原因与引用，不泄露被删除正文或敏感值。
 
 ## 验证与交付
 
@@ -44,3 +44,11 @@
 ## Comments
 
 2026-10-15：用户回复「按此发布」，确认本次拆分与依赖。已发布为 ready-for-agent，尚无实施记录。
+
+2026-10-16：实施与验证完成（分支 `codex/issue-08-semantic-forgetting-and-controls`，基点 `14cea5f6`）。
+
+- 交付：契约 `ProfileExtractionOutcome.SUCCEEDED_TURN_CONTROL`；自动画像新增 `parse_turn_profile_directive` 与 `AutomaticProfileRepository.account_exists` 端口，迟到守卫覆盖 `_run_retry_task` 入口、RUNNING 记账前、异常路径、终结记账、纠正分支与提交前复核（`profile_extraction_account_deleted`，与删除事务串行）；聊天「本轮不用」off 路径（披露 OFF、不编译、不删除）、历史限制指令按当前用户消息确定性识别、run config 冻结 `profile_usage_control_version` 并在发送前核对使用开关与版本；原子画像记住/忘掉/删除审计（原因 + 条目引用 + 计数，不含正文）。
+- 测试：新增 19 项（`tests/profiles/test_issue08_semantic_forgetting.py` 16 项、`tests/chat/test_issue08_turn_control_and_pre_send_controls.py` 3 项）；`pytest tests/profiles tests/contracts tests/storage tests/lifecycle` 831 通过；全量对 main（327 vs 329 failed）逐条差集分支独有失败 0（另 2 项 main 独有为既有 flaky `test_api_boot`）。
+- 走查（确定性，真实 SQLite + 真实聊天管线）：忘掉后同义新提及不恢复、恢复只解除指定范围、本轮不用与发送前关闭使用失效旧切片、账号删除后迟到 worker 不重建记账与内容——全部检查通过。
+- 验证记录：`.scratch/profile-memory-redesign/validation/08-semantic-forgetting-and-controls/verification-record.md`；走查证据 `.../evidence/demo-walkthrough-20261016.txt`，脚本 `.../tools/walk_issue08_forgetting_demo.py`（可复跑）。
+- 已知限制：模型侧对历史使用限制指令的遵从未做真实模型评测（属 18 票范畴）；RUNNING 记账的检查→保存间隙为非事务的极小竞态窗口（内容写入仍被提交前复核挡住），详见验证记录 §6。
