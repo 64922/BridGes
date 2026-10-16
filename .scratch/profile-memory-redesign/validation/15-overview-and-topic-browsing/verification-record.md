@@ -1,10 +1,13 @@
 # 15 — 提供有依据的整体概览与开放主题浏览：验证记录
 
 **分支：** `codex/issue-15-overview-and-topic-browsing`（基点 `ffcbe07f`，main；
-单分支直接开发，无并发合并；中途一次导入块编辑事故已修复并全量重跑——见 §7）。
+验证过程中并入 `main@6661d47c` 的工单 14 改动——冲突仅在页面组成、
+API 客户端与生成产物，手工并集后重生成 `openapi.json` 与
+`packages/contracts/src/generated.ts`，无迁移号冲突，本票迁移 88 不变；
+合并后聚焦/全量/静态检查/E2E 与走查全部重跑，结论见 §3、§4）。
 **环境：** conda `agent`（Python 3.11.15，用直接解释器 `C:\Users\33755\anaconda3\envs\agent\python.exe`，
 `conda run` 有插件错误不可用）；前端 Node v24.14.0 / npm 11.9.0。
-**证据：** 本文 + `evidence/demo-walkthrough-20261016T122343Z.txt` +
+**证据：** 本文 + `evidence/demo-walkthrough-20261016T131855Z.txt`（合并后重跑）+
 `tools/walk_issue15_overview_demo.py`（可复跑；39 项检查全部 PASS，FAIL 0）+
 新增浏览器 E2E `apps/web/e2e/issue15-overview-topic-browsing.spec.ts`（1 项通过）。
 **可复跑：**
@@ -22,7 +25,7 @@
 
 | 验收标准（票据） | 证据 |
 | --- | --- |
-| 每项概览陈述有可访问事实依据，不出现无证据人格、情绪或能力评价 | 走查 [1]（陈述正文 = 各段原文用「；」连接、逐段携带条目标识与版本、与当前条目逐字一致、全部条目恰好出现一次）；`test_issue15_profile_overview.py::test_statements_are_verbatim_compositions_with_versions`；E2E `issue15-overview-topic-browsing.spec.ts`（真实页面：概览先原样包含「我每晚只能抽出半小时」）。实现上陈述文本 `"—"` 不可能含新句子：`build_overview_statements` 只做分组与 `"；".join` |
+| 每项概览陈述有可访问事实依据，不出现无证据人格、情绪或能力评价 | 走查 [1]（陈述正文 = 各段原文用「；」连接、逐段携带条目标识与版本、与当前条目逐字一致、全部条目恰好出现一次）；`test_issue15_profile_overview.py::test_statements_are_verbatim_compositions_with_versions`；E2E `issue15-overview-topic-browsing.spec.ts`（真实页面：概览先原样包含「我每晚只能抽出半小时」）。实现上陈述文本不可能是新句子：`build_overview_statements` 只做分组与 `"；".join` |
 | 未知主题不丢条目，多主题不复制事实，分类调整不改变身份和授权 | 走查 [2]（多主题归到规范顺序更靠前的主题且只出现一次；自定义/未知主题原样成组；无主题陈述最后；近义只在折叠空白后精确命中时归一；调整主题只推进版本、标识与授权不变）；`::test_primary_topic_grouping_single_appearance_custom_and_untopiced`、`::test_topic_alias_normalization_is_exact_and_identity_neutral`、`::test_projection_canonicalizes_legacy_topics_for_consistent_browsing`（旧数据的浏览标签与新写入一致）；前端 `AtomicProfileCenter.test.tsx`「按主题筛选：多主题条目只出现一次，无主题单独成组」 |
 | 编辑/删除后旧概览不再作为当前事实显示，迟到生成不能恢复旧内容 | 走查 [3]（编辑后重建出新正文；迟到重建世代 CAS 失败不写回；两个并发重建先提交者生效；删除后不再包含）；`::test_overview_rebuilds_after_edit_and_delete_never_serves_old_content`、`::test_late_rebuild_cannot_restore_old_content`、`::test_sqlite_overview_store_epoch_cas`；HTTP `test_issue15_overview_api.py::test_overview_route_follows_edit_and_delete_without_stale_content`；E2E：页面行内修改保存后概览即时显示新句、不再含旧句，删除后回到空态 |
 | 无记忆、整理中、部分可用、失败和重试状态诚实，加载失败不显示伪造概览 | 走查 [4]（空态无陈述且不落空行；重组竞争只保留依赖一致的旧陈述并提示「部分」；全部失效返回「整理中」零陈述；关使用仍可管理并如实提示）；`::test_empty_state_writes_no_overview_row`、`::test_rebuild_competition_returns_partial_and_rebuilding_honestly`、`::test_usage_control_change_is_honest_and_keeps_management_view`；前端 `ProfileOverviewCard.test.tsx`（空/整理中/部分/关使用/加载失败+重试 8 项）；E2E `issue21-desktop-acceptance.spec.ts`「画像空态、设置与模型验证结果」三个视口通过 |
@@ -63,40 +66,43 @@
   升级与幂等；派生性（导出/逻辑摘要不在、备份可见、账户删除清空、顺序）。
 - 前端新增：`ProfileOverviewCard.test.tsx`（8 项）；`AtomicProfileCenter.test.tsx`
   增设「按主题筛选」「概览定位事件」「修改/删除广播数据变化」3 项（共 24 项）。
-- 浏览器 E2E（真实 API，新增 `apps/web/e2e/issue15-overview-topic-browsing.spec.ts`，
-  1 项通过）：概览原样汇总真实条目 → 点击段落定位（行高亮 + 依据展开）→
-  行内修改保存后概览即时替换为新句 → 删除唯一条目后概览回到空态。
-- 既有 E2E 回归：`issue20-profile-evidence-disclosure` 2/2 通过（依据展开、
-  四类反馈、行内修改、删除确认在重构后全部保持）；`issue21-desktop-acceptance
-  -g 画像` 3 视口 3/3 通过；`issue38-a11y -g 画像中心页` 1/1 通过。
+- 浏览器 E2E（合并态重跑，真实 API）：`issue15-overview-topic-browsing` 1/1、
+  `issue20-profile-evidence-disclosure` 2/2、`issue21-desktop-acceptance -g 画像`
+  3/3（1280×720 / 1440×900 / 1920×1080）、`issue38-a11y -g 画像中心页` 1/1，
+  合计 7/7 通过。新增 issue15 spec 覆盖：概览原样汇总真实条目 → 点击段落定位
+  （行高亮 + 依据展开）→ 行内修改保存后概览即时替换为新句 → 删除唯一条目后
+  概览回到空态。
   运行方式：`BRIDGES_PYTHON=<conda agent python>` + `PYTHONPATH=<worktree>/src`
   后 `npx playwright test ...`（本机 3000/8000/8025–8027/8143 端口需空闲）。
   说明：引用 08 版之前旧画像中心的陈旧 spec（`issue25-profile-center`、
   `issue38-visual` 的「数字分身画像」）在 main 上即已失效（src 已无该页面），
   属既有漂移，本票不扩大范围。
-- 聚焦（最终态）：`pytest tests/profiles tests/storage` → **907 通过**；
-  `tests/lifecycle tests/contracts` → **82 通过**；合计 **989 通过**。
-- 全量（`-q --continue-on-collection-errors`）：
-  - 分支：**342 failed / 5816 passed / 37 skipped / 4 errors**；
-    main@`ffcbe07f` 同命令：**346 failed / 5792 passed / 37 skipped / 4 errors**。
-  - 逐条差集：**分支独有失败 0 项**；main 独有失败 4 项（2 项 api_boot 环境性
-    flaky、`test_openapi_sync` 由本票重生成产物修复、1 项 learning 波动）。
+- 聚焦（合并态，终态）：`pytest tests/profiles tests/storage tests/lifecycle
+  tests/contracts` → **996 通过**（含本票 20 项与 14 票 7 项）。
+- 全量（合并态，`-q -n 4 --continue-on-collection-errors`）：
+  - 分支：**345 failed / 5818 passed / 39 skipped / 4 errors**；
+    main@`6661d47c` 同命令：**344 failed / 5801 passed / 37 skipped / 4 errors**。
+  - 逐条差集：分支独有失败 3 项均为 `tests/closeout/test_arxiv_worker_reliability.py`
+    的 xdist 并发计时抖动（同文件在分支上串行 **14/14 通过**，且在合并前后两次
+    串行全量中均未失败）；main 独有失败 2 项为 `test_api_boot` 环境性 flaky。
+    无与本票改动相关的分支独有失败。通过数 +17、跳过数 +2 为并发调度下的
+    抖动与新增用例共同结果，无状态异常。
+  - 合并前对照（基点 `ffcbe07f`，串行全量）：分支 342 failed / 5816 passed /
+    37 skipped；main 346 failed / 5792 passed / 37 skipped；分支独有失败 0。
   - 收集错误的 4 个 `tests/career_plan/test_issue29_*.py` 在 main 上完全相同
     （`CareerBackgroundLoader` 导入失败），为既有状态。
-  - 通过数 +24 = 本票新增后端测试（13+5+2=20）+ 差集中 4 项 main 失败而分支
-    通过，无其他状态变化。
 
 ## 4. 静态检查
 
-- `ruff check .`：分支 **453** 与 main 同项同数（453），本票新增 0 问题
-  （交付前修复了 3 处新引入：1 处 F401、2 处 I001；导入事故期间发现的
+- `ruff check .`：合并态分支 **453** 与 `main@6661d47c` 同为 453，本票新增 0
+  问题（交付前修复了 3 处新引入：1 处 F401、2 处 I001；导入事故期间发现的
   F821 已修复，见 §7）。
-- `mypy src`：**141 errors / 23 files**（检查 696 个源文件；与 main 基线完全
-  一致），无新增错误。
+- `mypy src`：合并态 **141 errors / 23 files**（检查 702 个源文件；main 同命令
+  141/23、检查 697 个），无新增错误。
 - `pip check`：No broken requirements found。
-- 前端（worktree，`apps/web`）：`npm run typecheck` 通过；`npm run test:unit`
-  36 文件 / **313 测试通过**；`npm run lint` 无错误（仅既有
-  img/useEffect 警告）；`npm run build` 成功（含 `/account/profile` 页面）。
+- 前端（worktree，`apps/web`，合并态）：`npm run typecheck` 通过；
+  `npm run test:unit` 37 文件 / **320 测试通过**（含 14 票的学习引用卡）；`npm run lint`
+  无错误（仅既有 img/useEffect 警告）；`npm run build` 成功（含 `/account/profile` 页面）。
 
 ## 5. 接口与实现摘要
 
@@ -182,5 +188,6 @@
   写入期归一由 PRD「近义主题可归一化」支持，并与概览分组一致所需；
   `AtomicProfileCenter.test.tsx` 770 行超出既有 666 行现状（组件本体已拆分，
   测试集中在同一组件文件便于对照）。
-- 评审后的回归：聚焦 989 通过、全量分支独有失败 0、走查 39 项全 PASS、
-  ruff 453 = main、mypy 141 = 基线、E2E 4 组全通过（§3、§4）。
+- 评审后的回归：并入 main@6661d47c 后重跑——聚焦 996 通过、全量差集无与
+  本票相关的分支独有失败（仅 xdist 计时抖动，见 §3）、走查 39 项全 PASS、
+  ruff 453 = main、mypy 141 = 基线、E2E 7/7 通过（§3、§4）。
