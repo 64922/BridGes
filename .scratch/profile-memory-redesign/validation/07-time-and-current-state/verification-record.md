@@ -1,12 +1,13 @@
 # 07 — 区分当前状态、历史经历与有效期：验证记录
 
-**分支：** `codex/issue-07-time-and-current-state`（基点 `14cea5f6`，main）。
+**分支：** `codex/issue-07-time-and-current-state`（基点 `14cea5f6`，main；
+合并 main 的工单 08/09 后再验证，见 §8）。
 **环境：** conda `agent`（Python 3.11.15）；真实主模型 `qwen3.7-plus-2026-05-26`
 （OS 凭据库 `credential_store`，经本机代理 `http://127.0.0.1:7890`）。
-**证据：** 本文 + `baseline-stub-20261016T023003Z.{json,md}` +
-`baseline-real-20261016T023022Z.{json,md}` + `run-lock-*.json` +
-`evidence/demo-walkthrough-20261016T022737Z.txt`（+`-model-outputs.json`）+
-`tools/walk_time_and_current_state_demo.py`（可复跑）。
+**证据：** 本文 + `baseline-stub-20261016T034425Z.{json,md}` +
+`baseline-real-20261016T034425Z.{json,md}` + `run-lock-*.json` +
+`evidence/demo-walkthrough-20261016T034546Z.txt`（+`-model-outputs.json`）+
+`tools/walk_time_and_current_state_demo.py`（可复跑；均为合并 main 后的复跑）。
 **可复跑：**
 
     DIR=.scratch/profile-memory-redesign/validation/07-time-and-current-state
@@ -26,7 +27,7 @@
 | 「继续」不自动延长旧期限，续期需新的明确依据 | `test_resume_keeps_old_deadline_and_expired_goal_stays_out`、`test_resume_with_new_explicit_date_renews_window`；走查 [2] 恢复后窗口保持 `2026-10-25 15:59:59+00:00`（UTC） |
 | 过期约束不进入当前计划，历史事实仍可按适当用途读取 | `test_expired_experience_enters_review_purpose_only`、`test_completed_goal_is_history_not_current_plan`、`test_correction_never_reads_as_history_state_change_does`、`tests/chat/test_issue07_review_history_injection.py`；走查 [4]（复盘载荷携带「既往经历（回顾用途）」，用而不改条目） |
 | 未使用不自动过期，召回频率不增加事实可信度，不设统一遗忘 TTL | `test_repeated_use_does_not_change_facts_or_confidence`（多次采用后 version/confidence/窗口不变）；周期条目 `validity_status=unbounded`（走查 [1]/[3]） |
-| 页面、存储和采用一致；生命周期和时间数据支持迁移、导出、账户删除及恢复 | `test_api_evidence_returns_recurrence_for_page_consistency`、`tests/storage/test_schema_v83_profile_recurrence.py`（2 项）、`tests/lifecycle/test_issue07_time_and_current_state_data.py`（导出/删除隔离/备份恢复 2 项）；前端 `AtomicProfileCenter.test.tsx`「每周三晚上固定进行…不设统一过期时间」；走查 [3] 证据投影与页面一致 |
+| 页面、存储和采用一致；生命周期和时间数据支持迁移、导出、账户删除及恢复 | `test_api_evidence_returns_recurrence_for_page_consistency`、`tests/storage/test_schema_v84_profile_recurrence.py`（2 项）、`tests/lifecycle/test_issue07_time_and_current_state_data.py`（导出/删除隔离/备份恢复 2 项）；前端 `AtomicProfileCenter.test.tsx`「每周三晚上固定进行…不设统一过期时间」；走查 [3] 证据投影与页面一致 |
 
 ## 2. 真实模型走查（最终代码，20261016）
 
@@ -60,10 +61,11 @@
   周期解析（每天/每周末/列表）/证据投影/重复采用不变/精确目标优先/歧义
   空操作/恢复不续期/新日期续期/过期经历仅回顾/回顾切片失效门禁/已完成
   目标/纠错不作经历/API 证据。
-- 新增 `tests/chat/test_issue07_review_history_injection.py`（2 项，回归）：
-  回顾轮载荷注入「既往经历（回顾用途）」；计划轮不读取过期经历。
-- 新增 `tests/storage/test_schema_v83_profile_recurrence.py`（2 项）：
-  v82→v83 升级加列、旧行 `recurrence_json` 为 NULL 且迁移幂等。
+- 新增 `tests/chat/test_issue07_review_history_injection.py`（3 项，回归）：
+  回顾轮载荷注入「既往经历（回顾用途）」；计划轮不读取过期经历；工单 09
+  的敏感用途门同样约束回顾用途（无匹配用途不注入、用途匹配才注入）。
+- 新增 `tests/storage/test_schema_v84_profile_recurrence.py`（2 项）：
+  v83→v84 升级加列、旧行 `recurrence_json` 为 NULL 且迁移幂等。
 - 新增 `tests/lifecycle/test_issue07_time_and_current_state_data.py`（2 项）：
   时间/周期字段进入导出、账户删除隔离、备份恢复往返一致。
 - 更新既有：`tests/profiles/test_issue18_profile_validity_and_revocation.py`
@@ -94,20 +96,20 @@
 - `apps/web`：`npm run test:unit` 34 文件 **293 通过**（含周期证据展示）；
   `tsc --noEmit` 0 错误；`next lint` 仅既有 warning；`next build` 成功。
 
-## 5. 基线语料对照（stub=deterministic 与 real，均为修复后复跑）
+## 5. 基线语料对照（stub=deterministic 与 real，合并 main 后复跑）
 
 | 旅程 | 预期 | deterministic | real | 备注 |
 | --- | --- | --- | --- | --- |
 | t01-name / t01-pet / t01-habit | pass | pass | pass | 原子条目写入 |
 | t02-psychology | pass | pass | pass | 无心理推断 |
 | t03-time-limit | pass | pass | pass | 时间限定保留 |
-| t04-cross-turn | pass（05） | pass | pass | 本轮 real 通过；同日更早一轮 real 为 partial（`preference_captured=False`）属模型抽取波动，与工单 06 记录同源 |
+| t04-cross-turn | pass（05） | pass | partial | 本轮 real `preference_captured=False`（抽取波动）；同日早前两轮 real 复跑为 pass，与工单 06 记录同源 |
 | positive-academic-control | pass | pass | pass | `succeeded_written`、active |
 | recall-academic-control | known_failing | partial | partial | D11 召回缺口（与 04/05 相同，均为「与预期一致=True」） |
 
-汇总：deterministic 模型调用 10 次（替身 0 token）；real 10 次、输入 4263 /
-输出 709 token，回答耗时样本 [2108, 1375, 1984, 2046, 2811, 2703, 7186,
-2077, 2719, 1141] ms。
+汇总：deterministic 模型调用 10 次（替身 0 token）；real 10 次、输入 4322 /
+输出 1133 token，回答耗时样本 [1155, 1125, 2234, 1985, 2561, 1610, 12171,
+2733, 3906, 1203] ms。
 
 ## 6. 语义与实现说明
 
@@ -132,9 +134,13 @@
   发送前被判失效、历史永不进入载荷。修复为：`applicable_to` 含
   `review_history` 的条目豁免召回资格复核；删除、版本或状态变化仍由
   `snapshot_versions` 核对拦下（回归测试锁定）。
-- **存储与数据生命周期**：迁移 83 为 `profile_items` 增 `recurrence_json`
-  （旧行为 NULL，迁移幂等）；SQLite 序列化与导出/删除/备份清单走既有
-  `profile_items` 通道，无额外路径。
+- - **敏感用途门同样约束回顾**（合并工单 09 后）：回顾采用与失效豁免都先过
+  `_purpose_exclusion`，敏感经历没有匹配用途时不因「历史」旁路进入任何
+  用途（回归测试锁定）。
+- **存储与数据生命周期**：迁移 84 为 `profile_items` 增 `recurrence_json`
+  （工单 09 先行并入 main 使用了 83 的用途列，本票顺延为 84；旧行为 NULL，
+  迁移幂等）；SQLite 序列化与导出/删除/备份清单走既有 `profile_items`
+  通道，无额外路径。
 - **页面**：证据面板展示周期文案「每周三晚上固定进行（长期有效，不设统一
   过期时间）」（`data-testid="atomic-evidence-recurrence"`），与证据投影
   同源；`openapi.json` 与 `packages/contracts/src/generated.ts` 已再生成。
@@ -152,3 +158,21 @@
   全局「单文件 ≤500 行」建议；与仓库既有测试文件规模一致，后续按主题拆分。
 - 输入预算、评估相对值口径等其他票的既有问题不在本票范围（`§4` 的 ruff/
   mypy 既有项同）。
+
+## 8. 合并 main（工单 08/09）后的复验
+
+- 合并提交 `eb5ac812`（08）与后续并入 09（`Merge branch 'main'`）；冲突
+  两处：`atomic.py`（回顾模式初始化与 `task_text` 用途门并取）与
+  `database.py`（双方都占用迁移 83）。处置：本票迁移顺延为 84、保留 09 的
+  83；同步更新 `SCHEMA_VERSION`、必需列与迁移补列集合，并把
+  `tests/storage/test_schema_v83_profile_recurrence.py` 更名/改写为
+  `test_schema_v84_profile_recurrence.py`（v83→v84 升级用例）。
+- 自动合并的隐蔽缺口一并修复：`save_item` 的 INSERT 列/占位符/参数在双
+  并取后为 34/33/34，运行即报 `33 values for 34 columns`——补齐占位符并
+  以 `_item_from_row` 取回核对；同时把工单 09 的 `_purpose_exclusion`
+  施加到回顾采用与失效豁免两条历史路径（见 §6）。
+- 复验：`pytest tests/profiles tests/storage tests/lifecycle tests/contracts
+  + 聊天画像用例` → **909 通过**；`tests/chat tests/evaluation` →
+  **106 failed / 1440 passed**，失败集合与改动前逐名一致（0 新增、0 消失）；
+  基线 stub/real 与走查脚本在合并后复跑（本文件抬头所列证据），全部检查
+  与合并前一致。

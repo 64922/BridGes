@@ -16,9 +16,9 @@
   "injected_models_overridden": false,
   "stub_profile_extraction": false,
   "stub_chat": false,
-  "git_commit": "14cea5f66c717b4f037f0f4f2e5e0d899e513638",
+  "git_commit": "eb5ac812058357bb3201caa57ec2e3cbdd4d3f6c",
   "git_dirty": true,
-  "pipeline_snapshot_sha256": "92324c1f058c7d05e175167c9aa6c51802b7e408aadd1708abe98f53134ece88",
+  "pipeline_snapshot_sha256": "675b3d0a5dc2978bad4e0c0c5857c5240b71a994518652820570e97dc4019263",
   "evaluation_sha256": "0ead2cedd6f65afbb79e7b956dd076188ce63b577242eea85357877889fe3eb8",
   "python_version": "3.11.15",
   "model_config": {
@@ -56,5 +56,5 @@
     "tavily_configured": true,
     "tavily_source": "credential_store"
   },
-  "started_at": "2026-10-16T02:31:39+00:00"
+  "started_at": "2026-10-16T03:45:39+00:00"
 }
