@@ -1,4 +1,4 @@
-import type { Account, AtomicProfileFeedbackProjection, AtomicProfileItemCreateRequest, AtomicProfileItemEvidenceProjection, AtomicProfileItemFeedbackRequest, AtomicProfileItemModifyRequest, AtomicProfileItemProjection, FourDimensionProfileModifyRequest, FourDimensionProfileRecord, OngoingDomainReferenceUpdateRequest, OngoingItemStateUpdateRequest, OngoingItemsProjection, ProfileAccountControlsProjection, ProfileStatusProjection } from "./types";
+import type { Account, AtomicProfileFeedbackProjection, AtomicProfileItemCreateRequest, AtomicProfileItemEvidenceProjection, AtomicProfileItemFeedbackRequest, AtomicProfileItemModifyRequest, AtomicProfileItemProjection, FourDimensionProfileModifyRequest, FourDimensionProfileRecord, OngoingItemStateUpdateRequest, OngoingItemsProjection, ProfileAccountControlsProjection, ProfileStatusProjection } from "./types";
 import { API_BASE, parseApiError } from "./core";
 
 // ---------- 画像中心（Issue 25） ----------
@@ -203,23 +203,6 @@ export async function updateOngoingItemState(
     `${API_BASE}/profiles/ongoing/${encodeURIComponent(itemId)}/state`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify(request),
-    }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-export async function updateOngoingDomainReference(
-  itemId: string,
-  request: OngoingDomainReferenceUpdateRequest
-): Promise<OngoingItemsProjection> {
-  const res = await fetch(
-    `${API_BASE}/profiles/ongoing/${encodeURIComponent(itemId)}/domain-reference`,
-    {
-      method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
       body: JSON.stringify(request),

@@ -2374,6 +2374,15 @@ class AtomicProfileService:
                 },
             )
 
+    def _active_ongoing_goals(self, account_id: str) -> list[AtomicProfileItem]:
+        """账户内进行中事项的目标条目（画像工单 13 的归组候选）。"""
+
+        return [
+            item
+            for item in self._repository.list_items(account_id)
+            if is_ongoing_goal_item(item)
+        ]
+
     def _ongoing_link_target(
         self, account_id: str, text: str, identity: AtomicProfileFactIdentity
     ) -> str | None:
@@ -2381,12 +2390,7 @@ class AtomicProfileService:
 
         if identity.relation is AtomicProfileFactRelation.GOAL:
             return None
-        goals = [
-            item
-            for item in self._repository.list_items(account_id)
-            if is_ongoing_goal_item(item)
-        ]
-        return _resolve_ongoing_goal_link(goals, text)
+        return _resolve_ongoing_goal_link(self._active_ongoing_goals(account_id), text)
 
     def link_saved_facts(self, account_id: str, item_ids: Iterable[str]) -> None:
         """同批写入的补链（画像工单 13）。
@@ -2397,11 +2401,7 @@ class AtomicProfileService:
         """
 
         with self._profile_commit.transaction():
-            goals = [
-                item
-                for item in self._repository.list_items(account_id)
-                if is_ongoing_goal_item(item)
-            ]
+            goals = self._active_ongoing_goals(account_id)
             for item_id in item_ids:
                 item = self._repository.get_item(account_id, item_id)
                 if (

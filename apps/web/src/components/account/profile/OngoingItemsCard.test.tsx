@@ -252,4 +252,43 @@ describe("OngoingItemsCard", () => {
       "所属领域进展：考研英语学习项"
     );
   });
+
+  it("操作控件均为键盘可达的原生按钮", async () => {
+    api.fetchOngoingItems.mockResolvedValue(projection());
+    api.updateOngoingItemState.mockResolvedValue(
+      projection({
+        items: [
+          {
+            goal: entry({
+              role: "goal",
+              profile_item_id: "goal-1",
+              text: "我在准备考研英语",
+              goal_state: "paused",
+              version: 2,
+            }),
+            progress: [entry()],
+            pending_questions: [],
+            domain_references: [],
+          },
+        ],
+      })
+    );
+
+    render(<OngoingItemsCard />);
+
+    const pause = await screen.findByRole("button", { name: "暂停" });
+    const complete = screen.getByRole("button", { name: "完成" });
+    for (const control of [pause, complete]) {
+      expect(control.tagName).toBe("BUTTON");
+      expect(control.getAttribute("type")).toBe("button");
+    }
+    pause.focus();
+    expect(document.activeElement).toBe(pause);
+    // 浏览器对聚焦按钮的 Enter/Space 会派发 click；此处验证聚焦后触发动作。
+    fireEvent.click(pause);
+    expect(api.updateOngoingItemState).toHaveBeenCalledWith("goal-1", {
+      action: "pause",
+      version: 1,
+    });
+  });
 });

@@ -31,7 +31,7 @@ const COMPLETE_CONFIRM =
 const EMPTY_COPY =
   "现在没有进行中的事项。当你在对话里明确提到正在准备或进行的目标" +
   "（例如「我在准备考研英语」），它会出现在这里；之后的进展与待续问题" +
-  "会自动归到这件事上，新对话里说「继续」即可接上。";
+  "会自动归到这件事上，之后在对话里再提到这件事即可接着它的进展。";
 
 function formatUpdatedTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {

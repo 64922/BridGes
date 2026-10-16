@@ -33,8 +33,7 @@ import hashlib
 import json
 import logging
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Protocol
 
 from bridges.contracts.atomic_profile import (
@@ -59,10 +58,15 @@ from bridges.contracts.profile_extraction import ProfileAccountControlsProjectio
 from bridges.profiles.atomic import (
     AtomicProfileService,
     ProfileEvidenceSourceReader,
-    is_ongoing_goal_item,
-    ongoing_entry_role,
     ongoing_goal_mentioned,
-    validity_status_for,
+)
+from bridges.profiles.ongoing_projection import (
+    ONGOING_USAGE_DISABLED_NOTICE,
+    _entry_projection,
+    _group_items,
+    _is_fresh,
+    _now,
+    _OngoingGroup,
 )
 from bridges.profiles.ongoing_repository import (
     OngoingContextStore,
@@ -70,11 +74,6 @@ from bridges.profiles.ongoing_repository import (
 )
 
 logger = logging.getLogger(__name__)
-
-#: 使用开关关闭时的页面提示（稳定文案，前端直接展示）。
-ONGOING_USAGE_DISABLED_NOTICE = (
-    "长期记忆使用已关闭：回答不会使用这些事项，管理操作仍然可用。"
-)
 
 #: 重建在竞争/失效下重试的次数；仍不稳定则如实返回「重建中」，绝不回退旧内容。
 _ONGOING_REBUILD_ATTEMPTS = 2
@@ -87,14 +86,6 @@ class OngoingDomainReferenceProvider(Protocol):
         self, account_id: str, reference: AtomicProfileDomainReference
     ) -> OngoingDomainReferenceState | None:
         """返回领域状态；对象不存在或不可读时返回 ``None``（未解析）。"""
-
-
-@dataclass(frozen=True)
-class _OngoingGroup:
-    """一个事项的原子视图：目标条目 + 归组到它的条目。"""
-
-    goal: AtomicProfileItem
-    entries: tuple[AtomicProfileItem, ...]
 
 
 class OngoingItemsService:
@@ -447,52 +438,6 @@ class OngoingItemsService:
                 ).hexdigest()[:16]
                 lines.append(f"m|{message_id}|{message.status}|{digest}")
         return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()[:32]
-
-
-def _group_items(items: Sequence[AtomicProfileItem]) -> list[_OngoingGroup]:
-    """按归组引用聚合事项：目标按最近更新倒序，条目挂在唯一目标下。"""
-
-    entries_by_goal: dict[str, list[AtomicProfileItem]] = {}
-    goals: list[AtomicProfileItem] = []
-    for item in items:
-        if is_ongoing_goal_item(item):
-            if item.goal_state is not AtomicProfileGoalState.COMPLETED:
-                goals.append(item)
-            continue
-        if item.related_goal_item_id is not None:
-            entries_by_goal.setdefault(item.related_goal_item_id, []).append(item)
-    goals.sort(key=lambda goal: (-goal.updated_at.timestamp(), goal.profile_item_id))
-    return [
-        _OngoingGroup(goal=goal, entries=tuple(entries_by_goal.get(goal.profile_item_id, ())))
-        for goal in goals
-    ]
-
-
-def _entry_projection(
-    item: AtomicProfileItem, *, now: datetime
-) -> OngoingEntryProjection:
-    return OngoingEntryProjection(
-        role=ongoing_entry_role(item),
-        profile_item_id=item.profile_item_id,
-        version=item.version,
-        text=item.text,
-        goal_state=item.goal_state,
-        validity_status=validity_status_for(item, now),
-        updated_at=item.updated_at,
-        source_message_ids=list(item.source_message_ids),
-    )
-
-
-def _is_fresh(stored: StoredOngoingContext, fingerprint: str) -> bool:
-    return (
-        stored.is_current
-        and stored.context_version == ONGOING_CONTEXT_CONTRACT_VERSION
-        and stored.dependency_fingerprint == fingerprint
-    )
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
 
 
 __all__ = [

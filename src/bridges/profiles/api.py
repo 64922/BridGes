@@ -17,11 +17,6 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileItemProjection,
     AtomicProfileMigrationReport,
 )
-from bridges.contracts.ongoing_profile import (
-    OngoingDomainReferenceUpdateRequest,
-    OngoingItemsProjection,
-    OngoingItemStateUpdateRequest,
-)
 from bridges.contracts.profile_extraction import (
     ProfileAccountControlsProjection,
     ProfileAccountControlsUpdateRequest,
@@ -35,6 +30,7 @@ from bridges.contracts.profiles import (
     FourDimensionProfileWithdrawRequest,
     ProfileError,
 )
+from bridges.profiles.api_errors import atomic_error, profile_error
 from bridges.profiles.atomic import AtomicProfileError, AtomicProfileService
 from bridges.profiles.automatic import (
     PROFILE_CONTROLS_EMPTY_UPDATE_MESSAGE,
@@ -44,7 +40,7 @@ from bridges.profiles.four_dimensions import (
     FourDimensionProfileError,
     FourDimensionProfileService,
 )
-from bridges.profiles.ongoing import OngoingItemsService
+from bridges.profiles.ongoing_api import router as _ongoing_router
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
@@ -77,22 +73,15 @@ AutomaticProfileServiceDep = Annotated[
 ]
 
 
-def _profile_error(status_code: int, error: str, message: str) -> HTTPException:
-    return HTTPException(
-        status_code=status_code,
-        detail=ProfileError(error=error, message=message).model_dump(),
-    )
-
-
 def _four_dimension_error(
     exc: FourDimensionProfileError, failure_code: str
 ) -> HTTPException:
     message = str(exc)
     if "对象不存在" in message or "访问权限" in message:
-        return _profile_error(status.HTTP_404_NOT_FOUND, "four_dimension_not_found", message)
+        return profile_error(status.HTTP_404_NOT_FOUND, "four_dimension_not_found", message)
     if "版本冲突" in message or "已撤回" in message:
-        return _profile_error(status.HTTP_409_CONFLICT, "four_dimension_conflict", message)
-    return _profile_error(status.HTTP_422_UNPROCESSABLE_CONTENT, failure_code, message)
+        return profile_error(status.HTTP_409_CONFLICT, "four_dimension_conflict", message)
+    return profile_error(status.HTTP_422_UNPROCESSABLE_CONTENT, failure_code, message)
 
 
 @router.get(
@@ -163,7 +152,7 @@ async def update_profile_controls(
     """更新当前账户的控制开关；同值重复写入幂等，至少指定一项。"""
 
     if payload.recording_enabled is None and payload.usage_enabled is None:
-        raise _profile_error(
+        raise profile_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "profile_controls_update_failed",
             PROFILE_CONTROLS_EMPTY_UPDATE_MESSAGE,
@@ -270,19 +259,6 @@ AtomicProfileServiceDep = Annotated[
 ]
 
 
-def _atomic_error(exc: AtomicProfileError, failure_code: str) -> HTTPException:
-    message = str(exc)
-    if "对象不存在" in message or "访问权限" in message:
-        return _profile_error(
-            status.HTTP_404_NOT_FOUND, "atomic_profile_not_found", message
-        )
-    if "版本冲突" in message or "已删除" in message or "已存在内容相同" in message:
-        return _profile_error(
-            status.HTTP_409_CONFLICT, "atomic_profile_conflict", message
-        )
-    return _profile_error(status.HTTP_422_UNPROCESSABLE_CONTENT, failure_code, message)
-
-
 @router.get(
     "/items",
     response_model=list[AtomicProfileItemProjection],
@@ -320,7 +296,7 @@ async def create_atomic_profile_item(
     try:
         item = service.add_item(subject.account_id, request)
     except AtomicProfileError as exc:
-        raise _atomic_error(exc, "atomic_profile_create_failed") from exc
+        raise atomic_error(exc, "atomic_profile_create_failed") from exc
     return AtomicProfileService.project(item)
 
 
@@ -344,7 +320,7 @@ async def modify_atomic_profile_item(
     try:
         item = service.modify_item(subject.account_id, item_id, request)
     except AtomicProfileError as exc:
-        raise _atomic_error(exc, "atomic_profile_modify_failed") from exc
+        raise atomic_error(exc, "atomic_profile_modify_failed") from exc
     return AtomicProfileService.project(item)
 
 
@@ -368,7 +344,7 @@ async def delete_atomic_profile_item(
     try:
         service.delete_item(subject.account_id, item_id, request.version)
     except AtomicProfileError as exc:
-        raise _atomic_error(exc, "atomic_profile_delete_failed") from exc
+        raise atomic_error(exc, "atomic_profile_delete_failed") from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -395,7 +371,7 @@ async def get_atomic_profile_item_evidence(
     try:
         return service.item_evidence(subject.account_id, item_id)
     except AtomicProfileError as exc:
-        raise _atomic_error(exc, "atomic_profile_evidence_failed") from exc
+        raise atomic_error(exc, "atomic_profile_evidence_failed") from exc
 
 
 @router.post(
@@ -419,7 +395,7 @@ async def submit_atomic_profile_item_feedback(
     try:
         return service.record_feedback(subject.account_id, item_id, request)
     except AtomicProfileError as exc:
-        raise _atomic_error(exc, "atomic_profile_feedback_failed") from exc
+        raise atomic_error(exc, "atomic_profile_feedback_failed") from exc
 
 
 # 旧四类数据的原子化迁移：迁移是账户级、可重复执行且只读旧记录的操作，
@@ -445,7 +421,7 @@ async def run_atomic_profile_migration(
     try:
         return service.migrate_account(subject.account_id)
     except AtomicProfileError as exc:
-        raise _atomic_error(exc, "atomic_profile_migration_failed") from exc
+        raise atomic_error(exc, "atomic_profile_migration_failed") from exc
 
 
 @router.get(
@@ -463,7 +439,7 @@ async def latest_atomic_profile_migration(
     """返回当前账户最近一次原子化迁移报告；从未迁移过时如实返回不存在。"""
     report = service.latest_migration_report(subject.account_id)
     if report is None:
-        raise _profile_error(
+        raise profile_error(
             status.HTTP_404_NOT_FOUND,
             "atomic_profile_migration_not_found",
             "没有可对账的迁移记录。",
@@ -488,97 +464,11 @@ async def rollback_atomic_profile_migration(
     try:
         return service.rollback_migration(subject.account_id, run_id)
     except AtomicProfileError as exc:
-        raise _atomic_error(exc, "atomic_profile_migration_rollback_failed") from exc
+        raise atomic_error(exc, "atomic_profile_migration_rollback_failed") from exc
 
 
-# 画像工单 13：进行中事项区。投影只读明确事实（目标 + 同组进展/待续问题），
-# 暂停/完成/继续作用于精确条目（乐观锁），领域引用只存引用、状态由领域
-# 实时解析；使用开关关闭时仍可管理事项，但不代表回答会使用它们。
-
-
-def _get_ongoing_items_service(request: Request) -> OngoingItemsService:
-    service: OngoingItemsService | None = getattr(
-        request.app.state, "ongoing_items_service", None
-    )
-    if service is None:
-        raise RuntimeError("OngoingItemsService not attached to application state.")
-    return service
-
-
-OngoingItemsServiceDep = Annotated[
-    OngoingItemsService, Depends(_get_ongoing_items_service)
-]
-
-
-@router.get(
-    "/ongoing",
-    response_model=OngoingItemsProjection,
-    responses={status.HTTP_401_UNAUTHORIZED: {"model": ProfileError}},
-)
-async def list_ongoing_items(
-    service: OngoingItemsServiceDep,
-    subject: SubjectDep,
-) -> OngoingItemsProjection:
-    """当前账户的进行中事项（目标、进展、待续问题与领域引用）。"""
-
-    return service.list_items(subject.account_id)
-
-
-@router.post(
-    "/ongoing/{item_id}/state",
-    response_model=OngoingItemsProjection,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
-        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
-        status.HTTP_409_CONFLICT: {"model": ProfileError},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
-    },
-)
-async def update_ongoing_item_state(
-    service: OngoingItemsServiceDep,
-    subject: SubjectDep,
-    item_id: str,
-    request: OngoingItemStateUpdateRequest,
-) -> OngoingItemsProjection:
-    """暂停/完成/继续进行中目标；返回刷新后的事项区。"""
-
-    try:
-        service.set_state(
-            subject.account_id, item_id, request.action, version=request.version
-        )
-    except AtomicProfileError as exc:
-        raise _atomic_error(exc, "ongoing_item_state_failed") from exc
-    return service.list_items(subject.account_id)
-
-
-@router.put(
-    "/ongoing/{item_id}/domain-reference",
-    response_model=OngoingItemsProjection,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
-        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
-        status.HTTP_409_CONFLICT: {"model": ProfileError},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
-    },
-)
-async def update_ongoing_domain_reference(
-    service: OngoingItemsServiceDep,
-    subject: SubjectDep,
-    item_id: str,
-    request: OngoingDomainReferenceUpdateRequest,
-) -> OngoingItemsProjection:
-    """设置/清除目标的领域引用；领域状态仍在读取时由领域提供方解析。"""
-
-    try:
-        service.set_domain_reference(
-            subject.account_id,
-            item_id,
-            request.reference,
-            version=request.version,
-        )
-    except AtomicProfileError as exc:
-        raise _atomic_error(exc, "ongoing_domain_reference_failed") from exc
-    return service.list_items(subject.account_id)
-
+# 进行中事项区路由在独立模块（画像工单 13），沿用同一前缀与标签；放在文末
+# 保持既有路由在 OpenAPI 中的顺序不变。
+router.include_router(_ongoing_router)
 
 __all__ = ["router"]
