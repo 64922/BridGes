@@ -18,6 +18,7 @@ from bridges.mcp.runtime import McpRuntime
 from bridges.mcp.service import McpService
 from bridges.persistence import SqliteStateStore
 from bridges.plugins.service import PluginService
+from bridges.profiles.recall import ProfileRecallIndex
 from bridges.retirement import retire_user_extensions
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.skills import create_builtin_registry
@@ -49,6 +50,15 @@ def configure_knowledge_services(app: FastAPI) -> None:
         # Issue 09：更换 Qwen 密钥时同步更新向量化端口的凭据判定来源
         # （向量模型本身仍独立固定，不随主模型改变）。
         app.state.embedding_port = embedding_port
+        # 画像工单 11：按任务召回的派生向量索引复用同一固定 Embedding
+        # 端口；索引可重建、按账户隔离，合同与主模型解耦。注入点在知识
+        # 服务装配之后（原子画像服务在核心装配阶段先行构造）。
+        recall_index = ProfileRecallIndex(
+            database=bridges_database, embedding=embedding_port
+        )
+        atomic_profile_service = getattr(app.state, "atomic_profile_service", None)
+        if atomic_profile_service is not None:
+            atomic_profile_service.set_recall_index(recall_index)
         # Issue 14：知识库 OCR 统一走 Issue 09 生产组合的注册能力与
         # Issue 10 运行记录接缝（网关解析固定模型/区域/重试政策，锁由
         # recorder 幂等持久化），端口不再自建 client/adapter。

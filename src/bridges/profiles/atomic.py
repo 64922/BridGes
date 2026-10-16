@@ -124,6 +124,11 @@ from bridges.profiles.purpose import (
     is_resource_constraint,
     task_topic_matches,
 )
+from bridges.profiles.recall import (
+    RECALL_DEGRADED_INDEX_ERROR,
+    ProfileRecallIndexPort,
+    ProfileRecallOutcome,
+)
 from bridges.profiles.sensitive import (
     CREDENTIAL_MEMORY_MESSAGE,
     SENSITIVE_PURPOSE_REQUIRED_MESSAGE,
@@ -158,6 +163,20 @@ _MAX_ITEM_TEXT_LENGTH = 1000
 _MIN_FORGET_TARGET_LENGTH = 2
 #: 条目与当前问题的二元组重合度下限（另有「至少共享两个二元组」的绝对门）。
 _QUESTION_MATCH_RATIO = 0.25
+
+#: 画像工单 11：切片编译规则版本。1.1 → 1.2 增加混合召回通道（关键词/关系
+#: 槽位/语义向量）与显式降级记录；1.1 的冻结切片在重试复用路径上仍然有效。
+COMPILED_POLICY_VERSION = "purpose-slice-1.2"
+SUPPORTED_COMPILED_POLICY_VERSIONS = frozenset(
+    {"purpose-slice-1.1", COMPILED_POLICY_VERSION}
+)
+#: 采用条目的召回通道依据（保存进采用记录，供反馈闭环与排障核对）。
+RECALL_BASIS_TASK_RULES = "task_rules"
+RECALL_BASIS_KEYWORD = "keyword"
+RECALL_BASIS_SEMANTIC = "semantic"
+RECALL_BASIS_REVIEW_HISTORY = "review_history"
+#: 语义召回降级时的「未命中」排除原因：不能把服务失败说成「没有相关记忆」。
+RECALL_DEGRADED_UNRELATED_REASON = "语义召回暂不可用，关键词与任务规则未命中"
 
 _CJK_OR_WORD_RE = re.compile(r"[\u4e00-\u9fff]{2,}|[A-Za-z0-9_]{2,}")
 #: 指令必须出现在消息开头或标点之后：这样「我记住了」「不要记住」「别忘掉」
@@ -973,6 +992,20 @@ def _conflict_matches_question(
     return any(_item_matches_question(item.text, question) for item in conflict.items)
 
 
+def _relation_question_matches(item: AtomicProfileItem, question: str | None) -> bool:
+    """问题是否在问该条目的属性槽（画像工单 11 的关键词通道扩展）。
+
+    「你记得我在读什么专业吗」与「我是计算机专业的大二学生」在二元组上
+    只共享一个词，旧词面规则会漏掉；但问题里的「专业」正是条目的关系槽
+    关键词。槽位命中只让条目成为候选（tier 1），不改变任何门禁或作用标签。
+    """
+
+    if not question or not question.strip():
+        return False
+    keyword = _RELATION_QUESTION_KEYWORDS.get(item.fact_relation)
+    return keyword is not None and keyword.search(question) is not None
+
+
 def _is_same_turn_extraction(
     item: AtomicProfileItem, current_user_message_id: str | None
 ) -> bool:
@@ -1060,6 +1093,7 @@ class _AdoptedCandidate:
     reason: str
     conditions: tuple[str, ...]
     is_default: bool
+    recall_basis: str | None = None
 
 
 def _authority_rank(item: AtomicProfileItem) -> int:
@@ -1105,6 +1139,7 @@ def _adopted_item(candidate: _AdoptedCandidate) -> AdoptedProfileItem:
         adoption_reason=candidate.reason,
         conditions=candidate.conditions,
         is_default=candidate.is_default,
+        recall_basis=candidate.recall_basis,
     )
 
 
@@ -2086,6 +2121,7 @@ class AtomicProfileService:
         profile_commit: ProfileCommit | None = None,
         message_reader: ProfileEvidenceSourceReader | None = None,
         observability_service: ObservabilityService | None = None,
+        recall_index: ProfileRecallIndexPort | None = None,
     ) -> None:
         self._four_dimensions = four_dimensions
         self._repository = repository
@@ -2093,6 +2129,9 @@ class AtomicProfileService:
         # 适配器）；未注入时来源如实标记为不可读，不伪造定位与原话。
         self._message_reader = message_reader
         self._observability = observability_service
+        # 画像工单 11：语义召回派生索引在组合根注入（需要数据库与向量端口）；
+        # 未注入时只走关键词与任务规则通道，本票不把它计为生产降级。
+        self._recall_index = recall_index
         # 改进工单 18：撤回传播的消费方（摘要等派生物失效）在组合根注入；
         # 未注入时撤回本身照常成立，只是没有下游通知。
         self._revocation_listener: ProfileRevocationListener | None = None
@@ -2103,6 +2142,11 @@ class AtomicProfileService:
             records=four_dimensions,
             items=self,
         )
+
+    def set_recall_index(self, recall_index: ProfileRecallIndexPort | None) -> None:
+        """挂载/替换语义召回索引（组合根在向量端口就绪后注入）。"""
+
+        self._recall_index = recall_index
 
     def set_revocation_listener(
         self, listener: ProfileRevocationListener | None
@@ -2157,7 +2201,7 @@ class AtomicProfileService:
 
         if (
             adopted.owner_account_id != account_id
-            or adopted.compiled_policy_version != "purpose-slice-1.1"
+            or adopted.compiled_policy_version not in SUPPORTED_COMPILED_POLICY_VERSIONS
         ):
             return False
         snapshot = self._repository.list_items(account_id, include_withdrawn=True)
@@ -3610,6 +3654,25 @@ class AtomicProfileService:
         # 条目与撤回版本取自同一快照：编译中途发生的撤回要么已反映、要么
         # 使版本落后而在发送前被 `is_slice_current` 拦下（工单 18）。
         snapshot = self._repository.list_items(account_id, include_withdrawn=True)
+        # 画像工单 11：语义召回只在有当前问题时进行；派生索引缺失、向量
+        # 不可用或调用失败都返回显式降级原因，绝不伪装成「没有相关记忆」。
+        # 语义命中只是候选来源——真伪、用途、时效与权限门禁一律照旧。
+        recall_outcome = ProfileRecallOutcome()
+        if self._recall_index is not None and query:
+            try:
+                recall_outcome = self._recall_index.recall(
+                    account_id, items=snapshot, query=query, run_id=run_id
+                )
+            except Exception:  # noqa: BLE001 - 派生索引故障不阻断回答，必须显式降级
+                logger.warning(
+                    "画像语义召回索引调用失败，本轮退化到关键词与任务规则",
+                    exc_info=True,
+                )
+                recall_outcome = ProfileRecallOutcome(
+                    degradation_reason=RECALL_DEGRADED_INDEX_ERROR
+                )
+        semantic_scores = recall_outcome.semantic_scores
+        recall_degraded = recall_outcome.degradation_reason is not None
         candidates: list[_AdoptedCandidate] = []
         exclusions: list[ProfileSliceExclusion] = []
         same_turn_reason = "本轮刚整理，下一轮才使用"
@@ -3669,6 +3732,8 @@ class AtomicProfileService:
                 )
             )
             topic_matched = _item_matches_question(item.text, query)
+            slot_matched = _relation_question_matches(item, query)
+            semantic_matched = item.profile_item_id in semantic_scores
             generic_constraint = is_resource_constraint(item.text) and not has_task_topic(item.text)
             if decisions and not tags and not generic_constraint:
                 # 学科背景和具体目标需有主题依据；年级等通用背景除外。
@@ -3677,19 +3742,27 @@ class AtomicProfileService:
                     AtomicProfileFactRelation.GRADE,
                 } and not has_task_topic(item.text)
                 if not (
-                    generic_background or topic_matched or task_topic_matches(item.text, effective)
+                    generic_background
+                    or topic_matched
+                    or slot_matched
+                    or semantic_matched
+                    or task_topic_matches(item.text, effective)
                 ):
                     decisions = ()
             if decisions:
                 tier = 0
-            elif topic_matched:
+            elif topic_matched or slot_matched or semantic_matched:
                 tier = 1
             else:
                 exclusions.append(
                     ProfileSliceExclusion(
                         profile_item_id=item.profile_item_id,
                         fact_text=item.text,
-                        exclusion_reason=unrelated_reason,
+                        exclusion_reason=(
+                            RECALL_DEGRADED_UNRELATED_REASON
+                            if recall_degraded
+                            else unrelated_reason
+                        ),
                     )
                 )
                 continue
@@ -3703,6 +3776,13 @@ class AtomicProfileService:
                     )
                 )
                 continue
+            basis_tags: list[str] = []
+            if decisions:
+                basis_tags.append(RECALL_BASIS_TASK_RULES)
+            if topic_matched or slot_matched:
+                basis_tags.append(RECALL_BASIS_KEYWORD)
+            if semantic_matched:
+                basis_tags.append(RECALL_BASIS_SEMANTIC)
             candidates.append(
                 _AdoptedCandidate(
                     item=item,
@@ -3721,6 +3801,7 @@ class AtomicProfileService:
                         )
                     ),
                     is_default=bool(tags),
+                    recall_basis="+".join(basis_tags) if basis_tags else None,
                 )
             )
         # 排序：任务作用（直接可用的规则 > 词面相关）→ 来源权威（用户优先）
@@ -3754,6 +3835,9 @@ class AtomicProfileService:
             ),
             revocation_version=self._revocation_version_for(snapshot),
             length_budget=MAX_SLICE_ITEMS,
+            recall_degradation_reason=recall_outcome.degradation_reason,
+            recall_index_version=recall_outcome.index_version,
+            compiled_policy_version=COMPILED_POLICY_VERSION,
             compiled_at=moment,
         )
 
@@ -3796,6 +3880,7 @@ class AtomicProfileService:
             reason="既往经历（回顾用途）",
             conditions=(),
             is_default=False,
+            recall_basis=RECALL_BASIS_REVIEW_HISTORY,
         )
 
     # -- 迁移 -------------------------------------------------------------

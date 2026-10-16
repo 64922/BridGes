@@ -206,21 +206,21 @@ def test_positive_academic_control_passes_through_real_entry(baseline_env: Any) 
     assert journey["profile_snapshot"]["items"]
 
 
-def test_recall_academic_control_reports_adoption_gap(baseline_env: Any) -> None:
+def test_recall_academic_control_adopts_stored_fact(baseline_env: Any) -> None:
     journeys = _run_all_journeys(baseline_env, "recall-control")
     journey = journeys["recall-academic-control"]
     second_run = journey["turns"][1]["generation_run"]
     slice_payload = second_run["adopted_profile_slice"]
     assert slice_payload is not None
-    # 严格检查：只认下一轮采用切片；当前把该事实排除为「与当前问题无关」。
-    assert slice_payload["adopted_items"] == []
+    # 工单 11：属性词（「专业」）命中条目的关系槽，下一轮直接采用该事实。
     assert [
-        item["exclusion_reason"] for item in slice_payload["excluded_items"]
-    ] == ["与当前问题无关"]
+        item["fact_text"] for item in slice_payload["adopted_items"]
+    ] == ["我是计算机专业的大二学生"]
+    assert slice_payload["adopted_items"][0]["recall_basis"] == "keyword"
     evaluation = journey["evaluation"]
-    # 写入检查通过、采用检查失败 → partial（基线记为 known_failing，接受部分通过）。
-    assert evaluation["observed_status"] == "partial"
+    assert evaluation["observed_status"] == "pass"
     assert evaluation["baseline_match"] is True
+    assert all(check["passed"] for check in evaluation["checks"])
 
 
 def test_run_lock_freezes_corpus_code_and_response_mode(baseline_env: Any) -> None:

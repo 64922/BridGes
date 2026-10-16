@@ -336,3 +336,5 @@ def test_chat_policy_failure_drops_profile_and_updates_disclosure(
     assert env.slice_audits()[-1].details["item_count"] == 0
     config = env.chat._repo.get_run_by_message(ACCOUNT, final.message_id).config  # noqa: SLF001
     assert "adopted_profile_slice" not in config
+    # 画像工单 11：冻结的完整编译快照一并清除，安全基线不从旧快照重编译。
+    assert "adopted_profile_slice_compiled" not in config

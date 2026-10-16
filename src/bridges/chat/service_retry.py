@@ -315,6 +315,11 @@ class _ServiceRetryMixin:
         self._apply_run_model_lock(run_config, previous_config=previous_config)
         if policy_snapshot is not None:
             run_config["global_writing_policy"] = policy_snapshot
+        # 画像工单 11：重试沿用冻结的完整编译快照（重试预算重新裁剪发送子集）
+        # 与实际发送记录两种键，与首轮 `_compile_profile_slice` 的语义一致。
+        adopted_compiled = (previous_config or {}).get("adopted_profile_slice_compiled")
+        if isinstance(adopted_compiled, dict):
+            run_config["adopted_profile_slice_compiled"] = dict(adopted_compiled)
         adopted_profile_slice = (previous_config or {}).get("adopted_profile_slice")
         if isinstance(adopted_profile_slice, dict):
             run_config["adopted_profile_slice"] = dict(adopted_profile_slice)

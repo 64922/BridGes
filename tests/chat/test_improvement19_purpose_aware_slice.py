@@ -448,7 +448,7 @@ def test_saved_slice_round_trip_and_corrupt_cache_recovery(env: _Env) -> None:
     assert run is not None
     config = dict(run.config or {})
     restored = AdoptedProfileSlice.model_validate(config["adopted_profile_slice"])
-    assert restored.compiled_policy_version == "purpose-slice-1.1"
+    assert restored.compiled_policy_version == "purpose-slice-1.2"
     assert restored.purpose.query is None
     assert [item.fact_text for item in restored.select_subset()] == [PREFERENCE]
     assert all(item.fact_text == "" for item in restored.excluded_items)

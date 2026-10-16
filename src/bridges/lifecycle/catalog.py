@@ -123,6 +123,10 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "profile_extraction_privacy_blocks",
     # 改进工单 07：长期画像使用开关（账户级控制状态），随账户删除并导出。
     "profile_account_controls",
+    # 画像工单 11：按任务召回的派生索引（可重建，不持有独立事实真相）。
+    # 派生数据随账户删除与备份快照，不进导出（边界说明见模块 docstring）。
+    "profile_recall_index_entries",
+    "profile_recall_index_versions",
     "profile_items",
     "profile_item_migrations",
     # 工单 01：逐条对账台账（账户级迁移审计），随账户删除并进入导出。

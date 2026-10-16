@@ -160,12 +160,13 @@ BASELINE_JOURNEYS: tuple[BaselineJourney, ...] = (
             "你记得我在读什么专业吗？",
         ),
         target="下一轮采用切片（adopted_profile_slice）包含该学业事实并被回答直接使用。",
-        baseline_status="known_failing",
+        baseline_status="pass",
         baseline_observation=(
-            "切片编译把该事实排除为「与当前问题无关」，下一轮 adopted_items 为"
-            "空；回答中的事实来自会话历史而非画像采用（D11 召回缺口）。"
+            "工单 11：混合召回的关键词通道按问题中的属性词（「专业」）命中条目的"
+            "关系槽，下一轮 adopted_items 包含该学业事实并在加载的画像块中被回答"
+            "直接使用；语义改写的召回由同一索引的向量通道承担（真实模型评测见 18）。"
         ),
-        evidence_note="责任票 11/15；采用因果待 18 复核。",
+        evidence_note="对照 PRD 3.1 与 T04；责任票 11/15。",
     ),
 )
 

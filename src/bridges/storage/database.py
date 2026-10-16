@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 84
+SCHEMA_VERSION = 85
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3693,6 +3693,46 @@ MIGRATIONS: dict[int, list[str]] = {
         ADD COLUMN recurrence_json TEXT
         """,
     ],
+    # 画像工单 11：按任务召回的派生索引（关键词与向量两路共用的向量副本行）。
+    # 索引是可重建派生数据，不持有独立事实真相：版本行固定向量模型/维度/
+    # 规范化/召回合同（主模型切换不影响本索引），条目行按（条目、版本、
+    # 正文哈希）记录当前向量；删除条目、重建索引或合同变化都不会复活旧值。
+    # 派生数据随账户删除与备份，不进导出（导出边界由 lifecycle.catalog 说明）。
+    85: [
+        """
+        CREATE TABLE IF NOT EXISTS profile_recall_index_versions (
+            version_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            contract_json TEXT NOT NULL,
+            contract_hash TEXT NOT NULL,
+            status TEXT NOT NULL,
+            item_count INTEGER NOT NULL DEFAULT 0,
+            vector_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            built_at TEXT
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_profile_recall_index_versions_account
+            ON profile_recall_index_versions(account_id, status)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS profile_recall_index_entries (
+            version_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            profile_item_id TEXT NOT NULL,
+            item_version INTEGER NOT NULL,
+            text_hash TEXT NOT NULL,
+            vector_json TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (version_id, profile_item_id)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_profile_recall_index_entries_account
+            ON profile_recall_index_entries(account_id, profile_item_id)
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3759,6 +3799,11 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     # 改进工单 07：长期画像使用开关的持久状态；回答切片编译与控制 API 都
     # 无条件读取，缺失时启动失败关闭而不是静默把使用当作始终开启。
     "profile_account_controls",
+    # 画像工单 11：按任务召回的派生索引。切片的混合召回在每次编译时读写
+    # 这两张表；迁移半执行时同样在启动阶段失败关闭，而不是把索引不可用
+    # 伪装成「没有相关记忆」。索引可重建，不持有独立事实真相。
+    "profile_recall_index_versions",
+    "profile_recall_index_entries",
     # 改进工单 10：持久节点执行内核的产物、收据与待投递事件；通勤模块
     # 在启动装配后无条件经内核查询，迁移半执行时须在启动阶段失败关闭。
     "node_artifacts",
@@ -3787,6 +3832,9 @@ REQUIRED_INDEXES: frozenset[str] = frozenset({
     "idx_study_record_controls_account",
     "idx_study_goal_events_conversation",
     "idx_study_record_adoptions_conversation",
+    # 画像工单 11：召回索引的账户作用域查询（版本行与条目行）。
+    "idx_profile_recall_index_versions_account",
+    "idx_profile_recall_index_entries_account",
 })
 
 #: 需要在「存在性」之上再核对必需列的核心对象。
@@ -4123,6 +4171,27 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "note",
         "item_version",
         "created_at",
+    }),
+    # 画像工单 11：派生召回索引的查询路径列（版本合同 + 条目向量行）。
+    "profile_recall_index_versions": frozenset({
+        "version_id",
+        "account_id",
+        "contract_json",
+        "contract_hash",
+        "status",
+        "item_count",
+        "vector_count",
+        "created_at",
+        "built_at",
+    }),
+    "profile_recall_index_entries": frozenset({
+        "version_id",
+        "account_id",
+        "profile_item_id",
+        "item_version",
+        "text_hash",
+        "vector_json",
+        "updated_at",
     }),
 }
 

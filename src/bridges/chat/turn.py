@@ -1760,6 +1760,25 @@ def adopted_profile_block_within_budget(
     return adopted, rendered, adopted.to_profile_slice().included_items
 
 
+def _stored_adopted_slice(adopted: AdoptedProfileSlice) -> dict[str, Any]:
+    """运行配置里的采用记录形态：同一切片快照，只脱敏正文与请求原文。
+
+    采用记录与实际发送共用同一对象：发送前的预算裁剪、最终载荷门整体
+    未采用等都会改写该记录，不出现「记录一套、使用另一套」（画像工单 11）。
+    """
+
+    stored = adopted.model_copy(
+        update={
+            "purpose": adopted.purpose.model_copy(update={"query": None}),
+            "excluded_items": tuple(
+                item.model_copy(update={"fact_text": ""})
+                for item in adopted.excluded_items
+            ),
+        }
+    )
+    return stored.model_dump(mode="json")
+
+
 def profile_correction_context(metadata: dict[str, Any] | None) -> str | None:
     """把聊天画像纠正结果编译为仅含维度和状态的模型上下文。"""
 
@@ -4691,6 +4710,11 @@ class TurnOrchestrator:
                                 "note": "最终输入预算不足，本轮未使用额外画像背景。",
                             }),
                         )
+                    # 采用记录必须对应真正发送的上下文：最终门整体未采用
+                    # 画像块时，adopted 记录同步改写为「本轮未采用」。
+                    self._record_adopted_slice_not_sent(
+                        account_id, assistant_message_id, atomic_adopted
+                    )
             if compile_floor_exceeded or (
                 material_manifest is not None
                 and not material_manifest.gate.within_budget
@@ -7038,7 +7062,12 @@ class TurnOrchestrator:
                     else None
                 )
                 run = self._repo.get_run_by_message(account_id, assistant_message_id)
-                saved = (run.config or {}).get("adopted_profile_slice") if run else None
+                # 画像工单 11：重试复用冻结的**完整编译快照**（预算裁剪前），
+                # 让重试在自身预算下重新决定发送子集；旧运行没有 compiled
+                # 键时回落到实际发送记录（同轮首次编译即用同一对象）。
+                saved = (run.config or {}).get("adopted_profile_slice_compiled") if run else None
+                if not isinstance(saved, dict):
+                    saved = (run.config or {}).get("adopted_profile_slice") if run else None
                 if isinstance(saved, dict):
                     try:
                         atomic_adopted = AdoptedProfileSlice.model_validate(saved)
@@ -7205,14 +7234,13 @@ class TurnOrchestrator:
                 config = dict(run.config or {})
                 # 复用既有运行配置的备份/导出/删除路径，只保存采用正文；不保存
                 # 未采用正文和重复的用户请求。规则版本随合同保存，旧运行缺省重编。
-                stored = compiled_adopted.model_copy(update={
-                    "purpose": compiled_adopted.purpose.model_copy(update={"query": None}),
-                    "excluded_items": tuple(
-                        item.model_copy(update={"fact_text": ""})
-                        for item in compiled_adopted.excluded_items
-                    ),
-                })
-                config["adopted_profile_slice"] = stored.model_dump(mode="json")
+                # 画像工单 11：`adopted_profile_slice` 是**实际发送**的采用记录
+                # （预算整条裁剪后的结果），`adopted_profile_slice_compiled` 保留
+                # 冻结的完整编译快照供重试复用与发送前核对；两者不混用。
+                config["adopted_profile_slice_compiled"] = _stored_adopted_slice(
+                    compiled_adopted
+                )
+                config["adopted_profile_slice"] = _stored_adopted_slice(atomic_adopted)
                 # 画像工单 08：冻结编译时的使用控制序号，发送前核对；期间发生
                 # 的关闭/重开都使这轮旧切片失效并按最新控制重编译。
                 if usage_controls is not None:
@@ -7228,7 +7256,25 @@ class TurnOrchestrator:
                 item_count=len(profile_items),
                 excluded_count=len(atomic_adopted.excluded_items),
                 material_categories=material_categories,
+                recall_degraded=atomic_adopted.recall_degradation_reason is not None,
+                recall_index_version=atomic_adopted.recall_index_version,
             )
+            recall_degraded = atomic_adopted.recall_degradation_reason is not None
+            if profile_items:
+                note = context_note_ready_text(profile_items)
+                if recall_degraded:
+                    note += "本轮语义召回暂不可用，仅使用了关键词与任务规则能确认的信息。"
+            elif recall_degraded:
+                # 服务失败不得伪装成「没有相关记忆」：如实说明降级范围。
+                note = (
+                    "本轮语义召回暂不可用，只检查了关键词与任务规则能确认的信息，"
+                    "没有使用额外背景。"
+                )
+            else:
+                note = (
+                    f"本轮没有与你当前任务匹配的{_PROFILE_CONTEXT_LABEL}，"
+                    "因此没有使用额外背景。"
+                )
             context_note = ContextNoteProjection(
                 state=(
                     ContextNoteState.READY
@@ -7240,14 +7286,7 @@ class TurnOrchestrator:
                 used_at=now,
                 profile_item_count=len(profile_items),
                 material_categories=material_categories,
-                note=(
-                    context_note_ready_text(profile_items)
-                    if profile_items
-                    else (
-                        f"本轮没有与你当前任务匹配的{_PROFILE_CONTEXT_LABEL}，"
-                        "因此没有使用额外背景。"
-                    )
-                ),
+                note=note,
             )
             return (
                 self._persist_context_note(
@@ -7335,7 +7374,11 @@ class TurnOrchestrator:
         if assistant_message_id is not None:
             run = self._repo.get_run_by_message(account_id, assistant_message_id)
             config = run.config or {} if run else {}
-            saved = config.get("adopted_profile_slice")
+            # 发送前核对冻结的完整编译快照（含实际发送子集的版本）；旧运行
+            # 没有 compiled 键时回落到实际发送记录。
+            saved = config.get("adopted_profile_slice_compiled")
+            if not isinstance(saved, dict):
+                saved = config.get("adopted_profile_slice")
             if isinstance(saved, dict):
                 expected_version = config.get("profile_usage_control_version")
                 if (
@@ -7429,6 +7472,43 @@ class TurnOrchestrator:
             self._repo.update_generation_config(account_id, run.run_id, config)
         return snapshot
 
+    def _record_adopted_slice_not_sent(
+        self,
+        account_id: str,
+        assistant_message_id: str,
+        adopted: AdoptedProfileSlice | None,
+    ) -> None:
+        """最终载荷门整体未采用画像块时，把采用记录改写为实际发送的结果。
+
+        画像工单 11：`adopted_profile_slice` 必须对应真正发送的上下文；
+        完整编译快照单独保存在 `adopted_profile_slice_compiled` 供重试复用。
+        """
+
+        if adopted is None:
+            return
+        run = self._repo.get_run_by_message(account_id, assistant_message_id)
+        if run is None:
+            return
+        not_sent = adopted.model_copy(
+            update={
+                "adopted_items": (),
+                "excluded_items": (
+                    *adopted.excluded_items,
+                    *(
+                        ProfileSliceExclusion(
+                            profile_item_id=item.profile_item_id,
+                            fact_text=item.fact_text,
+                            exclusion_reason="最终输入预算不足，本轮未采用",
+                        )
+                        for item in adopted.adopted_items
+                    ),
+                ),
+            }
+        )
+        config = dict(run.config or {})
+        config["adopted_profile_slice"] = _stored_adopted_slice(not_sent)
+        self._repo.update_generation_config(account_id, run.run_id, config)
+
     def _clear_failed_policy_adoption(
         self,
         account_id: str,
@@ -7439,7 +7519,9 @@ class TurnOrchestrator:
         run = self._repo.get_run_by_message(account_id, assistant_message_id)
         if run is not None:
             config = dict(run.config or {})
+            # 采用记录与冻结快照一并清除：安全基线也不会从旧快照重编译。
             config.pop("adopted_profile_slice", None)
+            config.pop("adopted_profile_slice_compiled", None)
             self._repo.update_generation_config(account_id, run.run_id, config)
         if context_note is None or context_note.profile_item_count == 0:
             return context_note
@@ -7741,8 +7823,14 @@ class TurnOrchestrator:
         excluded_count: int,
         material_categories: list[str],
         failed: bool = False,
+        recall_degraded: bool = False,
+        recall_index_version: str | None = None,
     ) -> None:
-        """云端披露审计：只记类别、切片 ID、条目数与授权快照，不复制正文。"""
+        """云端披露审计：只记类别、切片 ID、条目数与授权快照，不复制正文。
+
+        画像工单 11：语义召回降级与所用索引版本一并记录（跳过原因可观测），
+        不记录任何条目正文或向量内容。
+        """
         if self._observability is None:
             return
         details: dict[str, Any] = {
@@ -7754,6 +7842,10 @@ class TurnOrchestrator:
             "material_categories": material_categories,
             "authorization_snapshot": "authz-1.0",
         }
+        if recall_degraded:
+            details["recall_degraded"] = True
+        if recall_index_version:
+            details["recall_index_version"] = recall_index_version
         if failed:
             details["result"] = "compilation_failed"
         self._observability.log_audit(

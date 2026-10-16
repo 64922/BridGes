@@ -90,6 +90,13 @@ class AdoptedProfileItem(BaseModel):
     )
     is_default: bool = Field(default=False, description="长期默认值；本轮明确要求可以覆盖它。")
     overridden: bool = Field(default=False, description="本轮明确要求优先，该默认本轮不生效。")
+    recall_basis: str | None = Field(
+        default=None,
+        description=(
+            "召回通道依据（任务规则 / 关键词 / 语义 / 回顾用途；无通道信息为空）。"
+            "只解释「这条怎么被找到」，不改变事实真伪与权限。"
+        ),
+    )
 
 
 class ProfileSliceExclusion(BaseModel):
@@ -127,8 +134,18 @@ class AdoptedProfileSlice(BaseModel):
     )
     revocation_version: str | None = Field(default=None, description="同一快照折算的撤回版本。")
     length_budget: int = Field(default=4, ge=0, description="本轮采用的条目数上限。")
+    recall_degradation_reason: str | None = Field(
+        default=None,
+        description=(
+            "本轮语义召回受限的显式原因（如向量索引不可用）；为空表示召回通道正常。"
+            "受限时不得把结果表述为「没有相关记忆」。"
+        ),
+    )
+    recall_index_version: str | None = Field(
+        default=None, description="本轮语义检索使用的派生索引版本（无则空）。"
+    )
     compiled_policy_version: str = Field(
-        default="purpose-slice-1.1", description="切片编译规则版本。"
+        default="purpose-slice-1.2", description="切片编译规则版本。"
     )
     compiled_at: datetime = Field(description="编译时间。")
 

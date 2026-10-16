@@ -44,6 +44,8 @@ class EmbeddingOperation(StrEnum):
     INGESTION_WRITE = "ingestion_write"
     INDEX_REBUILD = "index_rebuild"
     RETRIEVAL_QUERY = "retrieval_query"
+    #: 画像工单 11：按任务召回的派生索引同步与查询（画像域调用点）。
+    PROFILE_RECALL = "profile_recall"
 
 
 @dataclass(frozen=True)
