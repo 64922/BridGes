@@ -94,6 +94,8 @@ class ProfileExtractionOutcome(StrEnum):
     SUCCEEDED_CORRECTION_NO_ACTIVE = "succeeded_correction_no_active"
     SUCCEEDED_MEMORY_DIRECTIVE = "succeeded_memory_directive"
     SUCCEEDED_LIFECYCLE_SIGNAL = "succeeded_lifecycle_signal"
+    #: 画像工单 08：本轮明确要求不使用长期画像；控制消息不进入自动抽取。
+    SUCCEEDED_TURN_CONTROL = "succeeded_turn_control"
     CORRECTION_FAILED = "correction_failed"
     PENDING_RETRY = "pending_retry"
     PERMANENT_FAILURE = "permanent_failure"

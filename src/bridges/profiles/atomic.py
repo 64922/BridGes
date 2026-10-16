@@ -2412,6 +2412,31 @@ class AtomicProfileService:
         except Exception:  # noqa: BLE001 - 审计失败不回收已记录的反馈
             return
 
+    def _audit_memory_action(
+        self,
+        account_id: str,
+        action: AuditAction,
+        *,
+        reason: str,
+        item_ids: Iterable[str],
+        details: dict[str, object] | None = None,
+    ) -> None:
+        """记住/忘掉/删除审计（工单 08）：只记原因、动作与条目引用，不含正文。"""
+
+        if self._observability is None:
+            return
+        try:
+            self._observability.log_audit(
+                actor_account_id=account_id,
+                action=action,
+                result=AuditResult.SUCCESS,
+                object_refs=list(item_ids),
+                reason=reason,
+                details=dict(details) if details else None,
+            )
+        except Exception:  # noqa: BLE001 - 审计失败不回收已完成的操作
+            return
+
     # -- 用户操作 ---------------------------------------------------------
 
     def modify_item(
@@ -2541,6 +2566,12 @@ class AtomicProfileService:
         # 墓碑已提交：依赖该事实的切片与摘要立即按依赖失效（已发送的云端
         # 上下文无法收回，通知只阻止后续调用继续使用）。
         self._notify_revocation(account_id, [item], reason="deleted")
+        self._audit_memory_action(
+            account_id,
+            AuditAction.PROFILE_DELETE,
+            reason="profile_item_deleted",
+            item_ids=[item.profile_item_id],
+        )
         # 撤回在墓碑边界之外逐条执行（见提交 module）；失败如实上抛，
         # 已提交的墓碑保持有效。
         outcome = self.withdraw_item_sources(account_id, [item])[0]
@@ -2696,6 +2727,13 @@ class AtomicProfileService:
             self._notify_revocation(
                 account_id, superseded_items, reason="superseded"
             )
+        self._audit_memory_action(
+            account_id,
+            AuditAction.PROFILE_CREATE,
+            reason="profile_remembered",
+            item_ids=[saved.profile_item_id],
+            details={"superseded_count": len(superseded_items)},
+        )
         return saved
 
     def forget(self, account_id: str, target: str) -> AtomicProfileMemoryResult:
@@ -2741,6 +2779,13 @@ class AtomicProfileService:
         # 失败不中断其余条目，失败明细由提交 module 返回并记入日志，可
         # 幂等重试（重启后的恢复闭环由 06 完成），已删除条目不会因此复活。
         self.withdraw_item_sources(account_id, matched)
+        self._audit_memory_action(
+            account_id,
+            AuditAction.PROFILE_DELETE,
+            reason="profile_forgotten",
+            item_ids=[item.profile_item_id for item in matched],
+            details={"matched_count": len(matched)},
+        )
         return AtomicProfileMemoryResult(
             kind=AtomicProfileMemoryKind.FORGET,
             status=AtomicProfileMemoryStatus.FORGOTTEN,
