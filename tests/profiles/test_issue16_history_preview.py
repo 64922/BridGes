@@ -14,14 +14,16 @@ from pydantic import SecretStr
 
 from bridges.config import Settings
 from bridges.profiles.atomic import identity_key
+from bridges.profiles.history_backup import (
+    create_history_backup,
+    verify_history_restore,
+)
 from bridges.profiles.history_contracts import HistoryPreviewManifest
 from bridges.profiles.history_preview import (
     ProfileHistoryError,
-    create_history_backup,
     load_preview_manifest,
     preview_history,
     save_preview_manifest,
-    verify_history_restore,
     verify_preview_manifest,
 )
 from bridges.profiles.replay import (
@@ -373,6 +375,7 @@ def test_preview_classifies_items_chat_scope_controls_and_barriers(
         [keys["auto_ok"], keys["sensitive_unauthorized"]]
     )
     assert items.locators["automatic_unverified_source"] == [keys["auto_missing"]]
+    assert items.unverified_source_refs == (keys["missing"],)
     assert items.locators["automatic_deleted_evidence"] == [keys["auto_deleted"]]
     assert items.locators["automatic_missing_evidence"] == [keys["auto_no_source"]]
     assert items.locators["automatic_partial_evidence"] == [keys["auto_partial"]]

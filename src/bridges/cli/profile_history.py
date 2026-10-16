@@ -15,12 +15,14 @@ from typing import Annotated
 import typer
 
 from bridges.config import get_settings
-from bridges.profiles.history_preview import (
+from bridges.profiles.history_backup import (
     create_history_backup,
+    verify_history_restore,
+)
+from bridges.profiles.history_preview import (
     load_preview_manifest,
     preview_history,
     save_preview_manifest,
-    verify_history_restore,
     verify_preview_manifest,
 )
 from bridges.profiles.replay import (

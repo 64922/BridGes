@@ -482,7 +482,7 @@ class _AttemptLockCollector:
         self.locks.append(lock)
 
 
-def _normalize(value: str) -> str:
+def normalize_message_content(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip(" \t\r\n，。；：:、,;.!！？?"))
 
 
@@ -575,7 +575,7 @@ def _quote_in_messages(quote: str, messages: list[ProfileNeighborMessage]) -> bo
 def _privacy_directive(content: str) -> tuple[str, str | None] | None:
     """解析本 Issue 需要的全局/局部停止记录指令。"""
 
-    text = _normalize(content)
+    text = normalize_message_content(content)
     if re.fullmatch(r"(?:不要记录|不记录|不要再记录|不要记住)", text):
         return "account", None
     local = re.search(
@@ -583,11 +583,11 @@ def _privacy_directive(content: str) -> tuple[str, str | None] | None:
         text,
     )
     if local is not None:
-        remainder = _normalize(text[local.end() :])
+        remainder = normalize_message_content(text[local.end() :])
         return "content", remainder or None
     suffix = re.search(r"(?:不用记|不要记|不要记录|别记)[，,：:]\s*(.+)$", text)
     if suffix is not None:
-        return "content", _normalize(suffix.group(1)) or None
+        return "content", normalize_message_content(suffix.group(1)) or None
     return None
 
 
@@ -607,7 +607,7 @@ _TURN_PROFILE_DIRECTIVE_RE = re.compile(
 def parse_turn_profile_directive(content: str) -> bool:
     """识别「本轮不用长期画像」的显式控制指令（确定性，不调用模型）。"""
 
-    return _TURN_PROFILE_DIRECTIVE_RE.search(_normalize(content)) is not None
+    return _TURN_PROFILE_DIRECTIVE_RE.search(normalize_message_content(content)) is not None
 
 
 def has_probable_profile_signal(content: str) -> bool:
@@ -621,8 +621,8 @@ def _record_matches_question(
 ) -> bool:
     if not current_question or not current_question.strip():
         return True
-    question = _normalize(current_question)
-    content = _normalize(record.content)
+    question = normalize_message_content(current_question)
+    content = normalize_message_content(record.content)
     if content in question or question in content:
         return True
     terms = re.findall(r"[\u4e00-\u9fff]{2,}|[A-Za-z0-9_]{2,}", content)
@@ -640,7 +640,7 @@ def _record_matches_question(
 def _extract_observation_topic(content: str) -> str | None:
     """从搜索/提问观察中去掉动作词和文档类型后保留主题。"""
 
-    text = _normalize(content)
+    text = normalize_message_content(content)
     text = re.sub(
         r"^(?:找|搜索|查找|检索|查|看|阅读|推荐|了解|介绍)\s*"
         r"(?:几篇|一些|相关的?|一份)?\s*",
@@ -657,7 +657,7 @@ def _extract_observation_topic(content: str) -> str | None:
         "",
         text,
     )
-    text = _normalize(text)
+    text = normalize_message_content(text)
     return text if len(text) > 1 else None
 
 
@@ -719,7 +719,7 @@ def _iter_pattern_matches(
                 continue
             seen.append(span)
             start, end = _pattern_span(text, match)
-            yield match, _normalize(text[start:end])
+            yield match, normalize_message_content(text[start:end])
 
 
 def _span_is_hard_forbidden(
@@ -829,7 +829,7 @@ class RuleBasedAutomaticProfileExtractor:
             _add(
                 items,
                 dimension=FourDimension.STAGE_GOAL,
-                value=_normalize(match.group(1)),
+                value=normalize_message_content(match.group(1)),
                 # 目标/学业的关系在规范化值里已可解析：镜像正文沿用规范值，
                 # 与基线公开事实文本保持一致。
                 fact_text=None,
@@ -838,7 +838,7 @@ class RuleBasedAutomaticProfileExtractor:
             )
         for match, clause in _iter_pattern_matches(body, _INTEREST_PATTERNS):
             start, end = _pattern_span(body, match)
-            interest = _normalize(match.group(1))
+            interest = normalize_message_content(match.group(1))
             dimension = (
                 FourDimension.HOBBY
                 if _is_hobby_value(interest)
@@ -862,7 +862,7 @@ class RuleBasedAutomaticProfileExtractor:
             _add(
                 items,
                 dimension=FourDimension.ACADEMIC_STATUS,
-                value=_normalize(match.group(1)),
+                value=normalize_message_content(match.group(1)),
                 fact_text=None,
                 start=base + start,
                 end=base + end,
@@ -872,7 +872,7 @@ class RuleBasedAutomaticProfileExtractor:
         ) and not any(
             item["dimension"] == FourDimension.ACADEMIC_STATUS for item in items
         ):
-            first_clause = _normalize(re.split(r"[，。；;,]", body, maxsplit=1)[0])
+            first_clause = normalize_message_content(re.split(r"[，。；;,]", body, maxsplit=1)[0])
             start = body.find(first_clause) if first_clause else -1
             if first_clause and start >= 0:
                 _add(
@@ -1245,7 +1245,9 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
         if normalized_value is None:
             self._account_recording_blocks.add(account_id)
         else:
-            self._content_recording_blocks.add((account_id, _normalize(normalized_value)))
+            self._content_recording_blocks.add(
+                (account_id, normalize_message_content(normalized_value))
+            )
 
     def is_recording_blocked(
         self, account_id: str, normalized_value: str | None = None
@@ -1254,7 +1256,7 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
             return True
         if normalized_value is None:
             return False
-        value = _normalize(normalized_value)
+        value = normalize_message_content(normalized_value)
         return any(
             blocked == value or blocked in value or value in blocked
             for blocked_account, blocked in self._content_recording_blocks
@@ -1593,7 +1595,11 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
         self, account_id: str, normalized_value: str | None, now: datetime
     ) -> None:
         scope = "account" if normalized_value is None else "content"
-        stored_value = "" if normalized_value is None else _normalize(normalized_value)
+        stored_value = (
+            ""
+            if normalized_value is None
+            else normalize_message_content(normalized_value)
+        )
         block_id = _stable_id("profile-privacy-block", account_id, scope, stored_value)
         self.database.scoped(account_id).execute(
             "INSERT INTO profile_extraction_privacy_blocks "
@@ -1605,7 +1611,7 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
     def is_recording_blocked(
         self, account_id: str, normalized_value: str | None = None
     ) -> bool:
-        value = "" if normalized_value is None else _normalize(normalized_value)
+        value = "" if normalized_value is None else normalize_message_content(normalized_value)
         return (
             self.database.scoped(account_id)
             .execute(
@@ -2114,7 +2120,7 @@ class AutomaticProfileService:
         if directive is not None:
             scope, normalized_value = directive
             if scope == "content" and normalized_value is None:
-                normalized_value = _normalize(content)
+                normalized_value = normalize_message_content(content)
             self._repository.block_recording(
                 account_id,
                 normalized_value if scope == "content" else None,

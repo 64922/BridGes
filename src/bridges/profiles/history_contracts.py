@@ -13,10 +13,8 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 
 #: 预览清单合同版本；字段或语义变化时必须递增。
 HISTORY_PREVIEW_VERSION = "profile-history-preview-v1"
@@ -141,6 +139,9 @@ class ItemEvidenceSummary:
     withdrawn: int
     superseded: int
     locators: dict[str, list[str]] = field(default_factory=dict)
+    #: 「来源无法核验」条目的来源标识（非聊天/材料类或旧数据缺失）；
+    #: 重整前必须按各自授权合同逐项重新核验，清单只给出待核验来源。
+    unverified_source_refs: tuple[str, ...] = ()
 
     def count_dict(self) -> dict[str, int]:
         return {key: int(getattr(self, key)) for key in ITEM_COUNT_KEYS}
@@ -149,6 +150,7 @@ class ItemEvidenceSummary:
         return {
             "counts": self.count_dict(),
             "locators": {key: list(value) for key, value in self.locators.items()},
+            "unverified_source_refs": list(self.unverified_source_refs),
         }
 
     @classmethod
@@ -174,6 +176,7 @@ class ItemEvidenceSummary:
             withdrawn=_int_value(counts, "withdrawn"),
             superseded=_int_value(counts, "superseded"),
             locators=_locators(payload),
+            unverified_source_refs=_str_tuple(payload, "unverified_source_refs"),
         )
 
 
@@ -343,17 +346,6 @@ class HistoryPreviewManifest:
             "domain_refs": self.domain_refs.as_dict(),
         }
 
-    def save(self, path: Path) -> None:
-        """写出清单；同目录不存在时显式失败（与备份一致，不创建目录）。"""
-
-        target = Path(path)
-        if not target.parent.exists():
-            raise ValueError(f"清单目标目录不存在：{target.parent}")
-        target.write_text(
-            json.dumps(self.as_dict(), ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-
     @classmethod
     def from_dict(cls, payload: Mapping[str, object]) -> HistoryPreviewManifest:
         if payload.get("manifest_version") != HISTORY_PREVIEW_VERSION:
@@ -373,15 +365,6 @@ class HistoryPreviewManifest:
             domain_refs=DomainRefsSummary.from_dict(_section(payload, "domain_refs")),
             scope_note=_str_value(payload, "scope_note"),
         )
-
-    @classmethod
-    def load(cls, path: Path) -> HistoryPreviewManifest:
-        """读取清单；缺失、损坏或版本不支持由调用方转换为硬门失败。"""
-
-        payload = json.loads(Path(path).read_text(encoding="utf-8"))
-        if not isinstance(payload, Mapping):
-            raise ValueError("预览清单不是 JSON 对象")
-        return cls.from_dict(payload)
 
 
 def digest_lines(parts: Sequence[str]) -> str:
