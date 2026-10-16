@@ -1667,6 +1667,7 @@ _ADOPTED_LABELS: tuple[tuple[str, str], ...] = (
     ("recommendation_scope", "当前目标与资源"),
     ("plan_level", "用户背景（来自自述）"),
     ("explanation_start", "用户背景（来自自述）"),
+    ("review_history", "既往经历（回顾用途）"),
 )
 
 

@@ -7774,6 +7774,8 @@ export interface components {
              * @description 原文明示的时间表达。
              */
             validity_phrase?: string | null;
+            /** @description 明示的周期安排；没有周期表达时为空。 */
+            recurrence?: components["schemas"]["AtomicProfileRecurrence"] | null;
             /** @description 当前时效状态。 */
             validity_status: components["schemas"]["AtomicProfileValidityStatus"];
             /**
@@ -8044,6 +8046,41 @@ export interface components {
          * @enum {string}
          */
         AtomicProfileReconciliationOutcome: "migrated" | "duplicated" | "tombstoned" | "skipped" | "failed";
+        /**
+         * AtomicProfileRecurrence
+         * @description 一条事实里明示的周期安排（画像工单 07）。
+         *
+         *     周期安排是长期有效的固定节奏（如「每周三晚上去实验室」）：只解释
+         *     原文写明的周期与时段，不做任何日历推算，也没有统一 TTL；``phrase``
+         *     保留原文明示表达供页面展示与审计核对。周内重复日按 0=周一…6=周日
+         *     编号；没有写明重复日时（如「每周」）为空元组，表示每周任意一天。
+         */
+        AtomicProfileRecurrence: {
+            /** @description 重复周期。 */
+            kind: components["schemas"]["AtomicProfileRecurrenceKind"];
+            /**
+             * Weekdays
+             * @description 周内重复日编号集合（0=周一…6=周日）；空表示不限具体日。
+             * @default []
+             */
+            weekdays: number[];
+            /**
+             * Time Of Day
+             * @description 原文明示的时段词，如「晚上」。
+             */
+            time_of_day?: string | null;
+            /**
+             * Phrase
+             * @description 原文明示的周期表达。
+             */
+            phrase: string;
+        };
+        /**
+         * AtomicProfileRecurrenceKind
+         * @description 周期安排的重复周期（画像工单 07）。
+         * @enum {string}
+         */
+        AtomicProfileRecurrenceKind: "daily" | "weekly";
         /**
          * AtomicProfileValidityStatus
          * @description 条目当前时效状态（由有效期与目标生命周期折算，页面直接展示）。

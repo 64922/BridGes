@@ -101,6 +101,35 @@ class AtomicProfileConflictState(StrEnum):
     UNRESOLVED = "unresolved"
 
 
+class AtomicProfileRecurrenceKind(StrEnum):
+    """周期安排的重复周期（画像工单 07）。"""
+
+    DAILY = "daily"
+    WEEKLY = "weekly"
+
+
+class AtomicProfileRecurrence(BaseModel):
+    """一条事实里明示的周期安排（画像工单 07）。
+
+    周期安排是长期有效的固定节奏（如「每周三晚上去实验室」）：只解释
+    原文写明的周期与时段，不做任何日历推算，也没有统一 TTL；``phrase``
+    保留原文明示表达供页面展示与审计核对。周内重复日按 0=周一…6=周日
+    编号；没有写明重复日时（如「每周」）为空元组，表示每周任意一天。
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: AtomicProfileRecurrenceKind = Field(description="重复周期。")
+    weekdays: tuple[int, ...] = Field(
+        default=(),
+        description="周内重复日编号集合（0=周一…6=周日）；空表示不限具体日。",
+    )
+    time_of_day: str | None = Field(
+        default=None, max_length=20, description="原文明示的时段词，如「晚上」。"
+    )
+    phrase: str = Field(max_length=100, description="原文明示的周期表达。")
+
+
 class AtomicProfileFactIdentity(BaseModel):
     """一条完整事实的主体/关系/对象/范围身份（内部合同，不进入页面）。"""
 
@@ -282,6 +311,13 @@ class AtomicProfileItem(BaseModel):
     )
     validity_phrase: str | None = Field(
         default=None, max_length=100, description="原文明示的时间表达，供审计核对。"
+    )
+    recurrence: AtomicProfileRecurrence | None = Field(
+        default=None,
+        description=(
+            "明示的周期安排（画像工单 07）；没有周期表达时为空。周期安排"
+            "长期有效，不设统一 TTL，也不随使用当天重解释。"
+        ),
     )
     goal_state: AtomicProfileGoalState = Field(
         default=AtomicProfileGoalState.ACTIVE,
@@ -604,6 +640,9 @@ class AtomicProfileItemEvidenceProjection(BaseModel):
     validity_phrase: str | None = Field(
         default=None, description="原文明示的时间表达。"
     )
+    recurrence: AtomicProfileRecurrence | None = Field(
+        default=None, description="明示的周期安排；没有周期表达时为空。"
+    )
     validity_status: AtomicProfileValidityStatus = Field(description="当前时效状态。")
     evidence_quote: str | None = Field(
         default=None, description="保存时的精确原话；未保存时为空。"
@@ -742,6 +781,8 @@ __all__ = [
     "AtomicProfileMigrationStatus",
     "AtomicProfileReconciliationEntry",
     "AtomicProfileReconciliationOutcome",
+    "AtomicProfileRecurrence",
+    "AtomicProfileRecurrenceKind",
     "AtomicProfileRevisionKind",
     "AtomicProfileTombstoneEntry",
     "AtomicProfileValidityStatus",

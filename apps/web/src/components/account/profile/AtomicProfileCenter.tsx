@@ -14,6 +14,7 @@ import {
   type AtomicProfileFeedbackKind,
   type AtomicProfileItemEvidenceProjection,
   type AtomicProfileItemProjection,
+  type AtomicProfileRecurrence,
   type AtomicProfileValidityStatus,
   type AtomicProfileWriteOrigin,
 } from "@/lib/api";
@@ -134,6 +135,23 @@ function validityText(evidence: AtomicProfileItemEvidenceProjection): string {
     ? `原文说「${evidence.validity_phrase}」：`
     : "";
   return `${phrase}${range.join("，")}（${status}）`;
+}
+
+const RECURRENCE_WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
+
+/**
+ * 画像工单 07：周期安排是长期固定的节奏（每周三晚上…），本身没有期限，
+ * 不按统一 TTL 过期；页面只展示原文写明的周期与时段，不做日历推算。
+ */
+function recurrenceText(recurrence: AtomicProfileRecurrence): string {
+  const days = recurrence.weekdays
+    .map((index) => RECURRENCE_WEEKDAY_LABELS[index] ?? `第 ${index + 1} 天`)
+    .join("、");
+  const when =
+    recurrence.kind === "daily"
+      ? `每天${recurrence.time_of_day ?? ""}`
+      : `每周${days}${recurrence.time_of_day ?? ""}`;
+  return `${when}固定进行（长期有效，不设统一过期时间）。`;
 }
 
 /**
@@ -513,6 +531,15 @@ export function AtomicProfileCenter() {
           <p className={styles.evidenceNote}>
             有效期：{validityText(data)}
           </p>
+          {data.recurrence ? (
+            <p
+              className={styles.evidenceNote}
+              data-testid="atomic-evidence-recurrence"
+            >
+              固定安排：原文说「{data.recurrence.phrase}」：
+              {recurrenceText(data.recurrence)}
+            </p>
+          ) : null}
         </div>
 
         <div className={styles.evidenceSection}>

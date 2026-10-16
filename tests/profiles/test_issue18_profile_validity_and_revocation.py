@@ -59,8 +59,12 @@ from bridges.storage.database import BridgesDatabase
 
 ACCOUNT = "account-alice"
 OTHER_ACCOUNT = "account-bob"
-#: 可控来源时间锚：2026-01-05 是周一，方便核对「下周」的绝对区间。
+#: 可控来源时间锚：2026-01-05 是周一（Asia/Shanghai 17:00），方便核对
+#: 「下周」按产品默认时区（工单 07）解析出的绝对区间。
 ANCHOR = datetime(2026, 1, 5, 9, 0, tzinfo=UTC)
+#: 「下周」在 Asia/Shanghai 自然周里解释：本地 01-12 00:00 ~ 01-18 23:59:59。
+NEXT_WEEK_START_UTC = datetime(2026, 1, 11, 16, 0, tzinfo=UTC)
+NEXT_WEEK_END_UTC = datetime(2026, 1, 18, 15, 59, 59, tzinfo=UTC)
 EXAM_TEXT = "我下周有考试"
 RUN_TEXT = "我喜欢跑步"
 JOG_TEXT = "我喜欢慢跑"
@@ -214,10 +218,8 @@ def test_relative_exam_phrase_anchors_once_and_expires(harness: _Harness) -> Non
     item = harness.item_of(EXAM_TEXT)
     assert item.validity_phrase == "下周"
     assert item.validity_anchor_at == ANCHOR
-    assert item.valid_from == datetime(2026, 1, 12, tzinfo=UTC)
-    assert item.valid_until == datetime(
-        2026, 1, 18, 23, 59, 59, tzinfo=UTC
-    )
+    assert item.valid_from == NEXT_WEEK_START_UTC
+    assert item.valid_until == NEXT_WEEK_END_UTC
 
     during = harness.slice(now=ANCHOR + timedelta(days=8))
     assert EXAM_TEXT in _included_texts(during)
@@ -237,10 +239,9 @@ def test_new_source_message_reanchors_relative_phrase(harness: _Harness) -> None
     harness.commit(EXAM_TEXT, message_id="m-exam-2", source_at=later)
     item = harness.item_of(EXAM_TEXT)
     assert item.validity_anchor_at == later
-    assert item.valid_from == datetime(2026, 2, 2, tzinfo=UTC)
-    assert item.valid_until == datetime(
-        2026, 2, 8, 23, 59, 59, tzinfo=UTC
-    )
+    # 新锚是本地 01-26 17:00（周一），「下周」= 本地 02-02 ~ 02-08。
+    assert item.valid_from == datetime(2026, 2, 1, 16, 0, tzinfo=UTC)
+    assert item.valid_until == datetime(2026, 2, 8, 15, 59, 59, tzinfo=UTC)
     assert set(item.source_message_ids) == {"m-exam-1", "m-exam-2"}
 
 
@@ -271,7 +272,7 @@ def test_future_expression_wins_over_past_date(harness: _Harness) -> None:
     text = "我2023年5月1日入职，下周有考试"
     item = harness.commit(text, message_id="m-mix", source_at=ANCHOR)
     assert item is not None
-    assert item.valid_until == datetime(2026, 1, 18, 23, 59, 59, tzinfo=UTC)
+    assert item.valid_until == NEXT_WEEK_END_UTC
 
 
 def test_current_scope_statement_is_not_recalled(harness: _Harness) -> None:
@@ -316,9 +317,7 @@ def test_legacy_item_backfills_window_with_its_own_created_at(
 
     reloaded = harness.reload("legacy-1")
     assert reloaded.validity_anchor_at == ANCHOR
-    assert reloaded.valid_until == datetime(
-        2026, 1, 18, 23, 59, 59, tzinfo=UTC
-    )
+    assert reloaded.valid_until == NEXT_WEEK_END_UTC
 
 
 def test_projection_exposes_validity_and_goal_state(harness: _Harness) -> None:
@@ -332,7 +331,7 @@ def test_projection_exposes_validity_and_goal_state(harness: _Harness) -> None:
     }
     exam = projections[EXAM_TEXT]
     assert exam.validity_phrase == "下周"
-    assert exam.valid_until == datetime(2026, 1, 18, 23, 59, 59, tzinfo=UTC)
+    assert exam.valid_until == NEXT_WEEK_END_UTC
     assert exam.goal_state is AtomicProfileGoalState.ACTIVE
     run = projections[RUN_TEXT]
     assert run.valid_from is None and run.valid_until is None

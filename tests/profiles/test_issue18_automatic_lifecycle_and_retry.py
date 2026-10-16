@@ -278,5 +278,6 @@ def test_retry_reanchors_relative_phrase_to_original_message(
     item = items[0]
     # 重试发生在真实“现在”，但锚仍是原消息时间，窗口不随重试漂移。
     assert item.validity_anchor_at == ANCHOR
-    assert item.valid_until == datetime(2026, 1, 18, 23, 59, 59, tzinfo=UTC)
+    # 「下周」按产品默认时区（Asia/Shanghai）解释：本地 01-12 ~ 01-18。
+    assert item.valid_until == datetime(2026, 1, 18, 15, 59, 59, tzinfo=UTC)
     assert item.confidence is FourDimensionConfidence.MEDIUM

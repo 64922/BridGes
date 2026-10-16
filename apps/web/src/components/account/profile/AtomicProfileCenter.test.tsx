@@ -291,6 +291,36 @@ describe("AtomicProfileCenter", () => {
     expect(panel.textContent).toContain("先与你确认");
   });
 
+  it("shows the explicit weekly schedule without inventing an expiry", async () => {
+    // 画像工单 07：周期安排按原文展示（周三、晚上），不推算日历、不设期限。
+    api.listAtomicProfileItems.mockResolvedValue([
+      item({ text: "我每周三晚上去实验室做实验" }),
+    ]);
+    api.fetchAtomicProfileItemEvidence.mockResolvedValue(
+      evidence({
+        text: "我每周三晚上去实验室做实验",
+        valid_from: null,
+        valid_until: null,
+        validity_phrase: null,
+        validity_status: "unbounded",
+        recurrence: {
+          kind: "weekly",
+          weekdays: [2],
+          time_of_day: "晚上",
+          phrase: "每周三晚上",
+        },
+      })
+    );
+
+    render(<AtomicProfileCenter />);
+    fireEvent.click(await screen.findByText("查看依据"));
+
+    const recurrenceNote = await screen.findByTestId("atomic-evidence-recurrence");
+    expect(recurrenceNote.textContent).toContain("每周三晚上");
+    expect(recurrenceNote.textContent).toContain("每周三晚上固定进行");
+    expect(recurrenceNote.textContent).toContain("不设统一过期时间");
+  });
+
   it("records four feedback kinds without deleting still-correct facts", async () => {
     api.listAtomicProfileItems.mockResolvedValue([item()]);
     api.fetchAtomicProfileItemEvidence.mockResolvedValue(evidence());

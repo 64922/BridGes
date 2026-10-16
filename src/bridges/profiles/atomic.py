@@ -41,6 +41,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
+from zoneinfo import ZoneInfo
 
 from bridges.contracts.atomic_profile import (
     AtomicProfileConflict,
@@ -69,6 +70,8 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileMigrationStatus,
     AtomicProfileReconciliationEntry,
     AtomicProfileReconciliationOutcome,
+    AtomicProfileRecurrence,
+    AtomicProfileRecurrenceKind,
     AtomicProfileRevisionKind,
     AtomicProfileTombstoneEntry,
     AtomicProfileValidityStatus,
@@ -82,6 +85,7 @@ from bridges.contracts.profile_adoption import (
     AdoptedProfileSlice,
     ProfileSliceExclusion,
     ProfileSlicePurpose,
+    ProfileTaskKind,
 )
 from bridges.contracts.profiles import (
     FourDimension,
@@ -108,6 +112,7 @@ from bridges.profiles.four_dimensions import (
     is_recallable_confidence,
 )
 from bridges.profiles.purpose import (
+    DECISION_REVIEW_HISTORY,
     adoption_reason,
     applicability,
     build_purpose,
@@ -474,6 +479,10 @@ def parse_memory_directive(content: str) -> MemoryDirective | None:
 
 #: 明示时间表达在写入时按来源消息时间锚解析一次（工单 18）：之后一律以绝对
 #: 区间判定，使用当天不再重解释「下周」；没有时间表达就不设期限，不编造日期。
+#: 画像工单 07：相对日期按产品默认时区的自然日/周/月解释（「明天」指本地
+#: 日界），解析后落库仍是绝对时刻；时区只在解释时参与一次，不随使用变化。
+PROFILE_TIMEZONE = "Asia/Shanghai"
+
 _VALIDITY_DATE_RE = re.compile(
     r"(?P<year>\d{4})\s*[年\-/]\s*(?P<month>\d{1,2})\s*[月\-/]\s*(?P<day>\d{1,2})\s*日?"
 )
@@ -483,6 +492,31 @@ _VALIDITY_THIS_WEEK_RE = re.compile(r"(?:本|这)(?:个)?(?:周|星期)")
 _VALIDITY_NEXT_MONTH_RE = re.compile(r"下(?:个)?月")
 _VALIDITY_TOMORROW_RE = re.compile(r"明天")
 _VALIDITY_DAY_AFTER_TOMORROW_RE = re.compile(r"后天")
+
+#: 周期安排（工单 07）：「每天/每周三、五晚上」这类固定节奏解析为结构化
+#: 条件。周期安排是长期有效的节奏，不设期限、不参与过期；与有效期并行
+#: 保存、互不替代。只认原文写明的周期与时段，不做任何日历推算。
+_RECURRENCE_TIME_WORDS = "凌晨|清晨|早上|上午|中午|下午|傍晚|晚上|夜里|夜晚|睡前"
+_RECURRENCE_WEEK_RE = re.compile(
+    r"每(?:个)?(?:周|星期)"
+    r"(?P<days>[一二三四五六日天末](?:[、和与及]?[一二三四五六日天末])*)?"
+    rf"(?P<time>{_RECURRENCE_TIME_WORDS})?"
+)
+_RECURRENCE_DAY_RE = re.compile(
+    rf"每(?:天|日)(?P<time>{_RECURRENCE_TIME_WORDS})?"
+)
+#: 周内重复日编号：0=周一…6=周日；「末」是周六与周日两天。
+_RECURRENCE_WEEKDAY_INDEX: dict[str, tuple[int, ...]] = {
+    "一": (0,),
+    "二": (1,),
+    "三": (2,),
+    "四": (3,),
+    "五": (4,),
+    "六": (5,),
+    "日": (6,),
+    "天": (6,),
+    "末": (5, 6),
+}
 
 #: 目标生命周期信号（工单 18）：只按用户明确表达变更，不根据行为推断。
 _LIFECYCLE_TARGET_NOISE = (
@@ -582,18 +616,23 @@ def _month_bounds(anchor: datetime, *, months_ahead: int) -> tuple[datetime, dat
     return start, next_start - timedelta(seconds=1)
 
 
-def parse_validity_window(text: str, anchor: datetime) -> ValidityWindow | None:
+def parse_validity_window(
+    text: str,
+    anchor: datetime,
+    *,
+    timezone: str = PROFILE_TIMEZONE,
+) -> ValidityWindow | None:
     """把原文明示的时间表达解析为绝对有效期；没有明示时间时返回空。
 
-    相对时间以 ``anchor``（来源消息时间）为锚，解析一次后落库为绝对区间，
-    使用当天不再重解释；没有给年份的日期不猜测年份。未明示期限（如长期偏好）
-    不设统一 TTL。
+    相对时间以 ``anchor``（来源消息时间）为锚，在 ``timezone`` 的自然日/
+    周/月里解释一次后落库为绝对区间，使用当天不再重解释；没有给年份的
+    日期不猜测年份。未明示期限（如长期偏好）不设统一 TTL。
     """
 
     normalized = normalize_text(text)
     if not normalized:
         return None
-    moment = _as_aware(anchor)
+    moment = _as_aware(anchor).astimezone(ZoneInfo(timezone))
     candidates: list[tuple[int, ValidityWindow]] = []
 
     date_match = _VALIDITY_DATE_RE.search(normalized)
@@ -672,6 +711,53 @@ def parse_validity_window(text: str, anchor: datetime) -> ValidityWindow | None:
     if not usable:
         return None
     return min(usable, key=lambda entry: entry[0])[1]
+
+
+def parse_recurrence(text: str) -> AtomicProfileRecurrence | None:
+    """把原文明示的周期安排解析为结构化条件；没有周期表达时返回空。
+
+    支持「每天/每日」与「每周/每星期」两种周期，可带周内重复日列表
+    （如「每周三、五晚上」）与时段词。解析只取原文最早出现的周期表达；
+    周期安排本身没有期限，不参与过期判定，也不再按使用当天重解释。
+    """
+
+    normalized = normalize_text(text)
+    if not normalized:
+        return None
+    candidates: list[tuple[int, AtomicProfileRecurrence]] = []
+    week = _RECURRENCE_WEEK_RE.search(normalized)
+    if week is not None:
+        weekdays: list[int] = []
+        for char in week.group("days") or "":
+            for index in _RECURRENCE_WEEKDAY_INDEX.get(char, ()):
+                if index not in weekdays:
+                    weekdays.append(index)
+        candidates.append(
+            (
+                week.start(),
+                AtomicProfileRecurrence(
+                    kind=AtomicProfileRecurrenceKind.WEEKLY,
+                    weekdays=tuple(sorted(weekdays)),
+                    time_of_day=week.group("time"),
+                    phrase=week.group(0),
+                ),
+            )
+        )
+    day = _RECURRENCE_DAY_RE.search(normalized)
+    if day is not None:
+        candidates.append(
+            (
+                day.start(),
+                AtomicProfileRecurrence(
+                    kind=AtomicProfileRecurrenceKind.DAILY,
+                    time_of_day=day.group("time"),
+                    phrase=day.group(0),
+                ),
+            )
+        )
+    if not candidates:
+        return None
+    return min(candidates, key=lambda entry: entry[0])[1]
 
 
 def _clean_lifecycle_target(raw: str | None) -> str:
@@ -876,6 +962,15 @@ def _is_same_turn_extraction(
 RECALL_LOW_CONFIDENCE_REASON = "可靠程度不足，暂不用于当前回答"
 #: 冲突门禁的稳定排除原因：双方说法矛盾且未确认，争议部分不作确定事实。
 RECALL_CONFLICT_REASON = "存在未解决的冲突，暂不作为确定事实使用"
+#: 时效门禁的稳定排除原因（工单 07）：过期与已完成从当前用途排除，但仍是
+#: 真实经历，明确回顾时可按历史用途读取。
+RECALL_EXPIRED_REASON = "已过期，不再用于当前回答"
+RECALL_COMPLETED_REASON = "目标已完成，不再作为当前目标使用"
+#: 回顾用途可以按历史读取的排除原因：只有真实经历（过期、已完成以及
+#: 被替代的旧值）可作历史；暂停、冲突、撤回与错误更正一律不进入。
+REVIEW_HISTORY_GATE_REASONS = frozenset(
+    {RECALL_EXPIRED_REASON, RECALL_COMPLETED_REASON}
+)
 
 
 def _recall_exclusion(item: AtomicProfileItem, now: datetime) -> str | None:
@@ -896,9 +991,9 @@ def _recall_exclusion(item: AtomicProfileItem, now: datetime) -> str | None:
     if item.goal_state == AtomicProfileGoalState.PAUSED:
         return "目标已暂停，不再作为当前目标使用"
     if item.goal_state == AtomicProfileGoalState.COMPLETED:
-        return "目标已完成，不再作为当前目标使用"
+        return RECALL_COMPLETED_REASON
     if item.valid_until is not None and item.valid_until <= now:
-        return "已过期，不再用于当前回答"
+        return RECALL_EXPIRED_REASON
     if not is_recallable_confidence(item.confidence) and item.user_edited_at is None:
         return RECALL_LOW_CONFIDENCE_REASON
     return None
@@ -1052,6 +1147,7 @@ def _item_from_record(
         valid_until=validity.valid_until if validity else None,
         validity_anchor_at=record.first_stable_recorded_at if validity else None,
         validity_phrase=validity.phrase if validity else None,
+        recurrence=parse_recurrence(text),
         source_record_id=record.record_id,
         source_message_ids=[source] if source else [],
         topic_hint=record.dimension.value,
@@ -1481,6 +1577,13 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 if row["validity_phrase"] is not None  # type: ignore[index]
                 else None
             ),
+            recurrence=(
+                AtomicProfileRecurrence.model_validate_json(
+                    str(row["recurrence_json"])  # type: ignore[index]
+                )
+                if row["recurrence_json"]  # type: ignore[index]
+                else None
+            ),
             goal_state=AtomicProfileGoalState(
                 str(row["goal_state"])  # type: ignore[index]
             ),
@@ -1551,14 +1654,15 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "INSERT INTO profile_items ("
             "profile_item_id, account_id, text, identity_key, fact_subject, "
             "fact_relation, fact_object, fact_scope, fact_key, evidence_quote, "
-            "valid_from, valid_until, validity_anchor_at, validity_phrase, goal_state, "
+            "valid_from, valid_until, validity_anchor_at, validity_phrase, "
+            "recurrence_json, goal_state, "
             "supersedes_id, superseded_by_id, source_record_id, "
             "source_message_ids_json, source_quotes_json, topic_hint, topics_json, "
             "status, write_origin, "
             "confidence, version, created_at, updated_at, user_edited_at, migration_run_id, "
             "retired_reason, conflict_state) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-            "?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(profile_item_id) DO UPDATE SET text = excluded.text, "
             "identity_key = excluded.identity_key, fact_subject = excluded.fact_subject, "
             "fact_relation = excluded.fact_relation, fact_object = excluded.fact_object, "
@@ -1568,6 +1672,7 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "valid_until = excluded.valid_until, "
             "validity_anchor_at = excluded.validity_anchor_at, "
             "validity_phrase = excluded.validity_phrase, "
+            "recurrence_json = excluded.recurrence_json, "
             "goal_state = excluded.goal_state, "
             "supersedes_id = excluded.supersedes_id, "
             "superseded_by_id = excluded.superseded_by_id, "
@@ -1598,6 +1703,7 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 self._iso(item.valid_until) if item.valid_until else None,
                 self._iso(item.validity_anchor_at) if item.validity_anchor_at else None,
                 item.validity_phrase,
+                item.recurrence.model_dump_json() if item.recurrence else None,
                 item.goal_state.value,
                 item.supersedes_id,
                 item.superseded_by_id,
@@ -2005,7 +2111,13 @@ class AtomicProfileService:
         moment = now or _now()
         return all(
             entry.profile_item_id in current
-            and _recall_exclusion(current[entry.profile_item_id], moment) is None
+            and (
+                _recall_exclusion(current[entry.profile_item_id], moment) is None
+                # 工单 07：回顾用途采用的历史条目本来就是过期或已完成的，
+                # 不因「不可常规召回」判失效；删除或改动仍由上面的版本/
+                # 状态核对拦下。
+                or DECISION_REVIEW_HISTORY in entry.applicable_to
+            )
             for entry in adopted.adopted_items
         )
 
@@ -2179,6 +2291,7 @@ class AtomicProfileService:
             valid_from=item.valid_from,
             valid_until=item.valid_until,
             validity_phrase=item.validity_phrase,
+            recurrence=item.recurrence,
             validity_status=_validity_status(item, moment),
             evidence_quote=evidence_quote,
             evidence_quote_status=evidence_quote_status,
@@ -2380,6 +2493,9 @@ class AtomicProfileService:
                     item.valid_until = window.valid_until
                     item.validity_anchor_at = now
                     item.validity_phrase = window.phrase
+                recurrence = parse_recurrence(text)
+                if recurrence is not None:
+                    item.recurrence = recurrence
             item.version += 1
             item.updated_at = now
             item.user_edited_at = now
@@ -2476,6 +2592,7 @@ class AtomicProfileService:
         key = identity_key(account_id, normalized)
         fact_key = fact_identity_key(account_id, identity)
         window = parse_validity_window(normalized, anchor)
+        recurrence = parse_recurrence(normalized)
         with self._profile_commit.transaction():
             existing = self._repository.find_item_by_identity(account_id, key)
             if existing is None:
@@ -2513,6 +2630,8 @@ class AtomicProfileService:
                     existing.goal_state = AtomicProfileGoalState.ACTIVE
                     _apply_fact_identity(existing, identity, account_id)
                     _apply_validity(existing, window, anchor)
+                    if recurrence is not None:
+                        existing.recurrence = recurrence
                     if resolved_topics:
                         existing.topics = list(
                             dict.fromkeys([*existing.topics, *resolved_topics])
@@ -2553,6 +2672,7 @@ class AtomicProfileService:
                     valid_until=window.valid_until if window else None,
                     validity_anchor_at=anchor if window else None,
                     validity_phrase=window.phrase if window else None,
+                    recurrence=recurrence,
                     source_record_id=record.record_id if record is not None else None,
                     source_message_ids=[source_message_id] if source_message_id else [],
                     topic_hint=record.dimension.value if record is not None else None,
@@ -2708,14 +2828,31 @@ class AtomicProfileService:
     def _match_goal_targets(
         goals: list[AtomicProfileItem], signal: GoalLifecycleSignal
     ) -> list[AtomicProfileItem]:
-        """按对象定位目标；信号没有对象时只处理唯一的候选，避免误改。"""
+        """按对象定位目标；歧义时不批量修改（工单 07）。
+
+        定位顺序：先完整相等（目标对象或正文与目标一致），再唯一包含匹配。
+        多个目标同时包含目标词时（如「暂时不考研」面对「考研」「考研
+        英语」）无法确定指哪一个，返回空集按普通事实保存，绝不一次修改
+        多条。信号没有对象时仍然只处理唯一候选，避免误改。
+        """
 
         if signal.target:
-            return [
+            target = normalize_text(signal.target).casefold()
+            if not target:
+                return []
+            exact = [
+                item
+                for item in goals
+                if normalize_text(item.fact_object or item.text).casefold() == target
+            ]
+            if exact:
+                return exact
+            contained = [
                 item
                 for item in goals
                 if _is_goal_mention(item.fact_object or item.text, signal.target)
             ]
+            return contained if len(contained) == 1 else []
         if signal.kind is GoalLifecycleKind.RESUME:
             paused = [
                 item
@@ -2884,6 +3021,7 @@ class AtomicProfileService:
         for fragment in evidence_fragments:
             source_quotes.setdefault(fragment.message_id, fragment.quote)
         window = parse_validity_window(text, anchor)
+        recurrence = parse_recurrence(text)
         if not self._has_active_identity(account_id, fact_key, key):
             suppressed = self._find_related_suppression(account_id, identity)
             if suppressed is not None:
@@ -2941,6 +3079,7 @@ class AtomicProfileService:
                     validity=window,
                     anchor=anchor,
                     now=now,
+                    recurrence=recurrence,
                 )
                 if revision_kind is not None:
                     superseded_items.extend(
@@ -2972,6 +3111,7 @@ class AtomicProfileService:
                 valid_until=window.valid_until if window else None,
                 validity_anchor_at=anchor if window else None,
                 validity_phrase=window.phrase if window else None,
+                recurrence=recurrence,
                 source_record_id=None,
                 source_message_ids=list(
                     dict.fromkeys(
@@ -3110,6 +3250,7 @@ class AtomicProfileService:
                     validity=parse_validity_window(normalized, now),
                     anchor=now,
                     now=now,
+                    recurrence=parse_recurrence(normalized),
                 )
                 if text_changed:
                     # 用户纠正不是聊天原话证据：正文更换后不保留旧值引用。
@@ -3141,6 +3282,9 @@ class AtomicProfileService:
                         target.valid_until = window.valid_until
                         target.validity_anchor_at = now
                         target.validity_phrase = window.phrase
+                    recurrence = parse_recurrence(normalized)
+                    if recurrence is not None:
+                        target.recurrence = recurrence
                 target.version += 1
                 target.updated_at = now
                 target.user_edited_at = now
@@ -3268,6 +3412,9 @@ class AtomicProfileService:
         moment = now or _now()
         effective = purpose or build_purpose(mode="companion")
         query = effective.query if effective.query is not None else None
+        # 工单 07：明确回顾任务（复盘/总结）额外采用词面相关的真实经历：
+        # 被替代的历史值、已完成与已过期的条目只在回顾用途进入切片。
+        review_mode = effective.task_kind is ProfileTaskKind.REVIEW
         # 条目与撤回版本取自同一快照：编译中途发生的撤回要么已反映、要么
         # 使版本落后而在发送前被 `is_slice_current` 拦下（工单 18）。
         snapshot = self._repository.list_items(account_id, include_withdrawn=True)
@@ -3278,6 +3425,10 @@ class AtomicProfileService:
         overridden_reason = "本轮明确要求优先，默认偏好本轮不采用"
         for item in snapshot:
             if item.status != AtomicProfileItemStatus.ACTIVE:
+                if review_mode:
+                    history = self._review_history_candidate(item, query=query)
+                    if history is not None:
+                        candidates.append(history)
                 continue
             if _is_same_turn_extraction(item, current_user_message_id):
                 exclusions.append(
@@ -3290,6 +3441,11 @@ class AtomicProfileService:
                 continue
             gate_reason = _recall_exclusion(item, moment)
             if gate_reason is not None:
+                if review_mode and gate_reason in REVIEW_HISTORY_GATE_REASONS:
+                    history = self._review_history_candidate(item, query=query)
+                    if history is not None:
+                        candidates.append(history)
+                        continue
                 exclusions.append(
                     ProfileSliceExclusion(
                         profile_item_id=item.profile_item_id,
@@ -3395,6 +3551,47 @@ class AtomicProfileService:
             compiled_at=moment,
         )
 
+    @staticmethod
+    def _review_history_candidate(
+        item: AtomicProfileItem, *, query: str | None
+    ) -> _AdoptedCandidate | None:
+        """回顾用途的历史采用（工单 07）：只取真实经历且词面相关。
+
+        被替代版本只认修订原因为「状态变化」或无标记的历史替代（06 之前
+        的记录与明确换值）；错误更正（correction）是错误记录，绝不作为
+        经历展示，撤回墓碑没有正文也不在内。已完成/已过期的活动条目可作
+        历史；冲突、暂停与低可靠度条目仍不进入任何用途。历史条目排在当前
+        条目之后（tier 2），只填当前条目用剩的最小切片预算。
+        """
+
+        if item.status == AtomicProfileItemStatus.SUPERSEDED:
+            if item.retired_reason not in {
+                None,
+                AtomicProfileRevisionKind.STATE_CHANGE,
+            }:
+                return None
+        elif item.status != AtomicProfileItemStatus.ACTIVE:
+            return None
+        if item.conflict_state == AtomicProfileConflictState.UNRESOLVED:
+            return None
+        if (
+            not is_recallable_confidence(item.confidence)
+            and item.user_edited_at is None
+        ):
+            return None
+        if not normalize_text(item.text):
+            return None
+        if not _item_matches_question(item.text, query):
+            return None
+        return _AdoptedCandidate(
+            item=item,
+            tier=2,
+            decisions=(DECISION_REVIEW_HISTORY,),
+            reason="既往经历（回顾用途）",
+            conditions=(),
+            is_default=False,
+        )
+
     # -- 迁移 -------------------------------------------------------------
 
     def migrate_account(self, account_id: str) -> AtomicProfileMigrationReport:
@@ -3442,10 +3639,10 @@ class AtomicProfileService:
                 # 并按自身创建时间锚补齐明示期限（不重解释、不编造日期），
                 # 重复执行幂等；补齐失败与逐条迁移同受外层事务保护。
                 backfilled = self._backfill_item_identities(account_id)
-                validity_backfilled = self._backfill_item_validity(account_id)
+                validity_backfilled = self._backfill_item_time_fields(account_id)
                 if validity_backfilled:
                     logger.info(
-                        "atomic_profile_validity_backfilled",
+                        "atomic_profile_time_fields_backfilled",
                         extra={
                             "account_id": account_id,
                             "count": validity_backfilled,
@@ -3622,29 +3819,36 @@ class AtomicProfileService:
             count += 1
         return count
 
-    def _backfill_item_validity(self, account_id: str) -> int:
-        """为既有条目按自身创建时间锚补齐期限；幂等，不重解释、不编造日期。
+    def _backfill_item_time_fields(self, account_id: str) -> int:
+        """为既有条目按自身创建时间锚补齐期限与周期；幂等，不重解释。
 
-        升级前写入的「下周考试」等条目没有绝对期限。本方法只在正文确有时
-        间表达时，用条目创建时间（即当时的来源锚）解析一次并落库；此后按绝
-        对区间判定，不再按使用当天重解释。无时间表达的长期偏好保持无期限。
+        升级前写入的「下周考试」「每周三晚上去实验室」等条目没有绝对期限
+        或结构化周期。本方法只在正文确有相应表达时解析一次并落库：期限用
+        条目创建时间（即当时的来源锚），此后按绝对区间判定；周期安排本身
+        没有期限，只补结构化字段，不编造周期。无表达的长期偏好保持无期限。
         """
 
         count = 0
         for item in self._repository.list_items(account_id, include_withdrawn=True):
-            if item.validity_anchor_at is not None or item.valid_until is not None:
-                continue
             if not normalize_text(item.text):
                 continue
-            window = parse_validity_window(item.text, item.created_at)
-            if window is None:
-                continue
-            item.valid_from = window.valid_from
-            item.valid_until = window.valid_until
-            item.validity_anchor_at = item.created_at
-            item.validity_phrase = window.phrase
-            self._repository.save_item(item)
-            count += 1
+            changed = False
+            if item.validity_anchor_at is None and item.valid_until is None:
+                window = parse_validity_window(item.text, item.created_at)
+                if window is not None:
+                    item.valid_from = window.valid_from
+                    item.valid_until = window.valid_until
+                    item.validity_anchor_at = item.created_at
+                    item.validity_phrase = window.phrase
+                    changed = True
+            if item.recurrence is None:
+                recurrence = parse_recurrence(item.text)
+                if recurrence is not None:
+                    item.recurrence = recurrence
+                    changed = True
+            if changed:
+                self._repository.save_item(item)
+                count += 1
         return count
 
     def rollback_migration(
@@ -3898,13 +4102,14 @@ class AtomicProfileService:
         validity: ValidityWindow | None,
         anchor: datetime | None,
         now: datetime,
+        recurrence: AtomicProfileRecurrence | None = None,
     ) -> AtomicProfileItem:
         """同一事实再次出现：补充来源、证据、主题与把握度，不产生副本。
 
         生命周期状态与旧期限不因普通补证据被重置；只有本次原文明示新期限
-        时才按新锚更新。用户编辑过的条目（``user_edited_at`` 非空）不再被
-        自动写入追加主题，避免自动噪声混进用户选择的主题。工单 05：跨轮
-        来源消息与其原话片段一并并入，逐来源原话只在来源中真实出现。
+        或新周期安排时才按新锚/新表达更新。用户编辑过的条目（``user_edited_at``
+        非空）不再被自动写入追加主题，避免自动噪声混进用户选择的主题。工单 05：
+        跨轮来源消息与其原话片段一并并入，逐来源原话只在来源中真实出现。
         """
 
         new_source_ids = (
@@ -3926,6 +4131,8 @@ class AtomicProfileService:
             item.source_quotes = {**item.source_quotes, **source_quotes}
         if validity is not None:
             _apply_validity(item, validity, anchor or now)
+        if recurrence is not None:
+            item.recurrence = recurrence
         if topics and item.user_edited_at is None:
             item.topics = list(dict.fromkeys([*item.topics, *topics]))
         item.version += 1

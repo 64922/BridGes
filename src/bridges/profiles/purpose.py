@@ -36,6 +36,9 @@ DECISION_PLAN_LEVEL = "plan_level"
 DECISION_PLAN_FOCUS = "plan_focus"
 DECISION_PLAN_TIME = "plan_time_budget"
 DECISION_RECOMMENDATION_SCOPE = "recommendation_scope"
+#: 回顾用途的历史读取（画像工单 07）：已完成/已过期/被替代的真实经历只在
+#: 明确回顾任务里采用，标签本身说明它不改变任何“当前任务”决策。
+DECISION_REVIEW_HISTORY = "review_history"
 
 #: 默认表达偏好的细粒度标签。
 PREF_BREVITY = "brevity"
@@ -389,6 +392,7 @@ __all__ = [
     "DECISION_PLAN_LEVEL",
     "DECISION_PLAN_TIME",
     "DECISION_RECOMMENDATION_SCOPE",
+    "DECISION_REVIEW_HISTORY",
     "PREF_ADDRESS",
     "PREF_BREVITY",
     "PREF_CONCLUSION_FIRST",

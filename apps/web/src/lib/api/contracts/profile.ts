@@ -42,6 +42,9 @@ export type AtomicProfileEvidenceSourceStatus =
 export type AtomicProfileValidityStatus =
   components["schemas"]["AtomicProfileValidityStatus"];
 
+// 画像工单 07：明示周期安排（每周三晚上…）的结构化投影。
+export type AtomicProfileRecurrence = components["schemas"]["AtomicProfileRecurrence"];
+
 export type AtomicProfileFeedbackProjection =
   components["schemas"]["AtomicProfileFeedbackProjection"];
 

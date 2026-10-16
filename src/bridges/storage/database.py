@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 82
+SCHEMA_VERSION = 83
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3674,6 +3674,16 @@ MIGRATIONS: dict[int, list[str]] = {
         ADD COLUMN conflict_state TEXT NOT NULL DEFAULT 'none'
         """,
     ],
+    # 画像工单 07：周期安排的结构化条件（kind/weekdays/time_of_day/phrase）。
+    # 既有行取默认值（空 = 没有周期表达），不重解释、不编造周期；周期安排
+    # 本身没有期限，不设统一 TTL。列名与 JSON 载荷形式与 validity_phrase
+    # 等既有时间字段一致。
+    83: [
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN recurrence_json TEXT
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -4066,6 +4076,7 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "validity_phrase",
         "goal_state",
         "topics_json",
+        "recurrence_json",
     }),
     "profile_item_migrations": frozenset({
         "run_id",
@@ -4126,6 +4137,7 @@ MIGRATION_ADDED_COLUMNS: dict[str, frozenset[str]] = {
         "goal_state",
         "topics_json",
         "source_quotes_json",
+        "recurrence_json",
     }),
     "profile_item_migrations": frozenset({"identity_backfilled"}),
     # Issue 06：v76 为用户控制状态与撤回标记补加列。

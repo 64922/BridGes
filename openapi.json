@@ -30011,6 +30011,17 @@
             "title": "Validity Phrase",
             "description": "原文明示的时间表达。"
           },
+          "recurrence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AtomicProfileRecurrence"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "明示的周期安排；没有周期表达时为空。"
+          },
           "validity_status": {
             "$ref": "#/components/schemas/AtomicProfileValidityStatus",
             "description": "当前时效状态。"
@@ -30469,6 +30480,59 @@
         ],
         "title": "AtomicProfileReconciliationOutcome",
         "description": "单条旧记录的对账结论；取值与迁移报告的计数同名，便于用计数复核明细。\n\n``duplicated`` 是「来源或身份已经存在，因此没有新建条目」的合并计数：具体\n是用户条目优先、来源已迁移还是墓碑抑制，看同一条明细的原因码。``failed``\n只出现在可重试报告里——整批已回滚，台账只留失败那一条。"
+      },
+      "AtomicProfileRecurrence": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/AtomicProfileRecurrenceKind",
+            "description": "重复周期。"
+          },
+          "weekdays": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weekdays",
+            "description": "周内重复日编号集合（0=周一…6=周日）；空表示不限具体日。",
+            "default": []
+          },
+          "time_of_day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Of Day",
+            "description": "原文明示的时段词，如「晚上」。"
+          },
+          "phrase": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Phrase",
+            "description": "原文明示的周期表达。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "phrase"
+        ],
+        "title": "AtomicProfileRecurrence",
+        "description": "一条事实里明示的周期安排（画像工单 07）。\n\n周期安排是长期有效的固定节奏（如「每周三晚上去实验室」）：只解释\n原文写明的周期与时段，不做任何日历推算，也没有统一 TTL；``phrase``\n保留原文明示表达供页面展示与审计核对。周内重复日按 0=周一…6=周日\n编号；没有写明重复日时（如「每周」）为空元组，表示每周任意一天。"
+      },
+      "AtomicProfileRecurrenceKind": {
+        "type": "string",
+        "enum": [
+          "daily",
+          "weekly"
+        ],
+        "title": "AtomicProfileRecurrenceKind",
+        "description": "周期安排的重复周期（画像工单 07）。"
       },
       "AtomicProfileValidityStatus": {
         "type": "string",
