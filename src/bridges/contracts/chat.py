@@ -20,6 +20,7 @@ from bridges.contracts.career import (
     CareerPlanningProcessState,
     CareerPlanningProjection,
 )
+from bridges.contracts.feedback_correction import FeedbackCorrectionProjection
 from bridges.contracts.humanizer import (
     HumanizerProcessState,
     HumanizerResultProjection,
@@ -418,6 +419,14 @@ class ChatMessageProjection(BaseModel):
     context_note: ContextNoteProjection | None = Field(
         default=None,
         description="本条助手消息的「本次上下文说明」披露（Issue 27）；无披露为 None。",
+    )
+    feedback_correction: FeedbackCorrectionProjection | None = Field(
+        default=None,
+        description=(
+            "画像工单 12：本条助手消息是对上一轮回答的反馈修正时，携带"
+            "反馈类别、被修正的原回答/原运行/原采用切片与记忆操作结果；"
+            "普通消息为 None。"
+        ),
     )
     skill: dict[str, Any] | None = Field(
         default=None,

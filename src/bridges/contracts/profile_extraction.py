@@ -18,6 +18,7 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileMaterialResult,
     AtomicProfileMemoryResult,
 )
+from bridges.contracts.feedback_correction import FeedbackCorrectionResult
 from bridges.contracts.profiles import FourDimension
 
 
@@ -120,6 +121,12 @@ class ProfileExtractionOutcome(StrEnum):
     SUCCEEDED_LIFECYCLE_SIGNAL = "succeeded_lifecycle_signal"
     #: 画像工单 08：本轮明确要求不使用长期画像；控制消息不进入自动抽取。
     SUCCEEDED_TURN_CONTROL = "succeeded_turn_control"
+    #: 画像工单 12：一条明确反馈已按类别处理完成（写入记忆、只调整本轮
+    #: 回答或只澄清），结果明细在 ``ProfilePreprocessResult.feedback``。
+    SUCCEEDED_FEEDBACK = "succeeded_feedback"
+    #: 画像工单 12：反馈处理中记忆操作失败（定位条目在生成后被删除/替代、
+    #: 版本变化或存储失败）；回答照常给出，但不声称已更新记忆。
+    FEEDBACK_FAILED = "feedback_failed"
     CORRECTION_FAILED = "correction_failed"
     PENDING_RETRY = "pending_retry"
     PERMANENT_FAILURE = "permanent_failure"
@@ -468,6 +475,10 @@ class ProfilePreprocessResult(BaseModel):
     material: AtomicProfileMaterialResult | None = Field(
         default=None,
         description="工单 10：本轮「据指定材料更新画像」的同步结果；没有指令时为空。",
+    )
+    feedback: FeedbackCorrectionResult | None = Field(
+        default=None,
+        description="画像工单 12：本轮明确反馈的处理结果；没有反馈时为空。",
     )
 
 

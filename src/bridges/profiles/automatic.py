@@ -38,6 +38,13 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileMemoryStatus,
     default_topics_for_dimension,
 )
+from bridges.contracts.feedback_correction import (
+    FeedbackCorrectionKind,
+    FeedbackCorrectionResult,
+    FeedbackCorrectionRoute,
+    FeedbackMemoryKind,
+    FeedbackMemoryStatus,
+)
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profile_extraction import (
     PROFILE_CONTROLS_VERSION,
@@ -78,10 +85,12 @@ from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.atomic import (
+    AtomicProfileError,
     AtomicProfileService,
     GoalLifecycleOutcome,
     MemoryDirective,
     SensitiveMemoryError,
+    normalize_text,
     parse_fact_identity,
     parse_goal_lifecycle_signal,
     parse_memory_directive,
@@ -628,6 +637,23 @@ def _privacy_directive(content: str) -> tuple[str, str | None] | None:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _feedback_sensitive_block(
+    text: str,
+) -> AtomicProfileMemoryBlockedReason | None:
+    """订正正文命中敏感门时返回阻断原因（画像工单 12）。
+
+    与显式「记住」同一门控：凭据一律不保存；敏感自述需要既有用途兜底，
+    而定点改写没有「既有条目用途」可言，一律按需要用途处理，不绕过。
+    """
+
+    sensitivity = classify_memory_sensitivity(text)
+    if sensitivity is MemorySensitivity.CREDENTIAL:
+        return AtomicProfileMemoryBlockedReason.CREDENTIAL
+    if sensitivity is MemorySensitivity.SENSITIVE:
+        return AtomicProfileMemoryBlockedReason.PURPOSE_REQUIRED
+    return None
 
 
 #: 画像工单 08：本轮不用的显式控制指令。只认「本轮/这次 + 不用 + 画像」的
@@ -2278,12 +2304,19 @@ class AutomaticProfileService:
         content: str,
         run_id: str,
         mode: str,
+        feedback_route: FeedbackCorrectionRoute | None = None,
     ) -> ProfilePreprocessResult | None:
         """回答生成前必须同步完成的画像控制（改进工单 17）。
 
         顺序与合同保持不变：停止记录指令 → 记录许可 → 墓碑 → 显式
         「记住/忘掉」→ 明确纠正。普通自然表达返回空值，由回答正常完成后
         的可恢复队列异步提取，不在提交前做模型调用或业务写入。
+
+        画像工单 12：``feedback_route`` 是聊天侧对「上一轮回答的明确反馈」
+        的确定性路由结果；有反馈时按类别在明确纠正之前处理（事实纠正/
+        状态变化定点改写、长期偏好显式记住、本轮要求与表达投诉只调整
+        本轮回答、指向不明只澄清），处理完成即终结该消息的抽取记账，
+        不进入普通抽取；重复处理（重放）复用既有终态结果，不重复写记忆。
         """
 
         del run_id, mode
@@ -2406,6 +2439,7 @@ class AutomaticProfileService:
             and material_directive is None
             and lifecycle_signal is None
             and not turn_directive
+            and feedback_route is None
             and signal_classification.category != ProfileSignalCategory.CORRECTION
         ):
             self._repository.mark_message_tombstone(account_id, message_id)
@@ -2507,6 +2541,29 @@ class AutomaticProfileService:
                 content=content,
                 source_hash=source_hash,
                 now=now,
+                existing=existing,
+            )
+        if feedback_route is not None and self._atomic_profiles is not None:
+            # 画像工单 12：明确反馈在处理顺序上先于普通纠正分类，避免同一
+            # 句反馈被再来一次「按维度改最近条目」的重复写入。
+            if existing is not None and existing.status in {
+                ProfileExtractionStatus.SUCCEEDED,
+                ProfileExtractionStatus.EXHAUSTED,
+                ProfileExtractionStatus.PENDING,
+            }:
+                # 同一条反馈的重放：复用既有终态记账，不第二次写记忆。
+                return ProfilePreprocessResult(
+                    run=existing,
+                    committed_record_ids=existing.committed_record_ids,
+                    observed_count=existing.observed_count,
+                )
+            return self._feedback_correction_result(
+                account_id=account_id,
+                message_id=message_id,
+                content=content,
+                source_hash=source_hash,
+                now=now,
+                route=feedback_route,
                 existing=existing,
             )
         if existing is not None and existing.status in {
@@ -2970,6 +3027,186 @@ class AutomaticProfileService:
                 dimension=intent.dimension,
             )
         return None
+
+    def _feedback_correction_result(
+        self,
+        *,
+        account_id: str,
+        message_id: str,
+        content: str,
+        source_hash: str,
+        now: datetime,
+        route: FeedbackCorrectionRoute,
+        existing: ProfileExtractionRun | None,
+    ) -> ProfilePreprocessResult:
+        """同步处理一条明确反馈（画像工单 12），并终结该消息的抽取记账。
+
+        - 事实纠正/状态变化：定位到的旧条目仍活动且版本未变时定点改写
+          （``correct_item``）；状态变化与带替代值的纠正没有定位到旧条目时
+          按用户原句显式记住（真实历史保留）；单纯否定旧值又定位不到条目
+          时如实未解决——不猜测改哪一条，也不把否定句当新事实写入。
+        - 长期偏好：走显式「记住」，敏感门控照旧（无用途如实拒绝）。
+        - 本轮要求/表达投诉：只调整本轮回答，不写长期记忆。
+        - 指向不明：只澄清，零写入。
+
+        写入结果与回答生成分别报告：失败如实返回 FAILED/UNRESOLVED，回答
+        照常由修正回合给出，绝不声称已经更新记忆。反馈消息不再进入普通
+        异步抽取（重放复用同一终态记账）。
+        """
+
+        atomic = self._atomic_profiles
+        assert atomic is not None
+        kind = route.kind
+        memory_kind = FeedbackMemoryKind.NONE
+        memory_status = FeedbackMemoryStatus.NOT_APPLICABLE
+        applied_item_id: str | None = None
+        blocked_reason: AtomicProfileMemoryBlockedReason | None = None
+        committed: list[str] = []
+        sensitive_block = False
+        if kind in {
+            FeedbackCorrectionKind.FACT_CORRECTION,
+            FeedbackCorrectionKind.STATE_CHANGE,
+        }:
+            memory_kind = (
+                FeedbackMemoryKind.STATE_CHANGE
+                if kind is FeedbackCorrectionKind.STATE_CHANGE
+                else FeedbackMemoryKind.CORRECTION
+            )
+            located = (
+                route.target_item_id is not None
+                and route.target_item_version is not None
+                and route.new_fact_text is not None
+            )
+            if located:
+                blocked_reason = _feedback_sensitive_block(route.new_fact_text or "")
+            if blocked_reason is not None:
+                # 订正正文命中敏感门：不绕过用途要求写入（与显式记住一致）。
+                memory_status = FeedbackMemoryStatus.UNRESOLVED
+                sensitive_block = True
+            elif located:
+                try:
+                    item = atomic.correct_item(
+                        account_id,
+                        item_id=route.target_item_id or "",
+                        text=route.new_fact_text or "",
+                        expected_version=route.target_item_version or 1,
+                    )
+                except AtomicProfileError:
+                    # 生成到提交之间条目被删除/替代或版本变化：定位结果已
+                    # 过期，拒绝猜改其他条目，如实报告未写入。
+                    still_active = any(
+                        candidate.profile_item_id == route.target_item_id
+                        for candidate in atomic.list_items(account_id)
+                    )
+                    memory_status = (
+                        FeedbackMemoryStatus.FAILED
+                        if still_active
+                        else FeedbackMemoryStatus.NO_ACTIVE_RECORD
+                    )
+                else:
+                    memory_status = FeedbackMemoryStatus.WRITTEN
+                    applied_item_id = item.profile_item_id
+                    committed = [item.profile_item_id]
+            elif route.new_fact_text is not None and (
+                kind is FeedbackCorrectionKind.STATE_CHANGE or route.has_replacement
+            ):
+                # 新状态或明确替代值本身就是用户的新表态：显式记住。
+                # 已经收敛到同一结论（重复反馈/上一轮已写入）时幂等返回，
+                # 不再递增版本、不重复记账。
+                converged = next(
+                    (
+                        candidate
+                        for candidate in atomic.list_items(account_id)
+                        if normalize_text(candidate.text)
+                        == normalize_text(route.new_fact_text)
+                    ),
+                    None,
+                )
+                if converged is not None:
+                    memory_status = FeedbackMemoryStatus.WRITTEN
+                    applied_item_id = converged.profile_item_id
+                else:
+                    try:
+                        item = atomic.remember(
+                            account_id,
+                            route.new_fact_text,
+                            source_message_id=message_id,
+                        )
+                    except SensitiveMemoryError as exc:
+                        memory_status = FeedbackMemoryStatus.UNRESOLVED
+                        blocked_reason = exc.blocked_reason
+                        sensitive_block = True
+                    except AtomicProfileError:
+                        memory_status = FeedbackMemoryStatus.FAILED
+                    else:
+                        memory_status = FeedbackMemoryStatus.WRITTEN
+                        applied_item_id = item.profile_item_id
+                        committed = [item.profile_item_id]
+            else:
+                memory_status = FeedbackMemoryStatus.UNRESOLVED
+        elif kind is FeedbackCorrectionKind.LONG_TERM_PREFERENCE:
+            memory_kind = FeedbackMemoryKind.PREFERENCE
+            preference_text = route.preference_text or content
+            try:
+                item = atomic.remember(
+                    account_id, preference_text, source_message_id=message_id
+                )
+            except SensitiveMemoryError as exc:
+                memory_status = FeedbackMemoryStatus.UNRESOLVED
+                blocked_reason = exc.blocked_reason
+                sensitive_block = True
+            except AtomicProfileError:
+                memory_status = FeedbackMemoryStatus.FAILED
+            else:
+                memory_status = FeedbackMemoryStatus.WRITTEN
+                applied_item_id = item.profile_item_id
+                committed = [item.profile_item_id]
+        feedback = FeedbackCorrectionResult(
+            kind=kind,
+            adjustment=route.adjustment,
+            memory_kind=memory_kind,
+            memory_status=memory_status,
+            target_item_id=route.target_item_id,
+            applied_item_id=applied_item_id,
+            blocked_reason=blocked_reason,
+            clarification_required=route.requires_clarification,
+        )
+        run_outcome = (
+            ProfileExtractionOutcome.FEEDBACK_FAILED
+            if memory_status is FeedbackMemoryStatus.FAILED
+            else ProfileExtractionOutcome.SUCCEEDED_FEEDBACK
+        )
+        run = existing or self._new_run(
+            account_id=account_id,
+            message_id=message_id,
+            content=content,
+            source_hash=source_hash,
+            status=ProfileExtractionStatus.SUCCEEDED,
+            outcome=run_outcome,
+            source=ProfileExtractionSource.LOCAL_RULE,
+            now=now,
+        )
+        run.status = ProfileExtractionStatus.SUCCEEDED
+        run.outcome = run_outcome
+        run.attempts = max(1, run.attempts)
+        run.committed_record_ids = committed
+        run.observed_count = 0
+        run.last_error = None
+        if run.source is None:
+            run.source = ProfileExtractionSource.LOCAL_RULE
+        if sensitive_block:
+            # 被隐私门拒绝的敏感原文不留在运行记账里（凭据尤其如此）。
+            run.source_snapshot = ""
+        run.updated_at = now
+        self._repository.save_run(run)
+        self._audit_outcome(
+            run, result=AuditResult.SUCCESS, reason="feedback_correction"
+        )
+        return ProfilePreprocessResult(
+            run=run,
+            committed_record_ids=committed,
+            feedback=feedback,
+        )
 
     def _blocked_result(
         self,

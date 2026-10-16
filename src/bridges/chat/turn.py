@@ -1807,6 +1807,95 @@ def profile_correction_context(metadata: dict[str, Any] | None) -> str | None:
     )
 
 
+#: 反馈修正的回复约束（画像工单 12）：按类别指导模型直接重写上一轮回答。
+#: 只依据用户本轮明确反馈调整，不扩散改写其他结论、不推断能力或授权。
+_FEEDBACK_KIND_COPY: dict[str, str] = {
+    "fact_correction": (
+        "用户在纠正上一轮回答里的错误信息。请直接重写上一轮回答：完整采用"
+        "用户本轮明确给出的事实，全文不再沿用被纠正的旧说法；只修改与该"
+        "事实相关的内容，不扩散改写其他结论，也不添加用户没有说过的信息。"
+    ),
+    "state_change": (
+        "用户在更新自己的当前状态（旧值可能是真实的历史）。请直接重写上一"
+        "轮回答：按用户本轮明确的新状态作答，不再把旧状态当作现状；只修改"
+        "与该状态相关的内容，不扩散改写其他结论。"
+    ),
+    "long_term_preference": (
+        "用户提出了长期表达偏好。请直接重写上一轮回答并遵守该偏好，后续回答"
+        "也会沿用；不要声称记住了用户没有说过的其他偏好。"
+    ),
+    "turn_request": (
+        "用户对本次回答提出了临时要求（如更简短、更详细或只看重点）。请直接"
+        "重写上一轮回答满足该要求；这只是本次要求，不要声称已经长期记住。"
+    ),
+    "expression_quality": (
+        "用户觉得上一轮回答太难懂。请直接重写上一轮回答，用更简单、更通俗的"
+        "表达把同样的结论讲清楚；只调整表达方式，不新增结论，也不推断用户的"
+        "能力、水平或掌握程度。"
+    ),
+    "unclear": (
+        "用户表示上一轮回答不是他/她要的意思，且没有指出具体哪里不对。不要"
+        "猜测修改任何内容，也不要改动记忆；请用一两句话请用户明确指出是哪个"
+        "结论或哪一部分不对。"
+    ),
+}
+
+#: 调整签名到回复约束的补充行；无签名的类别不追加。
+_FEEDBACK_ADJUSTMENT_COPY: dict[str, str] = {
+    "shorter": "本次调整：回答比上一轮更简短。",
+    "simpler": "本次调整：避免术语堆砌，用例子或日常语言解释。",
+    "more_detailed": "本次调整：在关键步骤上比上一轮更详细。",
+    "conclusion_first": "本次调整：先把结论放在最前面，再给依据。",
+    "no_tables": "本次调整：不要使用表格。",
+    "follow_user_words": "本次调整：按用户本轮的原话要求调整。",
+}
+
+#: 记忆写入结果对回复的约束：未写入时绝不能让用户以为已经更新了记忆。
+_FEEDBACK_MEMORY_COPY: dict[str, str] = {
+    "written": "本次修改已写入长期记忆；回答可以确认已更新，但不要补充用户没有说过的内容。",
+    "unresolved": (
+        "本次修改没有写入长期记忆（没有定位到对应的记录或无法确认修改对象）。"
+        "不得声称已经记住或已经更新画像；如需要，可请用户到用户画像页查看。"
+    ),
+    "no_active_record": (
+        "本次修改没有写入长期记忆（对应的记录已被删除或替换）。不得声称已经"
+        "记住或已经更新画像；如需要，可请用户到用户画像页查看。"
+    ),
+    "failed": (
+        "本次修改没有写入长期记忆（保存未成功）。不得声称已经记住或已经更新"
+        "画像；如实说明没有保存成功即可。"
+    ),
+    "not_applicable": "本次没有长期记忆的改动，不要声称已记住或已更新画像。",
+}
+
+
+def profile_feedback_context(metadata: dict[str, Any] | None) -> str | None:
+    """把本轮反馈修正关系编译为模型上下文（画像工单 12）。
+
+    反馈轮是「直接重写上一轮回答」而不是新问题：块里给出类别化的重写
+    约束与真实记忆结果（写入/未写入分别报告），不携带用户原文与条目
+    正文（用户消息本身已在对话里，条目正文不额外注入）。
+    """
+
+    if not metadata:
+        return None
+    kind = str(metadata.get("kind") or "")
+    instruction = _FEEDBACK_KIND_COPY.get(kind)
+    if instruction is None:
+        return None
+    memory_status = str(metadata.get("memory_status") or "not_applicable")
+    memory_copy = _FEEDBACK_MEMORY_COPY.get(
+        memory_status, _FEEDBACK_MEMORY_COPY["not_applicable"]
+    )
+    lines = ["【本轮是对上一轮回答的反馈修正】", f"回复约束：{instruction}"]
+    adjustment = str(metadata.get("adjustment") or "")
+    if adjustment and adjustment in _FEEDBACK_ADJUSTMENT_COPY:
+        lines.append(_FEEDBACK_ADJUSTMENT_COPY[adjustment])
+    if kind in {"fact_correction", "state_change", "long_term_preference"}:
+        lines.append(f"记忆结果：{memory_copy}")
+    return "\n".join(lines)
+
+
 _MEMORY_RESULT_COPY: dict[tuple[str, str], str] = {
     ("remember", "remembered"): (
         "本轮用户明确要求记住一条信息，已真实写入用户画像列表。可以确认已记住，"
@@ -2210,19 +2299,21 @@ def _material_blocks(
     profile_context: str | None,
     profile_required: bool = False,
     profile_correction_context: str | None,
+    profile_feedback_context: str | None,
     profile_memory_context: str | None,
 ) -> list[PayloadBlock]:
     """按**固定渲染次序**构造本轮材料块（带类别与必要性）。
 
-    次序（自上而下，越靠前越优先保留）：记忆纠正 → 画像纠正 → 画像切片 →
-    教学 → arXiv → 公网 → 附件说明 → 检索 → 工具集合。改进工单 04：不再
-    依赖逐次 ``insert(1, ...)`` 的隐含次序，渲染顺序是显式契约。
+    次序（自上而下，越靠前越优先保留）：记忆纠正 → 画像纠正 → 反馈修正 →
+    画像切片 → 教学 → arXiv → 公网 → 附件说明 → 检索 → 工具集合。改进
+    工单 04：不再依赖逐次 ``insert(1, ...)`` 的隐含次序，渲染顺序是显式
+    契约。
 
-    必要性：本轮用户纠正（记忆/画像纠正）、当前结论必要证据（教学、检索、
-    附件说明、公网、arXiv）与工具声明为 ``REQUIRED``——放不下时由调用方给出
-    明确受限结果，绝不静默丢弃后仍生成；只有画像切片是 ``OPTIONAL``（个性化
-    材料，不构成事实依据，预算不足时整条不采用）。更细粒度的任务必要性由
-    14/15/19 等消费者接入真实最终输入时按任务声明。
+    必要性：本轮用户纠正（记忆/画像纠正/反馈修正）、当前结论必要证据
+    （教学、检索、附件说明、公网、arXiv）与工具声明为 ``REQUIRED``——放
+    不下时由调用方给出明确受限结果，绝不静默丢弃后仍生成；只有画像切片
+    是 ``OPTIONAL``（个性化材料，不构成事实依据，预算不足时整条不采用）。
+    更细粒度的任务必要性由 14/15/19 等消费者接入真实最终输入时按任务声明。
     """
     allowed_web_result_ids = teaching_web_result_ids(teaching_projection)
     blocks: list[PayloadBlock] = []
@@ -2242,6 +2333,15 @@ def _material_blocks(
                 MaterialCategory.CORRECTION.value,
                 MaterialNecessity.REQUIRED,
                 profile_correction_context,
+            )
+        )
+    if profile_feedback_context:
+        blocks.append(
+            PayloadBlock(
+                "feedback_correction",
+                MaterialCategory.FEEDBACK_CORRECTION.value,
+                MaterialNecessity.REQUIRED,
+                profile_feedback_context,
             )
         )
     if profile_context:
@@ -2441,6 +2541,7 @@ def _assemble(
     profile_context: str | None = None,
     profile_required: bool = False,
     profile_correction_context: str | None = None,
+    profile_feedback_context: str | None = None,
     profile_memory_context: str | None = None,
     writing_policy: GlobalWritingPolicySnapshot | None = None,
     output_tokens: int | None = None,
@@ -2461,6 +2562,7 @@ def _assemble(
         profile_context=profile_context,
         profile_required=profile_required,
         profile_correction_context=profile_correction_context,
+        profile_feedback_context=profile_feedback_context,
         profile_memory_context=profile_memory_context,
     )
     fixed_blocks = _fixed_blocks(
@@ -2578,6 +2680,7 @@ def assemble_payload(
     teaching_projection: TeachingTurnProjection | None = None,
     profile_context: str | None = None,
     profile_correction_context: str | None = None,
+    profile_feedback_context: str | None = None,
     profile_memory_context: str | None = None,
     writing_policy: GlobalWritingPolicySnapshot | None = None,
     output_tokens: int | None = None,
@@ -2586,9 +2689,9 @@ def assemble_payload(
 
     所有编排路径的模型载荷都经此构造——新增上下文来源只改这里，不散落
     在调用方。注入顺序固定：数据边界声明（有材料时）→ 表达策略 →
-    记忆纠正 → 画像纠正 → 画像切片 → 教学 → arXiv → 公网 → 附件说明 →
-    检索 → 工具集合。模型只能引用各块提供的材料，不得声称存在未提供的
-    文件、页码或来源。
+    记忆纠正 → 画像纠正 → 反馈修正 → 画像切片 → 教学 → arXiv → 公网 →
+    附件说明 → 检索 → 工具集合。模型只能引用各块提供的材料，不得声称存在
+    未提供的文件、页码或来源。
 
     改进工单 04：材料块一律带数据边界声明，即使经 ``system`` 角色传递也
     明确为数据，不能改写权限、模块授权或当前用户纠正。需要最终预算门与
@@ -2609,6 +2712,7 @@ def assemble_payload(
         teaching_projection=teaching_projection,
         profile_context=profile_context,
         profile_correction_context=profile_correction_context,
+        profile_feedback_context=profile_feedback_context,
         profile_memory_context=profile_memory_context,
         writing_policy=writing_policy,
         output_tokens=output_tokens,
@@ -2632,6 +2736,7 @@ def assemble_payload_within_budget(
     profile_context: str | None = None,
     profile_required: bool = False,
     profile_correction_context: str | None = None,
+    profile_feedback_context: str | None = None,
     profile_memory_context: str | None = None,
     writing_policy: GlobalWritingPolicySnapshot | None = None,
     history_range: str | None = None,
@@ -2656,6 +2761,7 @@ def assemble_payload_within_budget(
         profile_context=profile_context,
         profile_required=profile_required,
         profile_correction_context=profile_correction_context,
+        profile_feedback_context=profile_feedback_context,
         profile_memory_context=profile_memory_context,
         writing_policy=writing_policy,
         output_tokens=output_tokens,
@@ -4584,6 +4690,9 @@ class TurnOrchestrator:
             correction_context = self._profile_correction_context(
                 account_id, assistant_message_id
             )
+            feedback_correction_context = self._profile_feedback_context(
+                account_id, assistant_message_id
+            )
             memory_context = self._profile_memory_context(
                 account_id, assistant_message_id
             )
@@ -4702,6 +4811,7 @@ class TurnOrchestrator:
                         for item in profile_items
                     ),
                     profile_correction_context=correction_context,
+                    profile_feedback_context=feedback_correction_context,
                     profile_memory_context=memory_context,
                     writing_policy=writing_policy,
                     history_range=history_range,
@@ -4720,6 +4830,7 @@ class TurnOrchestrator:
                     teaching_projection=teaching_projection,
                     profile_context=profile_context,
                     profile_correction_context=correction_context,
+                    profile_feedback_context=feedback_correction_context,
                     profile_memory_context=memory_context,
                     writing_policy=writing_policy,
                     output_tokens=output_tokens,
@@ -6216,13 +6327,19 @@ class TurnOrchestrator:
         correction_context = self._profile_correction_context(
             account_id, assistant_message_id
         )
-        if correction_context is not None:
+        feedback_correction_context = self._profile_feedback_context(
+            account_id, assistant_message_id
+        )
+        study_contexts = "\n\n".join(
+            part
+            for part in (correction_context, feedback_correction_context)
+            if part is not None
+        )
+        if study_contexts:
             writing_policy = writing_policy.model_copy(
                 update={
                     "system_block": (
-                        writing_policy.system_block
-                        + "\n\n"
-                        + correction_context
+                        writing_policy.system_block + "\n\n" + study_contexts
                     )
                 }
             )
@@ -7102,6 +7219,12 @@ class TurnOrchestrator:
                     else None
                 )
                 run = self._repo.get_run_by_message(account_id, assistant_message_id)
+                # 画像工单 12：反馈修正回合的主体仍是上一轮的问题——用
+                # 「原问题 + 本轮反馈」作为召回依据，纠正后的回答不会漂移
+                # 到反馈句子的字面主题上（如表达投诉里的「身份」一词）。
+                query = self._feedback_slice_query(
+                    account_id, run, query
+                )
                 # 画像工单 11：重试复用冻结的**完整编译快照**（预算裁剪前），
                 # 让重试在自身预算下重新决定发送子集；旧运行没有 compiled
                 # 键时回落到实际发送记录（同轮首次编译即用同一对象）。
@@ -7586,6 +7709,45 @@ class TurnOrchestrator:
         run = self._repo.get_run_by_message(account_id, assistant_message_id)
         metadata = (run.config or {}).get("profile_correction") if run is not None else None
         return profile_correction_context(metadata if isinstance(metadata, dict) else None)
+
+    def _profile_feedback_context(
+        self, account_id: str, assistant_message_id: str
+    ) -> str | None:
+        """本轮反馈修正的回复约束（画像工单 12）；非反馈轮次为 None。"""
+
+        run = self._repo.get_run_by_message(account_id, assistant_message_id)
+        metadata = (run.config or {}).get("feedback_correction") if run is not None else None
+        return profile_feedback_context(metadata if isinstance(metadata, dict) else None)
+
+    def _feedback_slice_query(
+        self,
+        account_id: str,
+        run: Any | None,
+        current_query: str | None,
+    ) -> str | None:
+        """反馈修正回合的召回依据：原问题优先，拼接本轮反馈文本。"""
+
+        if run is None:
+            return current_query
+        metadata = (run.config or {}).get("feedback_correction")
+        if not isinstance(metadata, dict):
+            return current_query
+        original_message_id = metadata.get("original_message_id")
+        if not isinstance(original_message_id, str):
+            return current_query
+        original = self._repo.get_message(account_id, original_message_id)
+        if original is None:
+            return current_query
+        owner = owner_user_message(
+            self._repo.list_messages(account_id, original.conversation_id),
+            original_message_id,
+        )
+        if owner is None:
+            return current_query
+        combined = " ".join(
+            part for part in (owner.content, current_query) if part
+        )
+        return combined or None
 
     def _profile_memory_context(
         self, account_id: str, assistant_message_id: str

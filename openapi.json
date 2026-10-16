@@ -34457,6 +34457,17 @@
             ],
             "description": "本条助手消息的「本次上下文说明」披露（Issue 27）；无披露为 None。"
           },
+          "feedback_correction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackCorrectionProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "画像工单 12：本条助手消息是对上一轮回答的反馈修正时，携带反馈类别、被修正的原回答/原运行/原采用切片与记忆操作结果；普通消息为 None。"
+          },
           "skill": {
             "anyOf": [
               {
@@ -42236,6 +42247,117 @@
         "title": "FactLockViolation",
         "description": "沙箱修复过程中触犯事实锁的记录。"
       },
+      "FeedbackCorrectionKind": {
+        "type": "string",
+        "enum": [
+          "fact_correction",
+          "state_change",
+          "long_term_preference",
+          "turn_request",
+          "expression_quality",
+          "unclear"
+        ],
+        "title": "FeedbackCorrectionKind",
+        "description": "一次反馈的确定性类别（画像工单 12）。"
+      },
+      "FeedbackCorrectionProjection": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/FeedbackCorrectionKind",
+            "description": "反馈类别。"
+          },
+          "memory_kind": {
+            "$ref": "#/components/schemas/FeedbackMemoryKind",
+            "description": "记忆操作种类。"
+          },
+          "memory_status": {
+            "$ref": "#/components/schemas/FeedbackMemoryStatus",
+            "description": "记忆操作结果。"
+          },
+          "original_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Message Id",
+            "description": "被修正的原回答。"
+          },
+          "original_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Run Id",
+            "description": "原回答运行标识。"
+          },
+          "original_slice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Slice Id",
+            "description": "原采用切片标识。"
+          },
+          "target_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Item Id",
+            "description": "被定位的条目。"
+          },
+          "applied_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Item Id",
+            "description": "实际写入的条目。"
+          },
+          "clarification_required": {
+            "type": "boolean",
+            "title": "Clarification Required",
+            "description": "是否只澄清。",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "反馈处理时间。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "memory_kind",
+          "memory_status",
+          "created_at"
+        ],
+        "title": "FeedbackCorrectionProjection",
+        "description": "聊天消息公开投影中的反馈修正关系（读取/重启/导出复用）。"
+      },
       "FeedbackKind": {
         "type": "string",
         "enum": [
@@ -42244,6 +42366,30 @@
         ],
         "title": "FeedbackKind",
         "description": "用户对一次回答的反馈类别。\n\n- ``answer_inappropriate``：这次回答有问题（携带偏好修正反馈）；\n- ``profile_incorrect``：画像记录有误（定位到具体断言并修正）。"
+      },
+      "FeedbackMemoryKind": {
+        "type": "string",
+        "enum": [
+          "correction",
+          "state_change",
+          "preference",
+          "none"
+        ],
+        "title": "FeedbackMemoryKind",
+        "description": "反馈触发的长期记忆操作种类。"
+      },
+      "FeedbackMemoryStatus": {
+        "type": "string",
+        "enum": [
+          "written",
+          "protected",
+          "unresolved",
+          "no_active_record",
+          "failed",
+          "not_applicable"
+        ],
+        "title": "FeedbackMemoryStatus",
+        "description": "反馈触发的记忆操作结果（与回答生成分别报告）。"
       },
       "FeedbackResolveRequest": {
         "properties": {

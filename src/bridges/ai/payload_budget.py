@@ -127,6 +127,7 @@ class MaterialCategory(StrEnum):
     WRITING_POLICY = "writing_policy"
     CORRECTION = "correction"
     MEMORY = "memory"
+    FEEDBACK_CORRECTION = "feedback_correction"
     USER_REQUEST = "user_request"
 
 

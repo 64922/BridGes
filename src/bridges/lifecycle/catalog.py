@@ -433,6 +433,12 @@ def export_rows(database: BridgesDatabase, account_id: str, table: str) -> list[
         for row in rows:
             item = dict(row)
             config = json.loads(item.pop("config_json") or "{}")
+            # 画像工单 12：反馈修正关系只含类别/结果与关系标识（原回答、
+            # 原运行、原采用切片、条目标识），不含用户原文与条目正文，
+            # 属可导出的运行关系；导出/恢复后反馈-运行关系仍可读取。
+            feedback = config.get("feedback_correction")
+            if isinstance(feedback, dict):
+                item["feedback_correction"] = feedback
             quota = RunModelQuota.from_config(config.get("model_quota"))
             item["model_quota"] = export_run_model_quota(quota) if quota is not None else None
             exported.append(item)

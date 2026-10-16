@@ -43,6 +43,10 @@ from bridges.contracts.chat import (
     TurnOutcome,
     TurnResultProjection,
 )
+from bridges.contracts.feedback_correction import (
+    FeedbackCorrectionMetadata,
+    FeedbackCorrectionProjection,
+)
 from bridges.contracts.humanizer import (
     HUMANIZER_CHECKPOINT_KEY,
 )
@@ -76,6 +80,27 @@ from bridges.web_search.contracts import WebSearchProjection
 
 if TYPE_CHECKING:
     from bridges.chat.service import ChatService
+
+
+def _feedback_correction_projection(
+    run: GenerationRunRecord | None,
+) -> FeedbackCorrectionProjection | None:
+    """把运行配置里的反馈修正关系折算为公开消息投影（画像工单 12）。
+
+    配置缺失、旧运行残留的非法快照或非反馈轮次都返回 None，读取投影
+    绝不因历史数据异常而失败。
+    """
+
+    if run is None:
+        return None
+    metadata = (run.config or {}).get("feedback_correction")
+    if not isinstance(metadata, dict):
+        return None
+    try:
+        parsed = FeedbackCorrectionMetadata.model_validate(metadata)
+    except ValidationError:
+        return None
+    return FeedbackCorrectionProjection.from_metadata(parsed)
 
 
 class _ServiceProjectionsMixin:
@@ -312,6 +337,15 @@ class _ServiceProjectionsMixin:
                 ContextNoteProjection.model_validate(message.context_note)
                 if message.context_note is not None
                 and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            feedback_correction=(
+                _feedback_correction_projection(
+                    self._repo.get_run_by_message(
+                        message.account_id, message.message_id
+                    )
+                )
+                if message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
             skill=(
