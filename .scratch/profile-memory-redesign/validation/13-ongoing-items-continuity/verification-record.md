@@ -22,7 +22,7 @@
 | 并行事项独立，暂停/完成/恢复不误覆盖其他目标 | 走查 [2]、[4] 与 [5]（HTTP 陈旧版本 409）；`::test_pause_resume_and_complete_touch_only_the_exact_goal`（暂停 A 后 B 保持进行中；完成只有精确目标变化；幂等重复操作不推进版本；歧义不猜）；`test_issue13_ongoing_api.py::test_state_route_pause_complete_conflict_and_scope`（409 冲突 / 422 非目标 / 404 越权） |
 | 待续问题有真实交流依据，摘要不成为新增用户事实来源 | 走查 [3]（投影与条目原文逐字一致、携带真实来源消息标识；「还没…」判定为待续问题）；`::test_projection_groups_goal_progress_and_pending_without_inventing_texts` |
 | 删除依赖事实、关使用、源消息变化使近期上下文及时失效，迟到重建不能覆盖新状态 | 走查 [4]（修改立即失效并在读取重建、迟到重建世代 CAS 失败、两个并发重建后者被拒、关使用后不重建不再采用、重开按当时依赖重建）；`::test_context_invalidates_on_edit_delete_and_control_change`、`::test_source_message_change_invalidates_context`、`::test_late_rebuild_cannot_overwrite_new_state`；`test_issue13_ongoing_api.py::test_controls_route_invalidates_context_and_keeps_management` |
-| 页面加载、空态、失败重试、保存结果和键盘访问完整 | `OngoingItemsCard.test.tsx` 7 项：列表与来源数量、空态与关使用提示（仍可管理）、暂停/继续按精确条目提交并在成功后展示结果、完成需确认且确认后消失但有反馈、取消不提交、失败回读真实状态并给出重试入口、领域引用未接通如实标注；按钮/确认弹层使用原生控件，键盘可达（Tab/Enter/Escape 关闭，沿用页面既有交互模式） |
+| 页面加载、空态、失败重试、保存结果和键盘访问完整 | `OngoingItemsCard.test.tsx` 8 项：列表与来源数量、空态与关使用提示（仍可管理）、暂停/继续按精确条目提交并在成功后展示结果、完成需确认且确认后消失但有反馈、取消不提交、失败回读真实状态并给出重试入口、领域引用未接通如实标注、操作控件均为原生按钮（聚焦后触发动作，键盘可达的直接证据）；加载/操作结果用 `role="status"`，失败用 `role="alert"` 与重试按钮 |
 | 新状态在本票完成迁移、并发更新、重启恢复、导出和账户删除验证 | 走查 [6][6b]（v86 → v87 升级 + 幂等、上下文不进导出类别与逻辑摘要、备份含行、账户删除清空、删除顺序先于 `profile_items`）；`test_schema_v87_ongoing_context.py`（2 项）；`::test_sqlite_context_store_epoch_cas`（SQLite 存储 + 新服务实例读取持久化行，重启恢复；CAS 并发提交语义）；`::test_accounts_are_isolated`（空态与账户隔离） |
 
 ## 2. 确定性走查（最终代码，20261016）
@@ -64,13 +64,17 @@
 - 聚焦（最终代码）：`pytest tests/profiles tests/storage tests/lifecycle` →
   **944 通过**；三个新增文件单跑 **18 通过**。
 - 全量（`-n 4 --ignore=tests/career_plan --continue-on-collection-errors`）：
-  - 分支：**329 failed / 5652 passed / 37 skipped**；
+  - 分支（最终代码）：**327 failed / 5654 passed / 37 skipped**；
     main@`631a4952` 同命令：**329 failed / 5634 passed / 37 skipped**。
-  - 逐条差集：分支独有失败 2 项与 main 独有失败 2 项均为
-    `tests/closeout` 环境性 flaky（arxiv worker 2 项在分支单独运行 14 通过；
-    api_boot 2 项在 main 本次运行失败、分支通过；06/08/09/11 记录同现象）。
-    通过数 +18 = 本票新增测试数（12+4+2），无其他状态变化。
+  - 逐条差集：**分支独有失败 0 项**；main 独有失败 2 项为
+    `tests/closeout/test_api_boot.py` 环境性 flaky（分支通过；06/08/09/11
+    记录同现象）。通过数 +20 = 本票新增测试（12+4+2）加上 2 项在 main 本次
+    运行失败而分支通过的同款 flaky，无其他状态变化。
   - `tests/chat` 的既有失败（与本票无关，main 完全相同）保持原样。
+  - 中途一次全量曾出现分支独有失败
+    `tests/contracts/test_openapi_sync.py`（路由拆分为独立模块后 OpenAPI
+    路径顺序变化）；把 `include_router` 放到 `api.py` 文末并去掉子路由
+    tags 后 `openapi.json` 与 `generated.ts` 均恢复零 diff，该测试通过。
 
 ## 4. 静态检查
 
@@ -81,7 +85,7 @@
   683 → 686，+3 为本票新增模块），无新增错误。
 - `pip check`：No broken requirements found。
 - 前端（worktree，`apps/web`）：`npm run typecheck` 通过；`npm run test:unit`
-  35 文件 / 301 测试通过（含 `OngoingItemsCard.test.tsx` 7 项）；`npm run lint`
+  35 文件 / 302 测试通过（含 `OngoingItemsCard.test.tsx` 8 项）；`npm run lint`
   仅既有警告；`npm run build` 成功。
 
 ## 5. 接口与实现摘要
@@ -101,24 +105,30 @@
   中目标才链接，`_MIN_ONGOING_GOAL_OBJECT=2` 防单字误配；多命中/无命中不链
   接）、`RECALL_BASIS_ONGOING`（编译切片依据标签）；仓库读写两列；
   `commit_fact`/`remember`/`modify_item`/`correct_fact` 写入后链接、`forget`/
-  `delete_item`/生命周期信号随之失效；`link_saved_facts` 批内补链；
+  `delete_item`/生命周期信号随之失效；`link_saved_facts` 批内补链（与
+  `_ongoing_link_target` 共用 `_active_ongoing_goals` 取候选目标）；
   `set_ongoing_state`（乐观锁 + 幂等空操作 + 完成不可逆停/继续）与
   `set_domain_reference`（只目标可设、null 任意可清）；监听/提供方注入接缝
   （未注入时写入照常，失效失败仅告警）；`compile_adopted_slice` 经提供方把
   整组候选项按 tier 1、basis `ongoing` 参与采用，门禁照旧。
-- 新模块 `profiles/ongoing.py`（`OngoingItemsService`）：事项投影（原文直
+- `profiles/ongoing_projection.py`（纯投影层）：事项分组（`_group_items`、
+  `_OngoingGroup`）、条目投影、上下文新鲜度与时间基准、关闭使用提示文案；
+  不持有存储/控制/领域依赖。
+- `profiles/ongoing.py`（`OngoingItemsService`）：事项投影（原文直
   取、来源标识、时间）、状态操作委托、领域引用实时解析（无提供方→
   unresolved）、上下文 `read_context`/`begin_context_rebuild`/
   `commit_context_rebuild`（指纹含合同版本、使用开关、目标/条目 (id,version,
   goal_state)、来源消息 (status, 内容哈希)；失效 epoch+1；重建 CAS，迟到
   提交失败；`_ONGOING_REBUILD_ATTEMPTS=2`）、`continuation_group`、账户空态
   （无行且无事项不落空行）。
-- 新模块 `profiles/ongoing_repository.py`：`OngoingContextStore` 协议 +
+- `profiles/ongoing_repository.py`：`OngoingContextStore` 协议 +
   内存/SQLite 实现（`profile_ongoing_context` 单行/账户，`joined_transaction`
   并入调用方事务，同成同败）。
 - 提交边界 `profiles/commit.py`：`write_facts` 批内 `link_saved_facts`；
-  `profiles/api.py`：三条路由 + controls 联动失效；`api/app_setup_models.py`
-  装配 Sqlite/内存上下文存储并双向接线。
+  `profiles/ongoing_api.py`：三条 `/profiles/ongoing*` 路由（并入
+  `profiles/api.py` 同一前缀与标签，文末 `include_router` 保持 OpenAPI 顺序
+  零变化）；`profiles/api_errors.py`：四维/原子共用的错误映射；
+  `api/app_setup_models.py` 装配 Sqlite/内存上下文存储并双向接线。
 - 存储 `storage/database.py`：迁移 87（`profile_items` 加
   `related_goal_item_id`/`domain_reference_json`；建 `profile_ongoing_context`），
   `SCHEMA_VERSION` 86 → 87 并登记 REQUIRED/MIGRATION_ADDED；`lifecycle/catalog.py`
@@ -143,3 +153,28 @@
 - 走查脚本曾出现「陈旧版本未被拒绝」的假阴性：脚本跨请求复用返回对象导致
   `version` 引用随暂停原地更新，属脚本问题（已改为 int 快照），生产代码无
   此行为（HTTP 响应均为新对象）。
+
+## 7. 代码评审与修复
+
+实现完成后按 `code-review` 技能做了双轴评审（规范轴 + 规格轴，各由独立
+子代理执行），发现与处置：
+
+- 文件行数超限（规范硬性）：`ongoing.py` 502 行、`api.py` 584 行超过共享
+  规范「单文件不超过 500 行」。已拆分：纯投影层进
+  `profiles/ongoing_projection.py`；三条路由与依赖进
+  `profiles/ongoing_api.py`（并入父路由、文末 include、无自带 tags，OpenAPI
+  与生成类型零变化）；错误映射进 `profiles/api_errors.py` 供两模块共用。
+- 重复代码（经验判断）：`_ongoing_link_target` 与 `link_saved_facts` 重复
+  「列出进行中目标」逻辑，已提取 `_active_ongoing_goals` 共用。
+- 规格缝隙（规格轴）：空态文案曾写「新对话里说『继续』即可接上」，与实现
+  「需点名事项才接续」矛盾；已改为「再提到这件事即可接着它的进展」。
+- 未使用代码（规格轴）：前端 `updateOngoingDomainReference` 无调用方，属
+  规格外新增；已移除，后端路由与合同类型接缝保留给工单 14 的学习对接。
+- 键盘访问证据不足（规格轴）：新增「操作控件均为键盘可达的原生按钮」测试
+  （原生 `button` + 聚焦后触发动作），前端单测 7 → 8 项。
+- 保持不动的评审意见：`OngoingItemsService.set_state`/`set_domain_reference`
+  的委托是组合根接缝（服务同时承载上下文与提供方注册），非多余中间人；
+  `commit_rebuild` 参数成组属存储协议形状；`atomic.py` 行数为既有现状，
+  本票不扩大重构范围；待续词表的误报边界已在 §6 记录。
+- 评审后的回归：聚焦 944 通过、全量分支独有失败 0、走查 37 项全 PASS、
+  `openapi.json`/`generated.ts` 零 diff（见 §3、§4）。
