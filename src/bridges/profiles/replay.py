@@ -310,7 +310,7 @@ def _probe_writer_state(data_dir: Path) -> str:
     return "active"
 
 
-def _inspect_database(path: Path) -> DatabaseIdentity:
+def inspect_database(path: Path) -> DatabaseIdentity:
     path = path.resolve()
     if not path.exists():
         raise ProfileReplayError(
@@ -476,11 +476,11 @@ def resolve_authoritative_database(
             "database_path_conflict",
             "运行时配置、应用状态和显式候选路径指向不同数据库。",
         )
-    return _inspect_database(next(iter(unique.values())))
+    return inspect_database(next(iter(unique.values())))
 
 
 def _require_current_schema(identity: DatabaseIdentity) -> DatabaseIdentity:
-    current = _inspect_database(identity.path)
+    current = inspect_database(identity.path)
     if current.writer_state == "active":
         raise ProfileReplayError(
             "writer_active",
@@ -695,7 +695,7 @@ def create_verified_backup(
 def upgrade_authoritative_schema(authority: DatabaseIdentity) -> DatabaseIdentity:
     """唯一允许调用隐式迁移的显式 schema-upgrade 操作。"""
 
-    current = _inspect_database(authority.path)
+    current = inspect_database(authority.path)
     if current.writer_state != "inactive":
         raise ProfileReplayError(
             "writer_unavailable",
@@ -1183,7 +1183,7 @@ class ProfileReplayCoordinator:
             audit_id=audit_id,
             operation="replay",
             counts=counts,
-            identity=_inspect_database(current.path),
+            identity=inspect_database(current.path),
             backup=verified,
             started_at=started_at,
             finished_at=_now(),
@@ -1229,7 +1229,7 @@ class ProfileReplayCoordinator:
             audit_id=audit_id,
             operation="worker",
             counts=counts,
-            identity=_inspect_database(current.path),
+            identity=inspect_database(current.path),
             started_at=started_at,
             finished_at=_now(),
         )

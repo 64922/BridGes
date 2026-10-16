@@ -12,18 +12,18 @@ import pytest
 from bridges.profiles.automatic import RuleBasedAutomaticProfileExtractor
 from bridges.profiles.history_preview import preview_history
 from bridges.profiles.history_rebuild import (
-    ExtractorFactory,
-    ProfileRebuildError,
     cleanup_rebuild,
     rebuild_status,
-    run_rebuild,
     start_rebuild,
 )
 from bridges.profiles.history_rebuild_contracts import (
     HISTORY_REBUILD_POLICY_VERSION,
+    ProfileRebuildError,
     RebuildWindow,
     rebuild_id_for,
 )
+from bridges.profiles.history_rebuild_drive import run_rebuild
+from bridges.profiles.history_rebuild_runtime import ExtractorFactory
 from bridges.profiles.replay import DatabaseIdentity, resolve_authoritative_database
 from bridges.storage.database import BridgesDatabase
 from tests.profiles.test_issue16_history_preview import (
@@ -412,6 +412,69 @@ def test_privacy_barrier_skip_is_not_failure(tmp_path: Path) -> None:
     assert progress["failed"] == 0
     assert progress["extracted"] == 2
     assert progress["skipped_by_reason"].get("version_unavailable") == 1
+
+
+def test_tombstone_barrier_blocks_late_proposal(tmp_path: Path) -> None:
+    """重整中途出现墓碑：提交前复核拒绝迟到写入，如实记为屏障跳过。"""
+
+    database_path, database = _open_database(tmp_path)
+    _seed_history(database)
+    manifest = _preview(database_path)
+    work = tmp_path / "work"
+    start_rebuild(_authority(database_path), manifest, work_dir=work, now=FIXED_NOW)
+
+    run_rebuild(work, extractor_factory=_rule_factory(), max_ticks=1, now=FIXED_NOW)
+    scheduled = _scheduled_messages(work)
+    assert len(scheduled) == 2
+    victim = scheduled[0]
+
+    # 模拟重整期间用户在真实库删除该消息：工作副本按同一屏障语义落墓碑。
+    working = BridgesDatabase(work / "working" / "bridges.db")
+    working.initialize()
+    with working.transaction():
+        working.connection.execute(
+            "INSERT INTO profile_extraction_tombstones "
+            "(account_id, message_id, created_at) VALUES (?, ?, ?)",
+            (ACCOUNT, victim, TS),
+        )
+    working.close()
+
+    report = run_rebuild(
+        work, extractor_factory=_rule_factory(), max_ticks=100, now=FIXED_NOW
+    )
+    assert report["completed"] is True
+    progress = report["progress"]
+    assert progress["failed"] == 0
+    assert progress["extracted"] == 2
+    assert progress["skipped_by_reason"].get("source_invalidated") == 1
+
+    working = BridgesDatabase(work / "working" / "bridges.db")
+    working.initialize()
+    item = working.connection.execute(
+        "SELECT status, skip_reason FROM profile_rebuild_items"
+        " WHERE message_id = ?",
+        (victim,),
+    ).fetchone()
+    runs = working.connection.execute(
+        "SELECT status, last_error FROM profile_extraction_runs"
+        " WHERE account_id = ? AND message_id = ?",
+        (ACCOUNT, victim),
+    ).fetchall()
+    leaked = working.connection.execute(
+        "SELECT COUNT(*) AS total FROM profile_items"
+        " WHERE account_id = ? AND status = 'active'"
+        " AND source_message_ids_json LIKE ?",
+        (ACCOUNT, f"%{victim}%"),
+    ).fetchone()
+    working.close()
+
+    assert item is not None
+    assert str(item["status"]) == "skipped"
+    assert str(item["skip_reason"]) == "source_invalidated"
+    assert [(str(row["status"]), str(row["last_error"])) for row in runs] == [
+        ("exhausted", "profile_extraction_source_invalidated")
+    ]
+    assert leaked is not None and int(leaked["total"]) == 0
 
 
 def test_version_mismatch_blocks_resume(tmp_path: Path) -> None:

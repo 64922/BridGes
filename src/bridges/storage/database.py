@@ -3836,7 +3836,6 @@ MIGRATIONS: dict[int, list[str]] = {
             status TEXT NOT NULL,
             skip_reason TEXT,
             source_hash TEXT,
-            task_key TEXT,
             extraction_id TEXT,
             committed_count INTEGER NOT NULL DEFAULT 0,
             observed_count INTEGER NOT NULL DEFAULT 0,

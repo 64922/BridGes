@@ -176,6 +176,13 @@ PROFILE_EXTRACTION_MAX_RETRIES = 3
 #: 调度与入队，不改写既有任务的推进。普通提取是后台整理，积压时宁可让
 #: 新消息不进入队列，也不让单账户无界占用模型与存储资源。
 PROFILE_EXTRACTION_MAX_PENDING_PER_ACCOUNT = 32
+#: 画像工单 17：重试轮次的空转回执；维护驱动（history_rebuild_drive）
+#: 依据这两个回执判断“本轮无事可做”，因此以常量共享，禁止字面量漂移。
+PROFILE_EXTRACTION_IDLE_TICK = "profile-extraction: 无待处理任务。"
+PROFILE_EXTRACTION_UNKNOWN_TASK_TICK = "profile-extraction: 任务已不存在。"
+RETRY_TICK_IDLE_OUTPUTS = frozenset(
+    {PROFILE_EXTRACTION_IDLE_TICK, PROFILE_EXTRACTION_UNKNOWN_TASK_TICK}
+)
 #: 改进工单 17：每次真实模型调用的版本合同（Issue 03 接缝）。提示词与
 #: 输入合同按精确证据区间与开放事实升级；输出 Schema 保持向后兼容的可选
 #: 字段。工单 41 真实探针发现模型不遵守字段枚举与 evidence_ref 约定（合同
@@ -3848,7 +3855,7 @@ class AutomaticProfileService:
                 self._queue_name, "profile-extractor"
             )
             if claim is None:
-                return "profile-extraction: 无待处理任务。"
+                return PROFILE_EXTRACTION_IDLE_TICK
             task_id = claim.task_key
             task = next(
                 (
@@ -3860,7 +3867,7 @@ class AutomaticProfileService:
             )
             if task is None:
                 self._queue.complete(claim)
-                return "profile-extraction: 任务已不存在。"
+                return PROFILE_EXTRACTION_UNKNOWN_TASK_TICK
             result = self._run_retry_task(task, claim.attempt + 1)
             if result == ProfileExtractionStatus.SUCCEEDED:
                 self._queue.complete(claim)
@@ -3892,7 +3899,7 @@ class AutomaticProfileService:
             None,
         )
         if task is None:
-            return "profile-extraction: 无待处理任务。"
+            return PROFILE_EXTRACTION_IDLE_TICK
         result = self._run_retry_task(task, task.attempts + 1)
         return f"profile-extraction: {result.value}。"
 

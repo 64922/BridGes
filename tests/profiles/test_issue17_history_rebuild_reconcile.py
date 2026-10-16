@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 
 from bridges.profiles.history_rebuild import (
-    ProfileRebuildError,
     rebuild_status,
-    run_rebuild,
     start_rebuild,
 )
+from bridges.profiles.history_rebuild_contracts import ProfileRebuildError
+from bridges.profiles.history_rebuild_drive import run_rebuild
 from bridges.profiles.history_rebuild_reconcile import reconcile_rebuild
 from bridges.storage.database import BridgesDatabase
 from tests.profiles.test_issue16_history_preview import (

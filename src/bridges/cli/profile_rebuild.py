@@ -24,15 +24,17 @@ import typer
 from bridges.config import get_settings
 from bridges.profiles.history_preview import load_preview_manifest
 from bridges.profiles.history_rebuild import (
-    DEFAULT_REBUILD_MAX_TICKS,
-    ExtractorFactory,
     cleanup_rebuild,
     rebuild_status,
-    run_rebuild,
     start_rebuild,
 )
 from bridges.profiles.history_rebuild_contracts import RebuildWindow
+from bridges.profiles.history_rebuild_drive import (
+    DEFAULT_REBUILD_MAX_TICKS,
+    run_rebuild,
+)
 from bridges.profiles.history_rebuild_reconcile import reconcile_rebuild
+from bridges.profiles.history_rebuild_runtime import ExtractorFactory
 from bridges.profiles.replay import (
     DatabaseIdentity,
     ProfileReplayError,
@@ -74,11 +76,19 @@ def _authority(database_path: Path | None) -> DatabaseIdentity:
 
 
 def _optional_authority(database_path: Path | None) -> DatabaseIdentity | None:
-    """对账的漂移复核：拿不到权威来源时降级为警告，不阻断隔离副本对账。"""
+    """对账的漂移复核：拿不到权威来源时降级为警告，不阻断隔离副本对账。
+
+    与 ``_authority`` 不同，这里解析失败不输出错误 JSON（对账本身不依赖
+    权威来源，来源信息缺失只降级为警告）。
+    """
 
     try:
-        return _authority(database_path)
-    except typer.Exit:
+        return resolve_authoritative_database(
+            settings=get_settings(),
+            explicit_path=database_path,
+            application_state=load_runtime_application_state(),
+        )
+    except ProfileReplayError:
         return None
 
 
@@ -113,7 +123,7 @@ def _extractor_factory() -> ExtractorFactory:
     from bridges.storage.database import BridgesDatabase
 
     settings = get_settings()
-    if settings is None or settings.environment.lower() == "test":
+    if settings.environment.lower() == "test":
 
         def rule_based(
             database: BridgesDatabase,
@@ -134,7 +144,6 @@ def _extractor_factory() -> ExtractorFactory:
         neighbor: NeighborWindowReader | None,
         memory: Callable[[str, str], list[str]] | None,
     ) -> AutomaticProfileExtractor:
-        assert settings is not None
         state_store = build_state_store(
             settings.database_url, encryption_key=settings.secret_key
         )

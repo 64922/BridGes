@@ -2,8 +2,8 @@
 
 台账是账户级维护审计：运行行（``profile_rebuild_runs``）与逐条进度行
 （``profile_rebuild_items``）只保存标识、计数、摘要与失败状态，绝不保存
-消息或条目正文。仓储同时提供只读的管道状态查询（抽取运行 / 重试任务 /
-队列领取行），供编排层对账逐条状态；不复制任何抽取或提交语义。
+消息或条目正文；管道侧的只读视图见 ``history_rebuild_pipeline``。仓储不
+复制任何抽取或提交语义。
 """
 
 from __future__ import annotations
@@ -12,52 +12,24 @@ import json
 import sqlite3
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
 from typing import Any
 
 from bridges.profiles.history_rebuild_contracts import (
-    RebuildBaseline,
-    RebuildItemRecord,
+    ProfileRebuildError,
     RebuildItemStatus,
-    RebuildRunRecord,
-    RebuildSeedItem,
     RebuildSkipReason,
     RebuildStatus,
     now_text,
 )
+from bridges.profiles.history_rebuild_records import (
+    RebuildBaseline,
+    RebuildItemRecord,
+    RebuildProgress,
+    RebuildRunRecord,
+    RebuildSeedItem,
+)
 from bridges.profiles.transactions import joined_transaction
 from bridges.storage.database import BridgesDatabase
-
-
-@dataclass(frozen=True)
-class ExtractionRunSnapshot:
-    """抽取运行的只读视图（台账分类用，不含来源快照正文）。"""
-
-    extraction_id: str
-    status: str
-    outcome: str
-    attempts: int
-    committed_count: int
-    observed_count: int
-    last_error: str | None
-    run_kind: str
-
-
-@dataclass(frozen=True)
-class ExtractionTaskSnapshot:
-    """抽取重试任务的只读视图。"""
-
-    task_id: str
-    status: str
-    last_error: str | None
-
-
-@dataclass(frozen=True)
-class QueueClaimSnapshot:
-    """队列领取行的只读视图（队列机制语义由 ``bridges.runtime.queue`` 定义）。"""
-
-    status: str
-    next_retry_at: str | None
 
 
 class SqliteProfileRebuildRepository:
@@ -241,7 +213,6 @@ class SqliteProfileRebuildRepository:
         status: RebuildItemStatus,
         skip_reason: RebuildSkipReason | None = None,
         source_hash: str | None = None,
-        task_key: str | None = None,
         extraction_id: str | None = None,
         committed_count: int | None = None,
         observed_count: int | None = None,
@@ -258,7 +229,6 @@ class SqliteProfileRebuildRepository:
         ]
         for column, value in (
             ("source_hash", source_hash),
-            ("task_key", task_key),
             ("extraction_id", extraction_id),
             ("committed_count", committed_count),
             ("observed_count", observed_count),
@@ -326,104 +296,6 @@ class SqliteProfileRebuildRepository:
             )
 
     # ------------------------------------------------------------------
-    # 管道只读状态（分类与恢复判定）
-    # ------------------------------------------------------------------
-
-    def read_extraction_run(
-        self,
-        account_id: str,
-        message_id: str,
-        extractor_version: str,
-        source_hash: str,
-    ) -> ExtractionRunSnapshot | None:
-        row = self.database.connection.execute(
-            "SELECT extraction_id, status, outcome, attempts, record_ids_json,"
-            " observed_count, last_error, run_kind"
-            " FROM profile_extraction_runs"
-            " WHERE account_id = ? AND message_id = ? AND extractor_version = ?"
-            " AND source_hash = ?",
-            (account_id, message_id, extractor_version, source_hash),
-        ).fetchone()
-        if row is None:
-            return None
-        try:
-            committed = json.loads(str(row["record_ids_json"]))
-        except (TypeError, ValueError):
-            committed = []
-        return ExtractionRunSnapshot(
-            extraction_id=str(row["extraction_id"]),
-            status=str(row["status"]),
-            outcome=str(row["outcome"]),
-            attempts=int(row["attempts"]),
-            committed_count=len(committed) if isinstance(committed, list) else 0,
-            observed_count=int(row["observed_count"]),
-            last_error=(
-                str(row["last_error"]) if row["last_error"] is not None else None
-            ),
-            run_kind=str(row["run_kind"]),
-        )
-
-    def read_task(
-        self,
-        account_id: str,
-        message_id: str,
-        extractor_version: str,
-        source_hash: str,
-    ) -> ExtractionTaskSnapshot | None:
-        row = self.database.connection.execute(
-            "SELECT task_id, status, last_error FROM profile_extraction_tasks"
-            " WHERE account_id = ? AND message_id = ? AND extractor_version = ?"
-            " AND source_hash = ?",
-            (account_id, message_id, extractor_version, source_hash),
-        ).fetchone()
-        if row is None:
-            return None
-        return ExtractionTaskSnapshot(
-            task_id=str(row["task_id"]),
-            status=str(row["status"]),
-            last_error=(
-                str(row["last_error"]) if row["last_error"] is not None else None
-            ),
-        )
-
-    def read_claim(self, queue_name: str, task_key: str) -> QueueClaimSnapshot | None:
-        row = self.database.connection.execute(
-            "SELECT status, next_retry_at FROM task_claims"
-            " WHERE queue_name = ? AND task_key = ?",
-            (queue_name, task_key),
-        ).fetchone()
-        if row is None:
-            return None
-        return QueueClaimSnapshot(
-            status=str(row["status"]),
-            next_retry_at=(
-                str(row["next_retry_at"]) if row["next_retry_at"] is not None else None
-            ),
-        )
-
-    def count_pending_tasks(self, account_id: str) -> int:
-        """账户在管道中未终态的任务数（背压与在途范围的真实分母）。"""
-
-        row = self.database.connection.execute(
-            "SELECT COUNT(*) AS total FROM profile_extraction_tasks"
-            " WHERE account_id = ? AND status IN ('pending', 'running')",
-            (account_id,),
-        ).fetchone()
-        return 0 if row is None else int(row["total"])
-
-    def count_tombstoned_successes_since(self, account_id: str, *, since: str) -> int:
-        """墓碑消息在给定时刻之后的成功抽取数（删除屏障的迟到写入检查）。"""
-
-        row = self.database.connection.execute(
-            "SELECT COUNT(*) AS total FROM profile_extraction_runs"
-            " WHERE account_id = ? AND status = 'succeeded' AND updated_at >= ?"
-            " AND message_id IN (SELECT message_id FROM profile_extraction_tombstones"
-            "                    WHERE account_id = ?)",
-            (account_id, since, account_id),
-        ).fetchone()
-        return 0 if row is None else int(row["total"])
-
-    # ------------------------------------------------------------------
     # 行映射
     # ------------------------------------------------------------------
 
@@ -488,7 +360,6 @@ class SqliteProfileRebuildRepository:
             source_hash=(
                 str(row["source_hash"]) if row["source_hash"] is not None else None
             ),
-            task_key=str(row["task_key"]) if row["task_key"] is not None else None,
             extraction_id=(
                 str(row["extraction_id"]) if row["extraction_id"] is not None else None
             ),
@@ -501,9 +372,52 @@ class SqliteProfileRebuildRepository:
         )
 
 
+def require_run(
+    ledger: SqliteProfileRebuildRepository, rebuild_id: str
+) -> RebuildRunRecord:
+    """读取运行行；缺失时显式失败（不制造幽灵批次）。"""
+
+    run = ledger.get_run(rebuild_id)
+    if run is None:
+        raise ProfileRebuildError(
+            "rebuild_not_found", f"工作副本中没有重整台账：{rebuild_id}"
+        )
+    return run
+
+
+def build_progress(
+    ledger: SqliteProfileRebuildRepository, run: RebuildRunRecord
+) -> RebuildProgress:
+    """由台账逐条行派生进度视图（分母与剩余范围始终真实）。"""
+
+    counts = ledger.count_items(run.rebuild_id)
+    skipped_by_reason = ledger.count_skip_reasons(run.rebuild_id)
+    pending = counts.get(RebuildItemStatus.PENDING.value, 0)
+    scheduled = counts.get(RebuildItemStatus.SCHEDULED.value, 0)
+    notes: list[str] = []
+    if pending:
+        notes.append(
+            f"仍有 {pending} 条待调度（调度背压或来源状态在进入前被屏障拦截）。"
+        )
+    if scheduled:
+        notes.append(f"仍有 {scheduled} 条在途（再次 run 将恢复推进）。")
+    return RebuildProgress(
+        status=run.status,
+        window_total=run.window_total,
+        eligible=run.eligible_count,
+        extracted=run.extracted_count,
+        committed=run.committed_count,
+        skipped=run.skipped_count,
+        failed=run.failed_count,
+        pending=pending,
+        scheduled=scheduled,
+        skipped_by_reason=skipped_by_reason,
+        notes=tuple(notes),
+    )
+
+
 __all__ = [
-    "ExtractionRunSnapshot",
-    "ExtractionTaskSnapshot",
-    "QueueClaimSnapshot",
     "SqliteProfileRebuildRepository",
+    "build_progress",
+    "require_run",
 ]

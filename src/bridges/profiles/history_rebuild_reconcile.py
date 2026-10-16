@@ -1,6 +1,6 @@
-"""画像工单 17：历史重整的对账与恢复演练（在隔离副本上执行，可重复）。
+"""画像工单 17：历史重整的对账（在隔离副本上执行，可重复）。
 
-对账覆盖工单验收要求的全部面：
+对账覆盖工单验收要求的检查面：
 
 - 事实：人工条目保留权威（正文摘要与编辑时间不变）、撤回不复活、墓碑
   来源无迟到成功、同一事实键不重复生效；
@@ -9,10 +9,7 @@
 - 控制：记录开关/内容禁止/墓碑数量与基线一致；
 - 派生：概览可立即失效并重建（读取态回到当前），召回索引不泄漏旧事实
   （陈旧行不参与检索，如实计数）；
-- 账户清理：在一次性副本上执行真实删除并核对全部账户表清空（含台账）；
-- 导出：逐类别逐表执行导出读取（含台账审计类别）；
-- 恢复：重新预览工作副本、创建并核对新备份、再次执行隔离恢复开演，
-  并比对全库逻辑摘要（不是只验证文件存在）。
+- 账户清理 / 导出 / 恢复演练：见 ``history_rebuild_drills``。
 
 全部检查只输出计数、标识与摘要，绝不输出消息或条目正文。硬门不过时
 报告照写、退出码 2；漂移（权威来源已前进）如实记录为警告而非静默。
@@ -21,48 +18,43 @@
 from __future__ import annotations
 
 import json
-import shutil
 from datetime import datetime
 from pathlib import Path
 
-from bridges.lifecycle.catalog import (
-    ACCOUNT_TABLES,
-    EXPORT_CATEGORIES,
-    category_preview,
-    delete_account_rows,
-    export_rows,
-    logical_summary,
-)
-from bridges.profiles.history_backup import (
-    create_history_backup,
-    verify_history_restore,
-)
-from bridges.profiles.history_contracts import HistoryPreviewManifest, digest_lines
+from bridges.profiles.history_contracts import digest_lines
 from bridges.profiles.history_preview import (
     load_preview_manifest,
-    preview_history,
     verify_preview_manifest,
 )
-from bridges.profiles.history_rebuild import (
-    ExtractorFactory,
+from bridges.profiles.history_rebuild_contracts import (
+    REBUILD_REPORT_FILENAME,
     ProfileRebuildError,
+    RebuildItemStatus,
+    json_mapping,
+    now_text,
+)
+from bridges.profiles.history_rebuild_drills import (
+    deletion_drill,
+    export_section,
+    restore_drill,
+)
+from bridges.profiles.history_rebuild_pipeline import ProfileRebuildPipelineView
+from bridges.profiles.history_rebuild_records import RebuildRunRecord
+from bridges.profiles.history_rebuild_repository import (
+    SqliteProfileRebuildRepository,
+    require_run,
+)
+from bridges.profiles.history_rebuild_runtime import (
+    ExtractorFactory,
     RebuildRuntime,
     RebuildWorkspace,
     build_runtime,
     load_workspace,
     open_working_database,
 )
-from bridges.profiles.history_rebuild_contracts import (
-    REBUILD_REPORT_FILENAME,
-    RebuildItemStatus,
-    RebuildRunRecord,
-    json_mapping,
-    now_text,
-)
-from bridges.profiles.history_rebuild_repository import SqliteProfileRebuildRepository
 from bridges.profiles.history_repository import ProfileHistorySnapshotReader
 from bridges.profiles.recall import profile_recall_text_hash
-from bridges.profiles.replay import DatabaseIdentity, _inspect_database
+from bridges.profiles.replay import DatabaseIdentity
 from bridges.storage.database import BridgesDatabase
 
 
@@ -92,11 +84,8 @@ def reconcile_rebuild(
     database = open_working_database(workspace)
     try:
         ledger = SqliteProfileRebuildRepository(database, initialize=False)
-        run = ledger.get_run(workspace.rebuild_id)
-        if run is None:
-            raise ProfileRebuildError(
-                "rebuild_not_found", f"工作副本中没有重整台账：{workspace.rebuild_id}"
-            )
+        pipeline = ProfileRebuildPipelineView(database)
+        run = require_run(ledger, workspace.rebuild_id)
         counts = ledger.count_items(run.rebuild_id)
         remaining = counts.get(RebuildItemStatus.PENDING.value, 0) + counts.get(
             RebuildItemStatus.SCHEDULED.value, 0
@@ -114,18 +103,18 @@ def reconcile_rebuild(
             "generated_at": now_text(now),
             "policy_version": run.policy_version,
             "extractor_version": run.extractor_version,
-            "facts": _facts_section(database, ledger, run, errors),
-            "evidence": _evidence_section(database, ledger, runtime, run, errors),
+            "facts": _facts_section(database, pipeline, run, errors),
+            "evidence": _evidence_section(database, ledger, pipeline, runtime, run, errors),
             "controls": _controls_section(database, run, errors),
             "derived": _derived_section(database, runtime, run, errors, warnings),
-            "export": _export_section(database, run.account_id, errors),
+            "export": export_section(database, run.account_id, errors),
             "source_drift": _drift_section(authority, workspace, warnings),
         }
     finally:
         database.close()
 
-    report["deletion"] = _deletion_drill(workspace, run.account_id, drill_root, errors)
-    report["restore"] = _restore_drill(workspace, run.account_id, drill_root, errors)
+    report["deletion"] = deletion_drill(workspace, run.account_id, drill_root, errors)
+    report["restore"] = restore_drill(workspace, run.account_id, drill_root, errors)
     report["warnings"] = warnings
     report["errors"] = errors
     report["passed"] = not errors
@@ -155,7 +144,7 @@ def reconcile_rebuild(
 
 def _facts_section(
     database: BridgesDatabase,
-    ledger: SqliteProfileRebuildRepository,
+    pipeline: ProfileRebuildPipelineView,
     run: RebuildRunRecord,
     errors: list[dict[str, object]],
 ) -> dict[str, object]:
@@ -233,7 +222,7 @@ def _facts_section(
             }
         )
 
-    late_success = ledger.count_tombstoned_successes_since(
+    late_success = pipeline.count_tombstoned_successes_since(
         run.account_id, since=run.created_at
     )
     if late_success:
@@ -270,6 +259,7 @@ def _baseline_locator_set(run: RebuildRunRecord, key: str) -> set[str]:
 def _evidence_section(
     database: BridgesDatabase,
     ledger: SqliteProfileRebuildRepository,
+    pipeline: ProfileRebuildPipelineView,
     runtime: RebuildRuntime,
     run: RebuildRunRecord,
     errors: list[dict[str, object]],
@@ -343,7 +333,7 @@ def _evidence_section(
         if ledger_item.source_hash is None:
             inconsistent.append(ledger_item.message_id)
             continue
-        snapshot = ledger.read_extraction_run(
+        snapshot = pipeline.read_extraction_run(
             run.account_id,
             ledger_item.message_id,
             run.extractor_version,
@@ -491,183 +481,6 @@ def _drift_section(
             "切换由维护者按运行手册单独确认。"
         )
     return {"checked": True, **drift.as_dict()}
-
-
-# ----------------------------------------------------------------------
-# 账户清理 / 导出演练
-# ----------------------------------------------------------------------
-
-
-def _deletion_drill(
-    workspace: RebuildWorkspace,
-    account_id: str,
-    drill_root: Path,
-    errors: list[dict[str, object]],
-) -> dict[str, object]:
-    target_dir = drill_root / "deletion"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / "bridges.db"
-    if target.exists():
-        target.unlink()
-    shutil.copyfile(workspace.working_db_path, target)
-    database = BridgesDatabase(target)
-    residual: dict[str, int] = {}
-    account_left = True
-    try:
-        database.initialize()
-        delete_account_rows(database, account_id)
-        for table in ACCOUNT_TABLES:
-            row = database.connection.execute(
-                f"SELECT COUNT(*) AS total FROM {table} WHERE account_id = ?",
-                (account_id,),
-            ).fetchone()
-            count = 0 if row is None else int(row["total"])
-            if count:
-                residual[table] = count
-        account_row = database.connection.execute(
-            "SELECT COUNT(*) AS total FROM accounts WHERE account_id = ?",
-            (account_id,),
-        ).fetchone()
-        account_left = account_row is not None and int(account_row["total"]) > 0
-    finally:
-        database.close()
-    if residual or account_left:
-        errors.append(
-            {
-                "check": "account_deletion",
-                "detail": "账户删除演练后仍有残留数据",
-                "residual": residual,
-                "account_row_left": account_left,
-            }
-        )
-    return {
-        "executed": True,
-        "tables_checked": len(ACCOUNT_TABLES),
-        "residual": residual,
-        "account_row_left": account_left,
-    }
-
-
-def _export_section(
-    database: BridgesDatabase,
-    account_id: str,
-    errors: list[dict[str, object]],
-) -> dict[str, object]:
-    preview = category_preview(database, account_id)
-    exported_tables: dict[str, int] = {}
-    failures: list[str] = []
-    for category in EXPORT_CATEGORIES:
-        for table in category.tables:
-            try:
-                rows = export_rows(database, account_id, table)
-            except Exception as exc:  # noqa: BLE001 - 导出失败如实计入
-                failures.append(f"{category.key}:{table}:{exc.__class__.__name__}")
-                continue
-            exported_tables[table] = len(rows)
-    if failures:
-        errors.append(
-            {
-                "check": "export_rows",
-                "detail": "存在无法导出的类别/表",
-                "failures": failures[:20],
-            }
-        )
-    ledger_category = next(
-        (
-            (category, total, estimated)
-            for category, total, estimated in preview
-            if category.key == "profile_history_rebuild"
-        ),
-        None,
-    )
-    if ledger_category is None:
-        errors.append(
-            {
-                "check": "export_ledger_registered",
-                "detail": "导出类别缺少画像历史重整审计",
-            }
-        )
-    return {
-        "categories": len(EXPORT_CATEGORIES),
-        "tables": len(exported_tables),
-        "ledger_rows": {
-            "runs": exported_tables.get("profile_rebuild_runs"),
-            "items": exported_tables.get("profile_rebuild_items"),
-            "preview_total": None if ledger_category is None else ledger_category[1],
-        },
-        "failures": failures[:20],
-    }
-
-
-# ----------------------------------------------------------------------
-# 恢复演练（重新预览 → 备份 → 二次恢复开演 → 逻辑摘要比对）
-# ----------------------------------------------------------------------
-
-
-def _restore_drill(
-    workspace: RebuildWorkspace,
-    account_id: str,
-    drill_root: Path,
-    errors: list[dict[str, object]],
-) -> dict[str, object]:
-    target_dir = drill_root / "restore"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    identity = _inspect_database(workspace.working_db_path)
-    manifest: HistoryPreviewManifest = preview_history(identity, account_id=account_id)
-    backup_path = target_dir / "post-rebuild.db"
-    for suffix in ("", ".manifest.json", ".history-record.json"):
-        candidate = Path(f"{backup_path}{suffix}")
-        if candidate.exists():
-            candidate.unlink()
-    record = create_history_backup(
-        identity, backup_path, preview=manifest, work_dir=target_dir
-    )
-    restore = verify_history_restore(backup_path, preview=manifest, work_dir=target_dir)
-    if not record.verified:
-        errors.append(
-            {
-                "check": "post_rebuild_backup",
-                "detail": "重整后的备份未通过创建时隔离恢复核对",
-            }
-        )
-
-    # 逻辑摘要比对：在工作副本与恢复副本上重算并逐表一致。
-    source = open_working_database(workspace)
-    try:
-        expected_summary = logical_summary(source, account_id)
-    finally:
-        source.close()
-    restored_copy = target_dir / "restored-summary.db"
-    shutil.copyfile(backup_path, restored_copy)
-    restored = BridgesDatabase(restored_copy)
-    try:
-        restored.initialize()
-        restored_summary = logical_summary(restored, account_id)
-    finally:
-        restored.close()
-    mismatched = {
-        key: {"expected": expected_summary.get(key), "restored": restored_summary.get(key)}
-        for key in sorted(set(expected_summary) | set(restored_summary))
-        if expected_summary.get(key) != restored_summary.get(key)
-    }
-    if mismatched:
-        errors.append(
-            {
-                "check": "restore_logical_summary",
-                "detail": "恢复副本与工作副本的逻辑摘要不一致",
-                "mismatches": mismatched,
-            }
-        )
-    return {
-        "preview_state_digest": manifest.state_digest,
-        "backup_verified": record.verified,
-        "restore_verified": restore.verified,
-        "restore_reconciliation_passed": bool(
-            restore.restore.get("reconciliation_passed")
-        ),
-        "logical_summary_tables": len(expected_summary),
-        "logical_summary_mismatches": mismatched,
-    }
 
 
 __all__ = ["reconcile_rebuild"]
