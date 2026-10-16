@@ -51,7 +51,7 @@
 2026-10-16：实施与验证完成（分支 `codex/issue-17-resumable-history-rebuild`，基点 `87e114f5`）。
 
 - 执行模型：隔离工作目录（`rebuild.json`/`preview.json`/已验证备份 `history.db`/工作副本 `working/bridges.db`）内做受控重整；启动先按 16 的 `verify_preview_manifest` 校验新鲜度、`create_history_backup` 留恢复前提，副本重算 `state_digest` 与清单配对后才播种。批次标识 `rebuild_id` 由（账户, 状态摘要, 策略版本, 预览版本, 窗口）确定性派生（`profile-rebuild-*`），幂等键沿用在线（账户, 消息, 抽取器版本, 来源哈希）。
-- 复用在线语义：经 `schedule_message_extraction` + `ensure_task_queued`（新增公共方法，`_recover_run` 由启动恢复抽取）进入专用队列 `profile-history-rebuild`，`run_retry_tick` 领取执行，不调用跨账户的 `recover_inflight_runs`，不绕过账户背压（上限 32，拦截条目保持 pending 并如实暂停）。模型调用在写事务外、提交前复核沿用在线屏障；条目 `created_at` 仍为来源稳定记录时间。
+- 复用在线语义：经 `schedule_message_extraction` + `ensure_task_queued`（新增公共方法，`_recover_run` 由启动恢复抽取）进入专用队列 `profile-history-rebuild`，`run_retry_tick` 领取执行，不调用跨账户的 `recover_inflight_runs`，不绕过账户背压（上限 32，拦截条目保持 pending 并如实暂停）。模型调用在写事务外、提交前复核沿用在线屏障；条目适用时间按来源消息时间锚解析（`commit.py` 的 `source_at` → `atomic.py::commit_fact` → `parse_validity_window(text, anchor)`），`created_at` 为写入时间，不获得“今天”的新鲜度。
 - 台账：迁移 89 新增 `profile_rebuild_runs`（版本绑定/窗口/基线 JSON/计数）与 `profile_rebuild_items`（逐条状态、跳过原因、来源哈希、运行与提交标识；只存标识与摘要，不存正文）；计数器由逐条行重算；登记 `REQUIRED_TABLES`、账户删除顺序（先于 `profile_items`）、导出类别 `profile_history_rebuild`（画像历史重整审计）与逻辑摘要。
 - 对账与演练（`reconcile_rebuild` 八段）：人工条目摘要（id/version/编辑时间/正文摘要）与撤回不复活、事实键不重复、墓碑迟到成功检测；证据可解析且非墓碑（既有缺证据按 16 基线标记、仅新增悬挂引用失败）、台账与运行终态一致；控制与基线一致；概览失效重建一致、召回索引陈旧仅警告；逐类别逐表导出 + 审计类别登记；副本上账户删除零残留；工作副本重新预览→备份→恢复演练 + 逐表逻辑摘要一致；权威来源前进只记警告。报告写 `reconciliation.json`，仅通过写 `reconciled_at`；未收敛拒绝对账。
 - CLI：`BridGes profile-rebuild start|run|status|reconcile|cleanup`（JSON 输出；硬门失败 stderr 错误码 JSON + 退出码 2；`run` 收 `--max-ticks`（模型调用上限，空闲 tick 提前收敛）；`--start-at/--end-at` 有界窗口；`run`/`reconcile` 装配 `ExtractorFactory`：测试环境规则抽取器、生产网关）。
@@ -59,3 +59,10 @@
 - 静态：`mypy src` 141=141（本票新文件 0 错误）；`ruff check .` 453=453（本票文件 0 诊断）；`pip check` 通过。
 - 走查（确定性合成库，25/25 通过）：.scratch/profile-memory-redesign/validation/17-resumable-history-rebuild/{verification-record.md,evidence/demo-walkthrough-20261017.txt,tools/walk_issue17_history_rebuild_demo.py}。
 - 已知限制（详见验证记录 §7）：走查为规则抽取器确定性验证（生产网关未实测）；既有缺证据按标记对待、仅新增悬挂引用失败；`rebuild.json` 与台账同时被篡改属环境破坏场景；背压拦截不丢弃；真实用户库切换按运行手册单独确认。
+
+2026-10-17：代码审查修复轮完成（提交见后续 refactor/fix 两笔）。
+
+- 模块拆分（对齐单文件 ≤500 行硬标准）：`history_rebuild`（启动/进度/清理）、`_contracts`、`_records`、`_repository`、`_pipeline`（管道只读视图）、`_runtime`（工作区/装配）、`_drive`（有界驱动）、`_reconcile` + `_drills`（演练分离）。
+- 修复审查发现：`start_rebuild` 崩溃恢复顺序重排（`rebuild.json` journal 先于数据产物；备份完整性以 `<backup>.manifest.json` 为 journal，缺失即重建；仅台账运行行缺失时才重算基线/播种/写运行行，已推进批次重复启动只报告）；过期清单失败不留产物并恢复干净目录；`_optional_authority` 降级时不再打印错误 JSON；空转回执共享 `RETRY_TICK_IDLE_OUTPUTS` 常量（消除字面量漂移）；16 的 `_inspect_database` 改名公开 `inspect_database`；未使用的 `task_key` 列从迁移 89 移除；召回索引确认读时同步语义（无缺陷，文档澄清）。
+- 新增真实中途墓碑屏障测试（工作副本落墓碑 → 提交前复核拒绝 → `source_invalidated` 跳过、零失败零落地）；走查 journey 4 追加同款真实屏障断言。
+- 复跑：本票 20 项测试；`tests/profiles` 799 通过；组合 58 通过；全量 328 failed / 5732 passed / 39 skipped（`--lf` 复核失败集合无本票相关用例，无回归；+1 属 main 同族既有 flaky）；`mypy src` 141=141（712 源文件）、`ruff check .` 453=453；走查 27/27 通过（证据已更新）。验证记录的 §1 计时机制引用与 §5 模块布局已按实际代码更正。

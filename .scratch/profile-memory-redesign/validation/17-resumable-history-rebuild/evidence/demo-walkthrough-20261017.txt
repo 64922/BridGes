@@ -1,5 +1,5 @@
-画像工单 17 走查（确定性） 20261016T161403Z
-环境：conda agent / Python 3.11.15；SCHEMA_VERSION=89；临时库 .tmp/issue17-demo-20261016T161403Z
+画像工单 17 走查（确定性） 20261016T163922Z
+环境：conda agent / Python 3.11.15；SCHEMA_VERSION=89；临时库 .tmp/issue17-demo-20261016T163922Z
 
 [1] 启动与隔离：清单新鲜度、备份 + 工作副本、幂等与窗口冲突
     [PASS] 来源已变化时过期清单拒绝启动（未建立工作目录）
@@ -24,11 +24,13 @@
     [PASS] 窗口外消息零行；运行台账记录窗口下界
     [PASS] 不同窗口得到不同批次标识（同库可并存多个有界批次）
 
-[4] 版本不符拒恢复；重试耗尽如实失败；屏障跳过不算失败
+[4] 版本不符拒恢复；重试耗尽如实失败；屏障跳过不算失败；中途墓碑挡迟到写入
     [PASS] 抽取器/策略版本变化后禁止恢复旧台账（要求重新预览新批次）
     [PASS] 前置：目标与爱好两条仍在途
     终态分类：失败 1，屏障跳过 1，完成 True
     [PASS] 重试耗尽记为失败（不冒充成功水位）；屏障记为跳过（不算失败）
+    [PASS] 重整期间出现墓碑：提交前复核拒绝迟到写入，如实记为屏障跳过
+    [PASS] 被墓碑阻止的消息没有落地任何有效事实
 
 [5] 完整对账与演练：全部通过并写盘；篡改检出；来源前进仅警告
     对账：passed=True，人工条目 1/1，导出 93 表，删除演练残留 0，恢复演练 True
@@ -44,6 +46,6 @@
     [PASS] --purge 删除恢复前提与元数据（维护者显式放弃）
     [PASS] purge 后状态查询显式失败（不制造幽灵批次）
 
-运行目录（保留供复核）：D:\BridGes\.worktrees\issue17-resumable-history-rebuild\.tmp\issue17-demo-20261016T161403Z
-数据清理：确认无需复核后删除该目录（Remove-Item -LiteralPath 'D:\BridGes\.worktrees\issue17-resumable-history-rebuild\.tmp\issue17-demo-20261016T161403Z' -Recurse -Force）；其中仅含本脚本生成的合成数据。
+运行目录（保留供复核）：D:\BridGes\.worktrees\issue17-resumable-history-rebuild\.tmp\issue17-demo-20261016T163922Z
+数据清理：确认无需复核后删除该目录（Remove-Item -LiteralPath 'D:\BridGes\.worktrees\issue17-resumable-history-rebuild\.tmp\issue17-demo-20261016T163922Z' -Recurse -Force）；其中仅含本脚本生成的合成数据。
 结果：全部通过

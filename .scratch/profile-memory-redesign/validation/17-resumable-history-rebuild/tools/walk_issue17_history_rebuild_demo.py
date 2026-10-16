@@ -43,16 +43,16 @@ from bridges.config import Settings  # noqa: E402
 from bridges.profiles.automatic import RuleBasedAutomaticProfileExtractor  # noqa: E402
 from bridges.profiles.history_preview import preview_history  # noqa: E402
 from bridges.profiles.history_rebuild import (  # noqa: E402
-    ProfileRebuildError,
     cleanup_rebuild,
     rebuild_status,
-    run_rebuild,
     start_rebuild,
 )
 from bridges.profiles.history_rebuild_contracts import (  # noqa: E402
+    ProfileRebuildError,
     RebuildWindow,
     rebuild_id_for,
 )
+from bridges.profiles.history_rebuild_drive import run_rebuild  # noqa: E402
 from bridges.profiles.history_rebuild_reconcile import reconcile_rebuild  # noqa: E402
 from bridges.profiles.replay import resolve_authoritative_database  # noqa: E402
 from bridges.storage.database import SCHEMA_VERSION, BridgesDatabase  # noqa: E402
@@ -521,7 +521,7 @@ def journey_3_window(script: _Script, database_path: Path, run_dir: Path) -> Non
 
 
 def journey_4_versions_and_barriers(script: _Script, run_dir: Path) -> None:
-    script.say("[4] 版本不符拒恢复；重试耗尽如实失败；屏障跳过不算失败")
+    script.say("[4] 版本不符拒恢复；重试耗尽如实失败；屏障跳过不算失败；中途墓碑挡迟到写入")
     work = run_dir / "work-barriers"
     database_path = run_dir / "runtime" / "bridges.db"
     manifest = _preview(database_path)
@@ -588,6 +588,47 @@ def journey_4_versions_and_barriers(script: _Script, run_dir: Path) -> None:
         and progress["extracted"] == 2
         and progress["committed"] == 0,
         "重试耗尽记为失败（不冒充成功水位）；屏障记为跳过（不算失败）",
+    )
+
+    work3 = run_dir / "work-barriers3"
+    start_rebuild(_authority(database_path), manifest, work_dir=work3, now=FIXED_NOW)
+    run_rebuild(work3, extractor_factory=_rule_factory(), max_ticks=1, now=FIXED_NOW)
+    working = _open_database(work3 / "working" / "bridges.db")
+    with working.transaction():
+        working.connection.execute(
+            "INSERT INTO profile_extraction_tombstones"
+            " (account_id, message_id, created_at) VALUES (?, ?, ?)",
+            (ACCOUNT, "msg-alice-goal", TS),
+        )
+    working.close()
+
+    report = run_rebuild(
+        work3, extractor_factory=_rule_factory(), max_ticks=100, now=FIXED_NOW
+    )
+    progress = report["progress"]
+    working = _open_database(work3 / "working" / "bridges.db")
+    victim = working.connection.execute(
+        "SELECT status, skip_reason FROM profile_rebuild_items WHERE message_id = ?",
+        ("msg-alice-goal",),
+    ).fetchone()
+    leaked = working.connection.execute(
+        "SELECT COUNT(*) AS total FROM profile_items"
+        " WHERE account_id = ? AND status = 'active' AND source_message_ids_json LIKE ?",
+        (ACCOUNT, "%msg-alice-goal%"),
+    ).fetchone()
+    working.close()
+    script.check(
+        report["completed"] is True
+        and victim is not None
+        and str(victim["status"]) == "skipped"
+        and str(victim["skip_reason"]) == "source_invalidated"
+        and progress["skipped_by_reason"].get("source_invalidated") == 1
+        and progress["failed"] == 0,
+        "重整期间出现墓碑：提交前复核拒绝迟到写入，如实记为屏障跳过",
+    )
+    script.check(
+        leaked is not None and int(leaked["total"]) == 0,
+        "被墓碑阻止的消息没有落地任何有效事实",
     )
 
 
