@@ -1,8 +1,8 @@
-"""画像工单 11：v85 迁移新增按任务召回的派生向量索引。
+"""画像工单 11：v86 迁移新增按任务召回的派生向量索引。
 
 派生索引只保存条目向量的副本（可重建、不持有事实真相）：随账户删除与
-备份快照，但不进入导出类别与逻辑摘要。从 v84 升级后新表可用、重复
-初始化幂等。
+备份快照，但不进入导出类别与逻辑摘要。从 v85 升级后新表可用、重复
+初始化幂等。（画像工单 10 先行并入 main 使用了 85，本迁移顺延为 86。）
 """
 
 from __future__ import annotations
@@ -50,24 +50,24 @@ class _StubEmbeddingPort:
         return [[1.0, 0.0] for _ in texts]
 
 
-def _build_v84_database(path: Path) -> None:
+def _build_v85_database(path: Path) -> None:
     with sqlite3.connect(path) as connection:
-        for version in range(1, 85):
+        for version in range(1, 86):
             for statement in MIGRATIONS[version]:
                 connection.execute(statement)
         connection.execute(
             "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
         )
-        connection.execute("INSERT INTO schema_meta VALUES ('version', '84')")
+        connection.execute("INSERT INTO schema_meta VALUES ('version', '85')")
 
 
-def test_upgrade_from_v84_adds_recall_index_tables(tmp_path: Path) -> None:
-    path = tmp_path / "upgrade-84.db"
-    _build_v84_database(path)
+def test_upgrade_from_v85_adds_recall_index_tables(tmp_path: Path) -> None:
+    path = tmp_path / "upgrade-85.db"
+    _build_v85_database(path)
 
     database = BridgesDatabase(path)
     assert database.initialize() == SCHEMA_VERSION
-    assert SCHEMA_VERSION == 85
+    assert SCHEMA_VERSION == 86
 
     tables = {
         str(row["name"])

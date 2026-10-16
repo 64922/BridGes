@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from typing import Any
 
 from fastapi import FastAPI
 
@@ -11,11 +12,16 @@ from bridges.ai.sqlite_recorder import SqliteModelRunLockRecorder
 from bridges.ai.startup_check import log_qwen_startup_connectivity_warnings
 from bridges.ai.stream_script_fixture import ScriptedChatStreamAdapter
 from bridges.api.app_support import (
+    MATERIAL_OCR_BUSINESS_OBJECT,
+    _designated_material_reader,
+    _material_source_checker,
     _profile_memory_reader,
     _profile_neighbor_reader,
 )
+from bridges.chat.attachments_repository import AttachmentRepository
 from bridges.chat.turn import CHAT_CAPABILITY_NAME
 from bridges.closeout.fixtures import CloseoutQwenAdapter
+from bridges.contracts.ai import BusinessRef
 from bridges.profiles import (
     AutomaticProfileService,
     GatewayAutomaticProfileExtractor,
@@ -23,6 +29,29 @@ from bridges.profiles import (
     RuleBasedAutomaticProfileExtractor,
     SqliteAutomaticProfileRepository,
 )
+from bridges.retrieval.repository import RetrievalRepository
+
+
+def _material_ocr_lock_sink(recorder: SqliteModelRunLockRecorder) -> Any:
+    """把材料图片识别的运行锁持久化为可审计证据（工单 10）。
+
+    与既有 OCR 端口同一失败关闭口径：锁写入失败向上传播，材料读取按
+    「不可读」如实报告，绝不在没有审计证据时采用识别结果。
+    """
+
+    def sink(object_id: str, lock: Any) -> None:
+        recorder.record(
+            lock,
+            business_ref=BusinessRef(
+                object_type=MATERIAL_OCR_BUSINESS_OBJECT,
+                object_id=object_id,
+                operation="ocr",
+                attempt_ordinal=1,
+                is_primary=True,
+            ),
+        )
+
+    return sink
 
 
 def configure_model_services(app: FastAPI) -> None:
@@ -144,7 +173,38 @@ def configure_model_services(app: FastAPI) -> None:
             if profile_conversation_repository is not None
             else None
         ),
+        # 工单 10：指定材料的读取端口（绑定附件 + 解析分块/整图识别）。
+        # 需要数据库、会话与对象仓库同时就绪；缺一即不接线（材料指令
+        # 按找不到材料如实报告，绝不读取任何内容）。
+        material_reader=(
+            _designated_material_reader(
+                attachments=AttachmentRepository(profile_database),
+                conversations=profile_conversation_repository,
+                retrieval=RetrievalRepository(profile_database),
+                objects=getattr(app.state, "object_repository", None),
+                gateway=model_gateway,
+                ocr_lock_sink=(
+                    _material_ocr_lock_sink(
+                        SqliteModelRunLockRecorder(profile_database)
+                    )
+                    if profile_database is not None
+                    else None
+                ),
+            )
+            if profile_database is not None
+            and profile_conversation_repository is not None
+            else None
+        ),
     )
+    # 工单 10：材料据的再核验端口（绑定/对象/内容版本）在附件与对象
+    # 仓库就绪后注入原子服务；未注入时材料条目不展示片段、不进入采用。
+    if profile_database is not None:
+        app.state.atomic_profile_service.set_material_source_checker(
+            _material_source_checker(
+                AttachmentRepository(profile_database),
+                getattr(app.state, "object_repository", None),
+            )
+        )
     # Issue 02：跨重启恢复是显式启动动作，构造不再启动业务执行；
     # 恢复时刻与外部可见行为（启动时重新入队中断的抽取）保持不变。
     app.state.automatic_profile_service.recover_inflight_runs()

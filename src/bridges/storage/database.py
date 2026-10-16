@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 85
+SCHEMA_VERSION = 86
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3693,12 +3693,26 @@ MIGRATIONS: dict[int, list[str]] = {
         ADD COLUMN recurrence_json TEXT
         """,
     ],
+    # 画像工单 10：指定材料的来源据（对象、绑定消息/会话、版本、定位与已核验
+    # 片段）。既有行以空列表启始（没有材料据不改变任何事实）；材料删除或
+    # 权限失效后按来源核验失效，派生采用同步排除、片段不再展示。
+    85: [
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN source_materials_json TEXT NOT NULL DEFAULT '[]'
+        """,
+        """
+        ALTER TABLE profile_extraction_runs
+        ADD COLUMN run_kind TEXT NOT NULL DEFAULT 'ordinary'
+        """,
+    ],
     # 画像工单 11：按任务召回的派生索引（关键词与向量两路共用的向量副本行）。
     # 索引是可重建派生数据，不持有独立事实真相：版本行固定向量模型/维度/
     # 规范化/召回合同（主模型切换不影响本索引），条目行按（条目、版本、
     # 正文哈希）记录当前向量；删除条目、重建索引或合同变化都不会复活旧值。
     # 派生数据随账户删除与备份，不进导出（导出边界由 lifecycle.catalog 说明）。
-    85: [
+    # （画像工单 10 先行并入 main 使用了 85，本迁移顺延为 86。）
+    86: [
         """
         CREATE TABLE IF NOT EXISTS profile_recall_index_versions (
             version_id TEXT PRIMARY KEY,
@@ -4135,6 +4149,7 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "topics_json",
         "usage_purpose",
         "recurrence_json",
+        "source_materials_json",
     }),
     "profile_item_migrations": frozenset({
         "run_id",
@@ -4218,6 +4233,7 @@ MIGRATION_ADDED_COLUMNS: dict[str, frozenset[str]] = {
         "source_quotes_json",
         "usage_purpose",
         "recurrence_json",
+        "source_materials_json",
     }),
     "profile_item_migrations": frozenset({"identity_backfilled"}),
     # Issue 06：v76 为用户控制状态与撤回标记补加列。

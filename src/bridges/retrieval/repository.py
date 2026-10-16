@@ -269,6 +269,33 @@ class RetrievalRepository:
         ).fetchone()
         return cast(sqlite3.Row | None, row)
 
+    def material_segments(
+        self, account_id: str, *, object_id: str, limit: int = 200
+    ) -> list[sqlite3.Row]:
+        """返回材料对象解析完成的文本分块（页序优先，含章节与片段序号）。
+
+        工单 10：指定材料读取只取当前账户、仍活跃且解析就绪的文档分块；
+        未就绪、已删除或跨账户的对象返回空列表（调用方按材料自身状态
+        如实报告，不伪造内容）。``document_chunks``/``document_records``
+        属检索/摄取域，本方法即该域的只读入口。
+        """
+
+        return list(
+            self._database.scoped(account_id).execute(
+                "SELECT ch.content, ch.page_number, ch.section_title,"
+                " ch.chunk_index"
+                " FROM document_records r"
+                " JOIN document_chunks ch ON ch.document_id = r.document_id"
+                " AND ch.account_id = r.account_id"
+                " JOIN objects o ON o.object_id = r.object_id"
+                " AND o.account_id = r.account_id AND o.status = 'active'"
+                " WHERE r.account_id = ? AND r.object_id = ?"
+                " AND r.status = 'ready'"
+                " ORDER BY ch.chunk_index LIMIT ?",
+                (account_id, object_id, limit),
+            ).fetchall()
+        )
+
     def attachment_original_segments(
         self, account_id: str, conversation_id: str, round_id: str, *, limit: int = 3,
         page_number: int | None = None, section_title: str | None = None,

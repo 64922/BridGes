@@ -63,6 +63,9 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileItemModifyRequest,
     AtomicProfileItemProjection,
     AtomicProfileItemStatus,
+    AtomicProfileMaterialEvidence,
+    AtomicProfileMaterialSource,
+    AtomicProfileMaterialSourceStatus,
     AtomicProfileMemoryBlockedReason,
     AtomicProfileMemoryKind,
     AtomicProfileMemoryResult,
@@ -111,6 +114,10 @@ from bridges.profiles.four_dimensions import (
     FourDimensionProfileService,
     confidence_rank,
     is_recallable_confidence,
+)
+from bridges.profiles.materials import (
+    RECALL_MATERIAL_INVALID_REASON,
+    RECALL_MATERIAL_UNVERIFIABLE_REASON,
 )
 from bridges.profiles.purpose import (
     DECISION_REVIEW_HISTORY,
@@ -1696,6 +1703,10 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 str(key): str(value)
                 for key, value in json.loads(str(row["source_quotes_json"])).items()  # type: ignore[index]
             },
+            source_materials=[
+                AtomicProfileMaterialSource.model_validate(entry)
+                for entry in json.loads(str(row["source_materials_json"]))  # type: ignore[index]
+            ],
             topic_hint=(
                 str(row["topic_hint"])  # type: ignore[index]
                 if row["topic_hint"] is not None  # type: ignore[index]
@@ -1749,11 +1760,11 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "recurrence_json, goal_state, "
             "supersedes_id, superseded_by_id, source_record_id, "
             "source_message_ids_json, source_quotes_json, topic_hint, topics_json, "
-            "usage_purpose, status, write_origin, "
+            "usage_purpose, source_materials_json, status, write_origin, "
             "confidence, version, created_at, updated_at, user_edited_at, migration_run_id, "
             "retired_reason, conflict_state) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(profile_item_id) DO UPDATE SET text = excluded.text, "
             "identity_key = excluded.identity_key, fact_subject = excluded.fact_subject, "
             "fact_relation = excluded.fact_relation, fact_object = excluded.fact_object, "
@@ -1770,6 +1781,7 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "source_record_id = excluded.source_record_id, "
             "source_message_ids_json = excluded.source_message_ids_json, "
             "source_quotes_json = excluded.source_quotes_json, "
+            "source_materials_json = excluded.source_materials_json, "
             "topic_hint = excluded.topic_hint, topics_json = excluded.topics_json, "
             "usage_purpose = excluded.usage_purpose, "
             "status = excluded.status, "
@@ -1805,6 +1817,13 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 item.topic_hint,
                 json.dumps(item.topics, ensure_ascii=False),
                 item.usage_purpose,
+                json.dumps(
+                    [
+                        source.model_dump(mode="json")
+                        for source in item.source_materials
+                    ],
+                    ensure_ascii=False,
+                ),
                 item.status.value,
                 item.write_origin.value,
                 item.confidence.value,
@@ -2122,6 +2141,10 @@ class AtomicProfileService:
         message_reader: ProfileEvidenceSourceReader | None = None,
         observability_service: ObservabilityService | None = None,
         recall_index: ProfileRecallIndexPort | None = None,
+        material_source_checker: Callable[
+            [str, AtomicProfileMaterialSource], AtomicProfileMaterialSourceStatus
+        ]
+        | None = None,
     ) -> None:
         self._four_dimensions = four_dimensions
         self._repository = repository
@@ -2132,6 +2155,10 @@ class AtomicProfileService:
         # 画像工单 11：语义召回派生索引在组合根注入（需要数据库与向量端口）；
         # 未注入时只走关键词与任务规则通道，本票不把它计为生产降级。
         self._recall_index = recall_index
+        # 画像工单 10：材料据的再核验端口（绑定与对象仍有效、内容版本一致）。
+        # 未注入时视为无法核验：不展示材料片段，采用时按「无法核验」排除，
+        # 绝不假装材料仍然存在。
+        self._material_source_checker = material_source_checker
         # 改进工单 18：撤回传播的消费方（摘要等派生物失效）在组合根注入；
         # 未注入时撤回本身照常成立，只是没有下游通知。
         self._revocation_listener: ProfileRevocationListener | None = None
@@ -2154,6 +2181,21 @@ class AtomicProfileService:
         """挂载/替换撤回传播监听（组合根在摘要服务就绪后注入）。"""
 
         self._revocation_listener = listener
+
+    def set_material_source_checker(
+        self,
+        checker: Callable[
+            [str, AtomicProfileMaterialSource], AtomicProfileMaterialSourceStatus
+        ]
+        | None,
+    ) -> None:
+        """挂载/替换材料据再核验端口（工单 10）。
+
+        组合根在附件与对象仓库就绪后注入；未挂载时材料片段不展示、
+        材料条目不进入采用（按「无法核验」处理）。
+        """
+
+        self._material_source_checker = checker
 
     @staticmethod
     def _revocation_version_for(items: Iterable[AtomicProfileItem]) -> str:
@@ -2364,6 +2406,7 @@ class AtomicProfileService:
             self.feedback_projection(entry)
             for entry in self._repository.list_feedback(account_id, item_id)
         ]
+        material_sources = self._material_evidence_sources(account_id, item)
         evidence_quote = item.evidence_quote
         has_matching_source = any(
             source.status == AtomicProfileEvidenceSourceStatus.AVAILABLE
@@ -2400,8 +2443,75 @@ class AtomicProfileService:
             evidence_quote=evidence_quote,
             evidence_quote_status=evidence_quote_status,
             sources=sources,
+            material_sources=material_sources,
             feedback=feedback,
         )
+
+    def _material_evidence_sources(
+        self, account_id: str, item: AtomicProfileItem
+    ) -> list[AtomicProfileMaterialEvidence]:
+        """材料据的按需投影：片段只在材料仍可核验时展示（工单 10）。
+
+        材料被删除、权限失效或内容版本变化后不再回传保存的片段（标为
+        ``source_unavailable``）；未接线核验端口时按不可核验处理，与消息
+        来源「不可读」的既有语义一致，绝不伪造引语。
+        """
+
+        projections: list[AtomicProfileMaterialEvidence] = []
+        for source in item.source_materials:
+            if self._material_source_checker is None:
+                status = AtomicProfileMaterialSourceStatus.UNREADABLE
+            else:
+                status = self._material_source_checker(account_id, source)
+            quote = None
+            if source.quote and status == AtomicProfileMaterialSourceStatus.AVAILABLE:
+                quote = source.quote
+                quote_status = AtomicProfileEvidenceQuoteStatus.RECORDED
+            elif source.quote:
+                quote_status = AtomicProfileEvidenceQuoteStatus.SOURCE_UNAVAILABLE
+            else:
+                quote_status = AtomicProfileEvidenceQuoteStatus.NOT_RECORDED
+            projections.append(
+                AtomicProfileMaterialEvidence(
+                    object_id=source.object_id,
+                    message_id=source.message_id,
+                    conversation_id=source.conversation_id,
+                    filename=source.filename,
+                    media_type=source.media_type,
+                    locator=source.locator,
+                    status=status,
+                    quote=quote,
+                    quote_status=quote_status,
+                )
+            )
+        return projections
+
+    def _material_exclusion(self, account_id: str, item: AtomicProfileItem) -> str | None:
+        """材料门（工单 10）：全部材料据都不可得时返回稳定排除原因。
+
+        只要还有一条材料据可核验，事实仍由现存材料支撑；用户编辑过的条目
+        以用户权威为准，不受材料失效影响（与消息来源失效的既有口径一致）。
+        排除原因只表达「暂不采用」，条目不因此被删除。
+        """
+
+        if not item.source_materials or item.user_edited_at is not None:
+            return None
+        if self._material_source_checker is None:
+            return RECALL_MATERIAL_UNVERIFIABLE_REASON
+        statuses = [
+            self._material_source_checker(account_id, source)
+            for source in item.source_materials
+        ]
+        if any(
+            status == AtomicProfileMaterialSourceStatus.AVAILABLE
+            for status in statuses
+        ):
+            return None
+        if all(
+            status == AtomicProfileMaterialSourceStatus.DELETED for status in statuses
+        ):
+            return RECALL_MATERIAL_INVALID_REASON
+        return RECALL_MATERIAL_UNVERIFIABLE_REASON
 
     def _evidence_source(
         self,
@@ -3244,6 +3354,9 @@ class AtomicProfileService:
             for fragment in fact.evidence_fragments
             if normalize_text(fragment.quote)
         )
+        # 工单 10：指定材料的来源据（调用方已完成读取与引用核验；这里只
+        # 规范化坐标与片段，绝不凭空补材料）。
+        material_sources = tuple(fact.material_sources)
         source_quotes: dict[str, str] = {}
         if evidence_quote and fact.evidence_message_id:
             source_quotes[fact.evidence_message_id] = evidence_quote
@@ -3303,6 +3416,7 @@ class AtomicProfileService:
                     evidence_message_id=fact.evidence_message_id,
                     evidence_quote=evidence_quote,
                     evidence_fragments=evidence_fragments,
+                    material_sources=material_sources,
                     source_quotes=source_quotes,
                     confidence=fact.confidence,
                     validity=window,
@@ -3356,6 +3470,7 @@ class AtomicProfileService:
                     )
                 ),
                 source_quotes=dict(source_quotes),
+                source_materials=list(material_sources),
                 topic_hint=(
                     fact.dimension.value if fact.dimension is not None else None
                 ),
@@ -3710,6 +3825,16 @@ class AtomicProfileService:
                         profile_item_id=item.profile_item_id,
                         fact_text=item.text,
                         exclusion_reason=gate_reason,
+                    )
+                )
+                continue
+            material_gate_reason = self._material_exclusion(account_id, item)
+            if material_gate_reason is not None:
+                exclusions.append(
+                    ProfileSliceExclusion(
+                        profile_item_id=item.profile_item_id,
+                        fact_text=item.text,
+                        exclusion_reason=material_gate_reason,
                     )
                 )
                 continue
@@ -4394,6 +4519,7 @@ class AtomicProfileService:
         anchor: datetime | None,
         now: datetime,
         recurrence: AtomicProfileRecurrence | None = None,
+        material_sources: tuple[AtomicProfileMaterialSource, ...] = (),
     ) -> AtomicProfileItem:
         """同一事实再次出现：补充来源、证据、主题与把握度，不产生副本。
 
@@ -4401,6 +4527,8 @@ class AtomicProfileService:
         或新周期安排时才按新锚/新表达更新。用户编辑过的条目（``user_edited_at``
         非空）不再被自动写入追加主题，避免自动噪声混进用户选择的主题。工单 05：
         跨轮来源消息与其原话片段一并并入，逐来源原话只在来源中真实出现。
+        工单 10：材料据按「对象 + 绑定消息 + 页序」并入，同一材料的新版本
+        坐标与片段替换旧版本；不同材料并存。
         """
 
         new_source_ids = (
@@ -4411,6 +4539,16 @@ class AtomicProfileService:
             item.source_message_ids = list(
                 dict.fromkeys([*item.source_message_ids, *new_source_ids])
             )
+        if material_sources:
+            merged_materials: dict[tuple[str, str, int], AtomicProfileMaterialSource] = {
+                (source.object_id, source.message_id, source.ordinal): source
+                for source in item.source_materials
+            }
+            for source in material_sources:
+                merged_materials[(source.object_id, source.message_id, source.ordinal)] = (
+                    source
+                )
+            item.source_materials = list(merged_materials.values())
         if item.topic_hint is None and dimension is not None:
             item.topic_hint = dimension.value
         item.text = text

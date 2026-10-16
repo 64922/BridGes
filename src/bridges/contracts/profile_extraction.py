@@ -14,8 +14,23 @@ from pydantic import (
     field_validator,
 )
 
-from bridges.contracts.atomic_profile import AtomicProfileMemoryResult
+from bridges.contracts.atomic_profile import (
+    AtomicProfileMaterialResult,
+    AtomicProfileMemoryResult,
+)
 from bridges.contracts.profiles import FourDimension
+
+
+class ProfileExtractionKind(StrEnum):
+    """一条提取 run 的处理合同种类（工单 10）。
+
+    ``ORDINARY``：按用户消息文本做语义提取（既有合同）；
+    ``MATERIAL``：用户明确指定材料更新画像——先确认解析完成，再读取材料
+    片段提取，证据指向材料定位而非消息原话。
+    """
+
+    ORDINARY = "ordinary"
+    MATERIAL = "material"
 
 
 class ProfileExtractionSource(StrEnum):
@@ -37,6 +52,8 @@ PROFILE_SOURCE_LABELS: dict[ProfileExtractionSource, str] = {
 #: 输出载荷合同版本：工单 04 起 dimension 可选、允许开放事实与相关记忆；
 #: 工单 05 起允许 ``evidence_fragments``（跨轮多片段证据）。
 PROFILE_EXTRACTION_OUTPUT_SCHEMA_VERSION = "profile-extraction-v4"
+#: 工单 10：指定材料提取的输出合同（主体判定 + 材料定位引用）。
+PROFILE_MATERIAL_OUTPUT_SCHEMA_VERSION = "profile-material-extraction-v1"
 #: 网关适配器识别为画像专属合同错误的输出合同版本（历史版本继续识别，
 #: 新增版本必须同步加入，否则合同错误码会漂移为通用结构化输出错误）。
 PROFILE_EXTRACTION_CONTRACT_VERSIONS = frozenset(
@@ -45,6 +62,7 @@ PROFILE_EXTRACTION_CONTRACT_VERSIONS = frozenset(
         "profile-extraction-v2",
         "profile-extraction-v3",
         PROFILE_EXTRACTION_OUTPUT_SCHEMA_VERSION,
+        PROFILE_MATERIAL_OUTPUT_SCHEMA_VERSION,
     }
 )
 
@@ -96,6 +114,9 @@ class ProfileExtractionOutcome(StrEnum):
     #: 画像工单 09：明确要求保存被隐私门拒绝（凭据或敏感缺少用途）。
     #: 指令被确定性处理完成、如实未保存；不重试、不落长期存储。
     SUCCEEDED_MEMORY_UNRESOLVED = "succeeded_memory_unresolved"
+    #: 画像工单 10：指定材料处理完成但材料不可用（解析无文字/解析失败/
+    #: 主体不明等）。已如实记录结果，不重试、不写入任何候选。
+    SUCCEEDED_MATERIAL_UNRESOLVED = "succeeded_material_unresolved"
     SUCCEEDED_LIFECYCLE_SIGNAL = "succeeded_lifecycle_signal"
     #: 画像工单 08：本轮明确要求不使用长期画像；控制消息不进入自动抽取。
     SUCCEEDED_TURN_CONTROL = "succeeded_turn_control"
@@ -282,6 +303,82 @@ class ProfileExtractionOutput(BaseModel):
     items: list[ProfileExtractionItem] = Field(max_length=6)
 
 
+class ProfileMaterialSubject(StrEnum):
+    """材料整体主体判定（工单 10）。
+
+    ``USER``：可确认材料描述的是用户本人；``OTHER``：材料描述的是明确
+    的第三人，所有候选弃用；``UNCLEAR``：无法确认主体，如实报告、零写入。
+    """
+
+    USER = "user"
+    OTHER = "other"
+    UNCLEAR = "unclear"
+
+
+class ProfileMaterialExtractionItem(BaseModel):
+    """材料提取的单条候选（工单 10）。
+
+    与普通抽取的差别：证据指向材料定位（``material_ref`` + 原话片段），
+    不是聊天消息；服务端按材料读取结果逐条核验原话，定位失败或重复
+    无法消歧的候选零写入。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    dimension: FourDimension | None = Field(
+        default=None,
+        description="四维解析提示（可选）；开放事实为空。",
+    )
+    material_ref: StrictStr = Field(
+        min_length=1, max_length=200, description="候选依据的材料对象标识。"
+    )
+    normalized_value: StrictStr = Field(
+        min_length=1,
+        max_length=200,
+        description="规范值锚点，必须是材料原话中真实出现的连续片段。",
+    )
+    evidence_quote: StrictStr = Field(
+        min_length=1,
+        max_length=300,
+        description="材料中支持结论的原话片段（精确子串，须唯一出现）。",
+    )
+    reliability: StrictFloat = Field(ge=0, le=1, description="内部可靠度。")
+    action: ProfileExtractionAction = Field(
+        description="create/update/observe/ignore。"
+    )
+    fact_text: str | None = Field(
+        default=None,
+        max_length=500,
+        description=(
+            "完整事实正文（可选）。允许规范化改写，但不得引入材料原话没有"
+            "的主体、时间、条件或对象。"
+        ),
+    )
+
+    @field_validator("material_ref", "normalized_value", "evidence_quote", mode="before")
+    @classmethod
+    def _require_string(cls, value: object) -> object:
+        if not isinstance(value, str):
+            raise ValueError("profile material extraction text fields must be strings")
+        return value
+
+    @field_validator("reliability", mode="before")
+    @classmethod
+    def _require_number(cls, value: object) -> object:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("profile material extraction reliability must be a number")
+        return value
+
+
+class ProfileMaterialExtractionOutput(BaseModel):
+    """材料提取器唯一允许返回的结构化载荷（工单 10）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    subject: ProfileMaterialSubject
+    items: list[ProfileMaterialExtractionItem] = Field(default_factory=list, max_length=12)
+
+
 class ProfileExtractionRun(BaseModel):
     """消息级幂等预处理记录。"""
 
@@ -297,6 +394,13 @@ class ProfileExtractionRun(BaseModel):
     committed_record_ids: list[str] = Field(default_factory=list)
     observed_count: int = Field(default=0, ge=0)
     last_error: str | None = None
+    run_kind: ProfileExtractionKind = Field(
+        default=ProfileExtractionKind.ORDINARY,
+        description=(
+            "工单 10：该 run 的处理合同种类。材料指令创建 MATERIAL run，"
+            "在解析完成前保持等待；普通消息保持 ORDINARY。"
+        ),
+    )
     source: ProfileExtractionSource | None = Field(
         default=None,
         description=(
@@ -360,6 +464,10 @@ class ProfilePreprocessResult(BaseModel):
     memory: AtomicProfileMemoryResult | None = Field(
         default=None,
         description="本轮同步处理的「记住／忘掉」结果；没有指令时为空。",
+    )
+    material: AtomicProfileMaterialResult | None = Field(
+        default=None,
+        description="工单 10：本轮「据指定材料更新画像」的同步结果；没有指令时为空。",
     )
 
 

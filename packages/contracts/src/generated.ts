@@ -7801,6 +7801,11 @@ export interface components {
              */
             sources?: components["schemas"]["AtomicProfileEvidenceSource"][];
             /**
+             * Material Sources
+             * @description 工单 10：材料据定位与当前可得状态（失效时不回传片段）。
+             */
+            material_sources?: components["schemas"]["AtomicProfileMaterialEvidence"][];
+            /**
              * Feedback
              * @description 该条目已有的反馈（按时间倒序）。
              */
@@ -7929,6 +7934,68 @@ export interface components {
              */
             conflict_state: components["schemas"]["AtomicProfileConflictState"];
         };
+        /**
+         * AtomicProfileMaterialEvidence
+         * @description 一条材料据的按需展开投影（工单 10）。
+         *
+         *     只有材料绑定与内容版本仍可核验时才展示保存的片段；材料被删除或
+         *     权限失效时不回传副本，如实标注状态。
+         */
+        AtomicProfileMaterialEvidence: {
+            /**
+             * Object Id
+             * @description 材料对象标识。
+             */
+            object_id: string;
+            /**
+             * Message Id
+             * @description 绑定该材料的消息标识。
+             */
+            message_id: string;
+            /**
+             * Conversation Id
+             * @description 材料所在会话标识。
+             */
+            conversation_id: string;
+            /**
+             * Filename
+             * @description 材料文件名。
+             * @default
+             */
+            filename: string;
+            /**
+             * Media Type
+             * @description 材料媒体类型。
+             * @default
+             */
+            media_type: string;
+            /**
+             * Locator
+             * @description 人类可读定位（页码/章节或整图）。
+             */
+            locator: string;
+            /** @description 当前可得状态。 */
+            status: components["schemas"]["AtomicProfileMaterialSourceStatus"];
+            /**
+             * Quote
+             * @description 仍可核验的原话片段；失效或未记录时为空。
+             */
+            quote?: string | null;
+            /**
+             * @description 材料片段的展示状态。
+             * @default not_recorded
+             */
+            quote_status: components["schemas"]["AtomicProfileEvidenceQuoteStatus"];
+        };
+        /**
+         * AtomicProfileMaterialSourceStatus
+         * @description 一条已保存材料引用的当前可得状态（工单 10）。
+         *
+         *     ``AVAILABLE``：绑定与对象仍有效且内容版本一致；``DELETED``：材料被
+         *     删除或权限失效；``UNREADABLE``：当前无法核验（未接线读取）。
+         * @enum {string}
+         */
+        AtomicProfileMaterialSourceStatus: "available" | "deleted" | "unreadable";
         /**
          * AtomicProfileMigrationReport
          * @description 账户级原子化迁移报告；只含计数、标识与对账摘要，不含正文。

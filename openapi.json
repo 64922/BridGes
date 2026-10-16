@@ -30075,6 +30075,14 @@
             "title": "Sources",
             "description": "来源消息定位与可得状态。"
           },
+          "material_sources": {
+            "items": {
+              "$ref": "#/components/schemas/AtomicProfileMaterialEvidence"
+            },
+            "type": "array",
+            "title": "Material Sources",
+            "description": "工单 10：材料据定位与当前可得状态（失效时不回传片段）。"
+          },
           "feedback": {
             "items": {
               "$ref": "#/components/schemas/AtomicProfileFeedbackProjection"
@@ -30332,6 +30340,84 @@
         ],
         "title": "AtomicProfileItemProjection",
         "description": "原子画像页面投影：无类别、无分组、无内部哈希。"
+      },
+      "AtomicProfileMaterialEvidence": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "材料对象标识。"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "绑定该材料的消息标识。"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "材料所在会话标识。"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "材料文件名。",
+            "default": ""
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type",
+            "description": "材料媒体类型。",
+            "default": ""
+          },
+          "locator": {
+            "type": "string",
+            "title": "Locator",
+            "description": "人类可读定位（页码/章节或整图）。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AtomicProfileMaterialSourceStatus",
+            "description": "当前可得状态。"
+          },
+          "quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote",
+            "description": "仍可核验的原话片段；失效或未记录时为空。"
+          },
+          "quote_status": {
+            "$ref": "#/components/schemas/AtomicProfileEvidenceQuoteStatus",
+            "description": "材料片段的展示状态。",
+            "default": "not_recorded"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "object_id",
+          "message_id",
+          "conversation_id",
+          "locator",
+          "status"
+        ],
+        "title": "AtomicProfileMaterialEvidence",
+        "description": "一条材料据的按需展开投影（工单 10）。\n\n只有材料绑定与内容版本仍可核验时才展示保存的片段；材料被删除或\n权限失效时不回传副本，如实标注状态。"
+      },
+      "AtomicProfileMaterialSourceStatus": {
+        "type": "string",
+        "enum": [
+          "available",
+          "deleted",
+          "unreadable"
+        ],
+        "title": "AtomicProfileMaterialSourceStatus",
+        "description": "一条已保存材料引用的当前可得状态（工单 10）。\n\n``AVAILABLE``：绑定与对象仍有效且内容版本一致；``DELETED``：材料被\n删除或权限失效；``UNREADABLE``：当前无法核验（未接线读取）。"
       },
       "AtomicProfileMigrationReport": {
         "properties": {
