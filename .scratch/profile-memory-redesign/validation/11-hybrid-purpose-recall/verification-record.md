@@ -1,7 +1,9 @@
 # 11 — 按任务召回记忆并追踪回答用途：验证记录
 
-**分支：** `codex/issue-11-hybrid-purpose-recall`（基点 `fff98a9d`，main；验证后
-已并入 `main@5709a0f6` 的 16 票改动，合并无冲突）。
+**分支：** `codex/issue-11-hybrid-purpose-recall`（基点 `fff98a9d`，main；验证过程
+中先后并入 `main@5709a0f6` 的 16 票改动与 `main@6b1545e7` 的工单 10 改动。
+工单 10 合并冲突两处已解决：`atomic.py` 构造参数两票并存、`database.py` 迁移
+号冲突顺延——工单 10 先行占用 85，本票派生索引迁移由 85 改为 86）。
 **环境：** conda `agent`（Python 3.11.15）；确定性走查（本机规则 + 真实
 SQLite 存储 + 真实原子画像服务，不调用外部模型）+ 真实向量探针
 （development 模式 + OS 凭据库，仅第 6 小节；无凭据/网络不稳时如实跳过而不
@@ -26,7 +28,7 @@ SQLite 存储 + 真实原子画像服务，不调用外部模型）+ 真实向�
 | 本轮明确要求覆盖长期默认但不改写长期记忆，新主题事实同样可被召回 | `::test_explicit_request_still_overrides_semantic_default`（覆盖且版本不变）；`::test_semantic_channel_recalls_paraphrase_and_keeps_unrelated_out`（新主题约束经语义进入候选）；走查 [2] |
 | 采用记录对应真正发送的上下文，不记录一套而使用另一套 | `tests/chat/test_issue11_recall_adoption_record.py::test_trimmed_adoption_record_matches_sent_block`（预算整条裁剪后记录=载荷）；`::test_final_gate_drop_rewrites_adoption_record_only`（最终门整体未采用 → 记录改写为未采用、冻结快照保留）；`test_improvement22_unified_profile_expression.py::test_chat_policy_failure_drops_profile_and_updates_disclosure`（两键一并清除）；走查 [5] |
 | 删除、改用途、关闭使用和账户切换同时约束关键词、向量、缓存及发送前切片 | `::test_deleted_item_leaves_index_and_rebuild_does_not_resurrect`（删除即移除索引行）；`::test_index_is_account_isolated`（账户隔离）；发送前撤回竞态沿用 `test_improvement22::test_delete_between_compilation_and_send_drops_adopted_rules`、改用途/关闭使用沿用 07/08/09 既有测试（本票未改语义，全部通过）；走查 [4] |
-| 索引重建和故障恢复不复活旧条目，派生数据纳入导出边界说明及账户删除 | `tests/storage/test_schema_v85_profile_recall_index.py::test_recall_index_is_derived_account_scoped_and_backup_visible`（不进导出类别与逻辑摘要、备份含行、删除清空、删除顺序先于 `profile_items`）；`::test_deleted_item_leaves_index_and_rebuild_does_not_resurrect`（墓碑重建不复活）；`lifecycle/catalog.py` 模块 docstring 与登记注释说明派生数据边界 |
+| 索引重建和故障恢复不复活旧条目，派生数据纳入导出边界说明及账户删除 | `tests/storage/test_schema_v86_profile_recall_index.py::test_recall_index_is_derived_account_scoped_and_backup_visible`（不进导出类别与逻辑摘要、备份含行、删除清空、删除顺序先于 `profile_items`）；`::test_deleted_item_leaves_index_and_rebuild_does_not_resurrect`（墓碑重建不复活）；`lifecycle/catalog.py` 模块 docstring 与登记注释说明派生数据边界 |
 | 不默认发送完整概览，预算不足优先舍弃低相关条目而非删关键条件 | `::test_budget_prefers_rule_constraint_over_semantic_candidates`（tier0 约束保留、语义候选超额整条排除）；既有切片预算测试（`test_improvement19::test_long_item_is_excluded_whole_when_budget_is_tight` 等）继续通过 |
 
 ## 2. 确定性走查（最终代码，20261016）
@@ -67,21 +69,23 @@ SQLite 存储 + 真实原子画像服务，不调用外部模型）+ 真实向�
   记录=载荷；最终门整体未采用 → 记录改写为「最终输入预算不足，本轮未采用」
   且冻结快照保留；降级披露含「语义召回暂不可用」+ 审计 `recall_degraded`；
   降级且未命中时披露不得说成「没有与你当前任务匹配」。
-- 新增 `tests/storage/test_schema_v85_profile_recall_index.py`（2 项）：v84 →
-  v85 建表建索引、列齐全、重复初始化幂等；派生索引不进导出/逻辑摘要、备份
-  可见、删除清空、ACCOUNT_TABLES 顺序先于 `profile_items`。
+- 新增 `tests/storage/test_schema_v86_profile_recall_index.py`（2 项）：v85 →
+  v86 建表建索引、列齐全、重复初始化幂等；派生索引不进导出/逻辑摘要、备份
+  可见、删除清空、ACCOUNT_TABLES 顺序先于 `profile_items`。（工单 10 先行
+  并入 main 占用 85，本票迁移顺延为 86。）
 - 既有测试更新（责任票行为变化）：`tests/evaluation/test_profile_baseline_journey_runner.py`
   （`recall-academic-control` 由 known_failing 转 pass，改名断言采用条目与
   basis）；`tests/chat/test_improvement19_purpose_aware_slice.py`（编译策略版本
   1.1 → 1.2）；`tests/chat/test_improvement22_unified_profile_expression.py`
   （策略失败同时清除 `adopted_profile_slice_compiled`）。
-- 聚焦（合并 main@5709a0f6 后）：`pytest tests/profiles tests/storage` →
-  **830 通过**；`pytest tests/chat/{test_issue11_recall_adoption_record,
+- 聚焦（最终合并态 main@6b1545e7）：`pytest tests/profiles tests/storage` →
+  **847 通过**（含工单 10 测试）；`pytest tests/chat/{test_issue11_recall_adoption_record,
   test_improvement19_purpose_aware_slice, test_improvement22_unified_profile_expression,
   test_issue07_review_history_injection, test_issue08_turn_control_and_pre_send_controls}
-  tests/evaluation/test_profile_baseline_journey_runner.py` → **44 通过**。
-- 全量（与 main 同命令 `-n 4 --ignore=tests/career_plan`；分支为合并后代码）：
-  - 分支：**327 failed / 5617 passed / 39 skipped**；main@5709a0f6：
+  tests/profiles/test_issue10_requested_material_memory.py
+  tests/evaluation/test_profile_baseline_journey_runner.py` → **61 通过**。
+- 全量（与 main 同命令 `-n 4 --ignore=tests/career_plan`；工作树最终合并态）：
+  - 分支：**327 failed / 5634 passed / 39 skipped**；main@6b1545e7：
     **329 failed / 5615 passed / 37 skipped**。
   - 逐条差集：**分支独有失败 0**。main 独有失败 2 项为
     `tests/closeout/test_api_boot.py` 环境性 flaky（06/08/09 记录同现象）；
@@ -126,9 +130,10 @@ SQLite 存储 + 真实原子画像服务，不调用外部模型）+ 真实向�
   「没有与你当前任务匹配」）；审计新增 `recall_degraded`/`recall_index_version`。
 - 组合根 `api/app_setup_knowledge.py`：复用同一全局固定 Embedding 端口构造
   `ProfileRecallIndex` 并注入原子画像服务（主模型切换不影响本索引）。
-- 存储 `storage/database.py`：迁移 85 建 `profile_recall_index_versions` /
-  `profile_recall_index_entries`（+账户索引），`SCHEMA_VERSION` 84 → 85；
-  `REQUIRED_TABLES`/`REQUIRED_INDEXES`/`REQUIRED_TABLE_COLUMNS` 登记。
+- 存储 `storage/database.py`：迁移 86（工单 10 先行占用 85，本票顺延）建
+  `profile_recall_index_versions` / `profile_recall_index_entries`（+账户
+  索引），`SCHEMA_VERSION` 85 → 86；`REQUIRED_TABLES`/`REQUIRED_INDEXES`/
+  `REQUIRED_TABLE_COLUMNS` 登记。
 - 生命周期 `lifecycle/catalog.py`：两表进 `ACCOUNT_TABLES`（先于
   `profile_items` 删除）；派生数据不进导出类别与逻辑摘要（边界见模块
   docstring），随账户删除与备份快照。
