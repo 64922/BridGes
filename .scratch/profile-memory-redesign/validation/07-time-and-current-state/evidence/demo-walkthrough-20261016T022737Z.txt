@@ -1,0 +1,59 @@
+[0] development 装配 + 真实模型（聊天/抽取）；凭据来自操作系统凭据库
+    产品时区：Asia/Shanghai；运行目录：D:\BridGes\.worktrees\07-time-and-current-state\.tmp\issue07-demo-79ba657a
+
+[1] 相对日期按 Asia/Shanghai 解释、周期安排结构化落库（真实模型）
+  用户：我下周要参加英语六级考试。
+    助手（status=done）：'收到。六级在即，这周是最后的冲刺期。\n\n既然没有额外要求，我不做长篇大论的复习规划。如果你需要，我可以随时配合你做这几件事：\n1. **作文/翻译批改**：你发内容，我提供修改建议和更地道的表达。\n2. **长难句解析**：遇到读不懂的阅读句子，发给我拆解结构。\n3. **高频词/搭配确认**：不确定某个词的用法或近义'
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_written error=None
+    落库条目：
+      [active] '我下周要参加英语六级考试。' v1 依据1条（goal_state=active；phrase=下周；valid_until=2026-10-25T15:59:59+00:00）
+    检查：时间表达='下周' 锚（本地）=2026-10-16T10:27:45+08:00 窗口（本地）=2026-10-19T00:00:00+08:00→2026-10-25T23:59:59+08:00
+    检查：窗口与按锚重解析一致=True（解析一次、不随使用重解释）
+  用户：我每周三晚上去实验室做实验。
+    助手（status=done）：'明白了。周三晚上的实验安排可能会占用不少精力，备考时记得把这段时间预留出来，避免和复习计划冲突。\n\n如果实验间隙有碎片时间，或者做完实验想放松一下脑子，随时可以找我练练英语语感，或者聊聊实验中的趣事。'
+    提取 run：source=qwen_model status=succeeded outcome=succeeded_written error=None
+    周期条目：
+      [active] '我每周三晚上去实验室做实验。' v1 依据1条（goal_state=active；recurrence=每周三晚上）
+      [active] '我下周要参加英语六级考试。' v1 依据1条（goal_state=active；phrase=下周；valid_until=2026-10-25T15:59:59+00:00）
+    检查：周期=kind=<AtomicProfileRecurrenceKind.WEEKLY: 'weekly'> weekdays=(2,) time_of_day='晚上' phrase='每周三晚上' 无期限=True
+    证据投影：recurrence_phrase='每周三晚上' validity_status=unbounded
+
+[2] 生命周期定位：暂停/恢复只命中唯一目标，恢复不续期（真实聊天管道）
+    种子目标：'我计划下周考六级' 窗口=2026-10-19 00:00:00+08:00→2026-10-25 23:59:59+08:00（按下周=本地自然周）
+  用户：暂时不考六级了。
+    助手（status=done）：'好的，收到了。\n\n那这周的压力应该会小很多。既然计划有变，周三去实验室时也可以更从容一些。如果有其他想聊的或需要帮忙的，随时告诉我。'
+    提取 run：source=local_rule status=succeeded outcome=succeeded_lifecycle_signal error=None
+    检查：暂停只命中该目标=True（goal_state=paused）
+    切片：当前用途 task_kind=plan：[('我每周三晚上去实验室做实验。', '与当前任务相关的现实约束'), ('我下周要参加英语六级考试。', '与当前任务相关的目标')]
+    切片：计划用途排除：[('我计划下周考六级', '目标已暂停，不再作为当前目标使用')]
+  用户：我继续考六级。
+    助手（status=done）：'好的，计划回归。\n\n那我们就继续按备考节奏来。如果有具体的题目、作文草稿或者拿不准的知识点，随时发给我。'
+    提取 run：source=local_rule status=succeeded outcome=succeeded_lifecycle_signal error=None
+    检查：恢复不延长旧期限=True（goal_state=active；窗口保持 2026-10-25 15:59:59+00:00）
+
+[3] 页面证据与存储一致（GET /profiles/items/{id}/evidence）
+    周期条目：validity_status=unbounded phrase=None recurrence={'kind': 'weekly', 'weekdays': [2], 'time_of_day': '晚上', 'phrase': '每周三晚上'}
+    页面视图（属主账户）：
+      '我计划下周考六级' v3 来源=user
+      '我每周三晚上去实验室做实验。' v1 来源=automatic
+      '我下周要参加英语六级考试。' v1 来源=automatic
+
+[4] 回顾用途：过期经历在复盘任务里进入模型载荷（独立账户，白纸环境）
+    种子过期经历：'我下周有英语六级考试'（锚 2026-09-16 02:28:03.614251+00:00，已过期）
+    （status=streaming，等待后重捕）
+  用户：帮我复盘一下英语六级考试的经历。
+    助手（status=streaming）：'收到。既然你提到“下周”就要考试，现在的复盘其实更像是一次**考前校准**——不是为了总结过去，而是为了最后这一周的冲刺更精准。\n\n因为我没有你之前具体备考细节的记录（比如做过哪些真题、哪种题型最吃力），我们可以从**六级最常见的三个“失分陷阱”**来快速过一遍。你可以看看哪一条戳中了你最近的感受：\n\n1.  **听力'
+    运行记录切片：task_kind=review adopted=[('我下周有英语六级考试', '既往经历（回顾用途）')]
+    检查：模型载荷注入既往经历=True：[1]（既往经历（回顾用途））我下周有英语六级考试。用途：既往经历（回顾用途）
+    检查：回顾使用不改变条目=True（v1→v1，正文与期限不变）
+    页面证据：validity_status=expired phrase='下周'
+
+[5] 歧义守卫：目标词同时包含于多条目标时不批量修改（独立账户）
+    种子目标：我计划考研英语 / 我计划考研数学
+    （status=streaming，等待后重捕）
+    （status=streaming，等待后重捕）
+  用户：暂时不考研了。
+    助手（status=done）：'收到。这个决定背后可能有不少考量，无论是因为疲惫、方向调整还是其他原因，停下来本身也是一种选择。\n\n既然按下了暂停键，接下来这段时间，你打算怎么安排？是彻底放松一阵，还是看看其他的可能性？'
+    检查：歧义时两条都不修改=True（states={'我计划考研英语': 'active', '我计划考研数学': 'active'}）
+
+运行目录：D:\BridGes\.worktrees\07-time-and-current-state\.tmp\issue07-demo-79ba657a

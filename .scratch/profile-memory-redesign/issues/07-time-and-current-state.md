@@ -43,3 +43,22 @@
 ## Comments
 
 2026-10-15：用户回复「按此发布」，确认本次拆分与依赖。已发布为 ready-for-agent，尚无实施记录。
+
+2026-10-16：实施与验证完成（分支 `codex/issue-07-time-and-current-state`，基点 `14cea5f6`）。
+
+- 交付：契约（`AtomicProfileRecurrenceKind`/`AtomicProfileRecurrence`、条目与证据投影
+  `recurrence`）、`parse_validity_window` 产品时区（Asia/Shanghai）与周期解析、
+  生命周期定位（精确优先/歧义空操作）、回顾用途采用（`DECISION_REVIEW_HISTORY`，
+  tier 2 只填剩余预算）、`is_adopted_slice_current` 回顾历史豁免修复、迁移 83
+  （`profile_items.recurrence_json`）、聊天采用标签「既往经历（回顾用途）」、
+  前端周期证据展示、openapi 与 TS 契约再生成。
+- 测试：新增 34 项用例（profiles 28 + chat 回归 2 + storage 2 + lifecycle 2），
+  更新 2 个工单 18 文件的时区预期；聚焦复跑 2283 项，失败集合与既有失败逐条
+  一致（chat 94 项逐名差集为空），profiles/storage/lifecycle/contracts 0 失败；
+  回顾注入修复先失败后通过并经真实管道复证。
+- 走查（真实模型）：时区窗口与重锚、周期结构化、暂停/恢复不续期、复盘载荷
+  含「既往经历（回顾用途）」且用而不改条目、歧义不批量修改——全部通过；
+  基线 deterministic 全 pass（recall-academic-control 为已知 D11 缺口），
+  real 全 pass（同）。
+- 验证记录：`.scratch/profile-memory-redesign/validation/07-time-and-current-state/verification-record.md`；
+  走查证据 `.../evidence/demo-walkthrough-20261016T022737Z.txt`（+`-model-outputs.json`）。
