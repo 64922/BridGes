@@ -326,6 +326,11 @@ class _ServiceRetryMixin:
         profile_correction = (previous_config or {}).get("profile_correction")
         if isinstance(profile_correction, dict):
             run_config["profile_correction"] = dict(profile_correction)
+        # 画像工单 12：重试沿用本轮反馈修正关系与记忆结果——重试的也是
+        # 修正回答，且不重复写记忆（不重新执行同步控制）。
+        feedback_correction = (previous_config or {}).get("feedback_correction")
+        if isinstance(feedback_correction, dict):
+            run_config["feedback_correction"] = dict(feedback_correction)
         # Issue 03：重试沿用本轮评价快照——旧作答重试仍绑定当时的待答
         # 问题与版本，不会被判到之后的新问题上，也不重复记账。
         verification_snapshot = (previous_config or {}).get("study_verification")

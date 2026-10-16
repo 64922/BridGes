@@ -169,7 +169,7 @@ def test_time_limit_and_learning_content_both_survive(baseline_env: Any) -> None
     assert journey["evaluation"]["baseline_match"] is True
 
 
-def test_cross_turn_gateway_call_carries_real_conversation_and_window(
+def test_cross_turn_preference_feedback_and_window_evidence(
     baseline_env: Any,
 ) -> None:
     journeys = _run_all_journeys(baseline_env, "cross-turn")
@@ -179,11 +179,16 @@ def test_cross_turn_gateway_call_carries_real_conversation_and_window(
     # 工单 05：抽取携带真实会话标识，不再传字面量 retry。
     conversation_ids = {call["project_id"] for call in calls}
     assert conversation_ids == {journey["conversation_id"]}
-    # 第一轮没有前文（合法为空）；跨轮那一轮必须携带含首轮原文的窗口提示。
-    assert calls[-1]["neighbor_hint_present"] is True
+    # 第一轮没有前文（合法为空）。
+    assert all(call["neighbor_hint_present"] is False for call in calls)
+    # 工单 12：第二轮「以后先给结论」是明确反馈，由确定性路由同步持久化
+    # 并终结该消息的普通抽取，因此不再产生网关提取调用；记忆写入结果
+    # 在运行记账里如实呈现。
+    second_runs = journey["turns"][1]["extraction_runs"]
+    assert [run["outcome"] for run in second_runs] == ["succeeded_feedback"]
     assert any(
-        "我在读计算机专业，大二。" in hint
-        for hint in calls[-1]["neighbor_hint_content"]
+        "先给我结论" in item["text"]
+        for item in journey["profile_snapshot"]["items"]
     )
     # 窗口按位置取当前消息之前的有界前文（含助手回复），不含当前消息。
     probe = journey["neighbor_reader_probe"]

@@ -10479,6 +10479,8 @@ export interface components {
             teaching?: components["schemas"]["TeachingTurnProjection"] | null;
             /** @description 本条助手消息的「本次上下文说明」披露（Issue 27）；无披露为 None。 */
             context_note?: components["schemas"]["ContextNoteProjection"] | null;
+            /** @description 画像工单 12：本条助手消息是对上一轮回答的反馈修正时，携带反馈类别、被修正的原回答/原运行/原采用切片与记忆操作结果；普通消息为 None。 */
+            feedback_correction?: components["schemas"]["FeedbackCorrectionProjection"] | null;
             /**
              * Skill
              * @description 用户消息的 SKILL 载荷快照（标识+任务契约，重试沿用）；普通消息为 None。
@@ -15149,6 +15151,61 @@ export interface components {
             reason: string;
         };
         /**
+         * FeedbackCorrectionKind
+         * @description 一次反馈的确定性类别（画像工单 12）。
+         * @enum {string}
+         */
+        FeedbackCorrectionKind: "fact_correction" | "state_change" | "long_term_preference" | "turn_request" | "expression_quality" | "unclear";
+        /**
+         * FeedbackCorrectionProjection
+         * @description 聊天消息公开投影中的反馈修正关系（读取/重启/导出复用）。
+         */
+        FeedbackCorrectionProjection: {
+            /** @description 反馈类别。 */
+            kind: components["schemas"]["FeedbackCorrectionKind"];
+            /** @description 记忆操作种类。 */
+            memory_kind: components["schemas"]["FeedbackMemoryKind"];
+            /** @description 记忆操作结果。 */
+            memory_status: components["schemas"]["FeedbackMemoryStatus"];
+            /**
+             * Original Message Id
+             * @description 被修正的原回答。
+             */
+            original_message_id?: string | null;
+            /**
+             * Original Run Id
+             * @description 原回答运行标识。
+             */
+            original_run_id?: string | null;
+            /**
+             * Original Slice Id
+             * @description 原采用切片标识。
+             */
+            original_slice_id?: string | null;
+            /**
+             * Target Item Id
+             * @description 被定位的条目。
+             */
+            target_item_id?: string | null;
+            /**
+             * Applied Item Id
+             * @description 实际写入的条目。
+             */
+            applied_item_id?: string | null;
+            /**
+             * Clarification Required
+             * @description 是否只澄清。
+             * @default false
+             */
+            clarification_required: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 反馈处理时间。
+             */
+            created_at: string;
+        };
+        /**
          * FeedbackKind
          * @description 用户对一次回答的反馈类别。
          *
@@ -15157,6 +15214,18 @@ export interface components {
          * @enum {string}
          */
         FeedbackKind: "answer_inappropriate" | "profile_incorrect";
+        /**
+         * FeedbackMemoryKind
+         * @description 反馈触发的长期记忆操作种类。
+         * @enum {string}
+         */
+        FeedbackMemoryKind: "correction" | "state_change" | "preference" | "none";
+        /**
+         * FeedbackMemoryStatus
+         * @description 反馈触发的记忆操作结果（与回答生成分别报告）。
+         * @enum {string}
+         */
+        FeedbackMemoryStatus: "written" | "protected" | "unresolved" | "no_active_record" | "failed" | "not_applicable";
         /**
          * FeedbackResolveRequest
          * @description 把一条反馈标记为已处理并记录修正说明。

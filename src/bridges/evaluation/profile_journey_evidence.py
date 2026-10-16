@@ -103,8 +103,14 @@ def evaluate_journey(journey: BaselineJourney, evidence: dict[str, Any]) -> dict
         ]
         probe = evidence.get("neighbor_reader_probe")
         if calls:
-            source = f"calls={calls!r}"
-            hint_ok = any(call.get("neighbor_hint_present") for call in calls)
+            source = f"calls={calls!r} probe={probe!r}"
+            # 工单 12：「以后先给结论」这类明确反馈由确定性路由同步处理并
+            # 终结该消息的普通抽取，第二次抽取不再经过网关；窗口证据与
+            # real 模式同源——以应用级探测（真实会话 + 生产邻居读取函数
+            # 的返回）补足，网关载荷里的窗口仍在其存在时参与判定。
+            hint_ok = any(
+                call.get("neighbor_hint_present") for call in calls
+            ) or bool(probe)
             context_ok = any(
                 call.get("project_id") and call.get("project_id") != "retry"
                 for call in calls

@@ -132,6 +132,14 @@ class _ServiceGenerationAdmissionMixin:
         if mode == ChatMode.STUDY:
             self._validate_study_payload(module_id, image_payload, video_payload, mcp_call_payload)
         user_message_id = secrets.token_urlsafe(16)
+        # 画像工单 12：对上一轮回答的明确反馈在准入时确定性路由——修正回答
+        # 关系（原回答/原运行/原采用切片）随运行快照持久化，执行器按同一
+        # 配置渲染修正提示；记忆写入在画像副作用里完成。
+        feedback_route, feedback_snapshot = self._feedback_route_for_turn(
+            account_id=account_id,
+            messages=existing,
+            content=content,
+        )
         understanding = self._understand_turn(
             account_id=account_id,
             conversation_id=conversation_id,
@@ -170,6 +178,11 @@ class _ServiceGenerationAdmissionMixin:
             idempotency_key=idempotency_key,
             understanding=understanding,
             user_message_id=user_message_id,
+            extra_run_config=(
+                {"feedback_correction": feedback_snapshot}
+                if feedback_snapshot is not None
+                else None
+            ),
         )
         try:
             self._repo.insert_generation_turn(
@@ -249,6 +262,7 @@ class _ServiceGenerationAdmissionMixin:
             content=content,
             mode=mode,
             run_id=run_record.run_id,
+            feedback_route=feedback_route,
         )
 
         run_view = self._run_view(run_record, account_id)

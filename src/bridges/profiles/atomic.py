@@ -4004,6 +4004,139 @@ class AtomicProfileService:
         self._invalidate_ongoing_context(account_id, reason="corrected")
         return saved, True
 
+    def correct_item(
+        self,
+        account_id: str,
+        *,
+        item_id: str,
+        text: str,
+        expected_version: int,
+    ) -> AtomicProfileItem:
+        """按条目定位的定点纠正（画像工单 12 反馈修正闭环）。
+
+        反馈路由已从原回答实际采用的快照里定位到具体条目；这里按标识定点
+        改写，并在事务内校验条目仍处活动态与预期版本——生成与提交之间被
+        删除、替代或再次编辑的定位结果一律拒绝（``AtomicProfileError``），
+        绝不猜测改到别的条目。语义与聊天明确更正（:meth:`correct_fact`）
+        一致：``user_edited_at`` 标记权威版本、身份变化清除旧原话引用、旧值
+        转抑制键、纠正命中其他既有事实时并入该事实并退休本条目。正文与现值
+        一致时幂等返回原条目：不递增版本、不重复写抑制键、不重复发撤销通知
+        （重复反馈与生成重试共用）。
+        """
+
+        normalized = normalize_text(text)
+        if not normalized or len(normalized) > _MAX_ITEM_TEXT_LENGTH:
+            raise AtomicProfileError("画像内容不合法。")
+        now = _now()
+        revoked: list[AtomicProfileItem] = []
+        with self._profile_commit.transaction():
+            target = self._repository.get_item(account_id, item_id)
+            if target.status != AtomicProfileItemStatus.ACTIVE:
+                raise AtomicProfileError("画像条目已删除，不能继续修改。")
+            if target.version != expected_version:
+                raise AtomicProfileError("版本冲突，请刷新后重试。")
+            if target.text == normalized:
+                # 已收敛到同一结论：幂等返回，不再版本 +1、不重复写抑制键、
+                # 不重复发撤销通知。
+                return target
+            dimension = _dimension_hint(target.topic_hint)
+            previous_sources = list(target.source_message_ids)
+            previous_text = target.text
+            previous_fact_key = target.fact_key
+            key = identity_key(account_id, normalized)
+            identity = parse_fact_identity(normalized, dimension=dimension)
+            fact_key = fact_identity_key(account_id, identity)
+            identity_changed = (
+                key != target.identity_key or fact_key != previous_fact_key
+            )
+            fact_hit = self._repository.find_item_by_fact_key(account_id, fact_key)
+            if fact_hit is not None and fact_hit.profile_item_id != target.profile_item_id:
+                # 纠正到已存在的事实：并入该事实并退休旧条目，不产生副本。
+                text_changed = normalize_text(fact_hit.text) != normalized
+                merged = self._merge_fact(
+                    fact_hit,
+                    text=normalized,
+                    dimension=dimension,
+                    identity=identity,
+                    topics=[],
+                    evidence_message_id=None,
+                    evidence_quote=None,
+                    evidence_fragments=(),
+                    source_quotes={},
+                    confidence=FourDimensionConfidence.HIGH,
+                    validity=parse_validity_window(normalized, now),
+                    anchor=now,
+                    now=now,
+                    recurrence=parse_recurrence(normalized),
+                )
+                if text_changed:
+                    # 用户纠正不是聊天原话证据：正文更换后不保留旧值引用。
+                    merged.evidence_quote = None
+                    merged.source_quotes = {}
+                merged.confidence = FourDimensionConfidence.HIGH
+                merged.user_edited_at = now
+                # 用户明确更正消除该条目的未解决冲突（工单 06）。
+                merged.conflict_state = AtomicProfileConflictState.NONE
+                saved = self._repository.save_item(merged)
+                self._supersede_item(
+                    target,
+                    saved.profile_item_id,
+                    reason=AtomicProfileRevisionKind.CORRECTION,
+                )
+                revoked.append(
+                    target.model_copy(update={"source_message_ids": previous_sources})
+                )
+            else:
+                target.text = normalized
+                target.identity_key = key
+                _apply_fact_identity(target, identity, account_id)
+                if identity_changed:
+                    # 用户纠正不是聊天原话证据：正文更换后不保留旧值引用；
+                    # 明示的新期限以纠正时间为锚更新，没提期限则保留原期限。
+                    target.evidence_quote = None
+                    target.source_quotes = {}
+                    window = parse_validity_window(normalized, now)
+                    if window is not None:
+                        target.valid_from = window.valid_from
+                        target.valid_until = window.valid_until
+                        target.validity_anchor_at = now
+                        target.validity_phrase = window.phrase
+                    recurrence = parse_recurrence(normalized)
+                    if recurrence is not None:
+                        target.recurrence = recurrence
+                target.version += 1
+                target.updated_at = now
+                target.user_edited_at = now
+                target.confidence = FourDimensionConfidence.HIGH
+                # 用户明确更正消除该条目的未解决冲突（工单 06）。
+                target.conflict_state = AtomicProfileConflictState.NONE
+                saved = self._repository.save_item(target)
+                if identity_changed:
+                    self._write_suppression(
+                        account_id,
+                        previous_text,
+                        topic_hint=target.topic_hint,
+                        suppress_fact_identity=fact_key != previous_fact_key,
+                    )
+                    revoked.append(
+                        saved.model_copy(
+                            update={"source_message_ids": previous_sources}
+                        )
+                    )
+            revoked.extend(
+                self._reconcile_explicit_change(
+                    account_id,
+                    normalized,
+                    saved,
+                    reason=AtomicProfileRevisionKind.CORRECTION,
+                )[0]
+            )
+        if revoked:
+            # 纠正改变事实身份：依赖旧值的切片与摘要按依赖失效。通知在事务
+            # 提交之后发出——摘要失效各自持有事务，事务内通知会嵌套失败。
+            self._notify_revocation(account_id, revoked, reason="corrected")
+        return saved
+
     # -- 切片 -------------------------------------------------------------
 
     def compile_chat_slice(
