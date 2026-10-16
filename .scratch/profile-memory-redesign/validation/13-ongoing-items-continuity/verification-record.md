@@ -1,6 +1,9 @@
 # 13 — 跨会话接续事项并管理暂停和完成：验证记录
 
-**分支：** `codex/issue-13-ongoing-items-continuity`（基点 `631a4952`，main）。
+**分支：** `codex/issue-13-ongoing-items-continuity`（基点 `631a4952`，main；
+验证过程中并入 `main@8dca8ecd` 的工单 12 改动——无迁移号冲突，本票迁移 87
+不变；合并后 `openapi.json` 与 `packages/contracts/src/generated.ts` 重生成
+并核对与 API 一致、零 diff）。
 **环境：** conda `agent`（Python 3.11.15）；前端 Node v24.14.0 / npm 11.9.0。
 **证据：** 本文 + `evidence/demo-walkthrough-20261016T0930Z.txt` +
 `tools/walk_issue13_ongoing_demo.py`（可复跑；37 项检查全部 PASS，FAIL 0）。
@@ -61,15 +64,19 @@
   删除顺序）。
 - 既有更新：`tests/storage/test_schema_v86_profile_recall_index.py` 版本断言
   由固定 86 放宽为 `SCHEMA_VERSION >= 86`（本票顺延占用 87，断言语义不变）。
-- 聚焦（最终代码）：`pytest tests/profiles tests/storage tests/lifecycle` →
-  **944 通过**；三个新增文件单跑 **18 通过**。
-- 全量（`-n 4 --ignore=tests/career_plan --continue-on-collection-errors`）：
-  - 分支（最终代码）：**327 failed / 5654 passed / 37 skipped**；
-    main@`631a4952` 同命令：**329 failed / 5634 passed / 37 skipped**。
+- 聚焦（最终合并态）：`pytest tests/profiles tests/storage tests/lifecycle
+  tests/contracts` → **969 通过**；三个新增文件单跑 **18 通过**。
+- 全量（`-n 4 --ignore=tests/career_plan --continue-on-collection-errors`；
+  最终合并态）：
+  - 分支：**327 failed / 5688 passed / 37 skipped**；main@`8dca8ecd` 同命令：
+    **329 failed / 5668 passed / 37 skipped**。
   - 逐条差集：**分支独有失败 0 项**；main 独有失败 2 项为
-    `tests/closeout/test_api_boot.py` 环境性 flaky（分支通过；06/08/09/11
+    `tests/closeout/test_api_boot.py` 环境性 flaky（分支通过；06/08/09/11/12
     记录同现象）。通过数 +20 = 本票新增测试（12+4+2）加上 2 项在 main 本次
     运行失败而分支通过的同款 flaky，无其他状态变化。
+  - 合并前对照（main@`631a4952`，即并入工单 12 之前）：分支 327 failed /
+    5654 passed / 37 skipped，main 329 failed / 5634 passed / 37 skipped，
+    同为分支独有失败 0。合并后全量与走查重跑结论不变。
   - `tests/chat` 的既有失败（与本票无关，main 完全相同）保持原样。
   - 中途一次全量曾出现分支独有失败
     `tests/contracts/test_openapi_sync.py`（路由拆分为独立模块后 OpenAPI
@@ -81,8 +88,8 @@
 - `ruff check`（全部改动文件 + 新增测试/走查脚本）：本票新增 0 问题；
   `src/bridges/profiles/commit.py:70` F401 与 `src/bridges/storage/database.py:1671`
   E501 为 main 既有同项，未触碰。
-- `mypy src`：**141 errors / 23 files**（main 同命令同为 141/23；检查文件数
-  683 → 686，+3 为本票新增模块），无新增错误。
+- `mypy src`（最终合并态）：**141 errors / 23 files**（main@`8dca8ecd` 同命令
+  同为 141/23；检查文件数 685 → 691，+6 为本票新增模块），无新增错误。
 - `pip check`：No broken requirements found。
 - 前端（worktree，`apps/web`）：`npm run typecheck` 通过；`npm run test:unit`
   35 文件 / 302 测试通过（含 `OngoingItemsCard.test.tsx` 8 项）；`npm run lint`
@@ -176,5 +183,5 @@
   的委托是组合根接缝（服务同时承载上下文与提供方注册），非多余中间人；
   `commit_rebuild` 参数成组属存储协议形状；`atomic.py` 行数为既有现状，
   本票不扩大重构范围；待续词表的误报边界已在 §6 记录。
-- 评审后的回归：聚焦 944 通过、全量分支独有失败 0、走查 37 项全 PASS、
-  `openapi.json`/`generated.ts` 零 diff（见 §3、§4）。
+- 评审后的回归：聚焦 969 通过（合并态）、全量分支独有失败 0、走查 37 项全
+  PASS、`openapi.json`/`generated.ts` 零 diff（见 §3、§4）。

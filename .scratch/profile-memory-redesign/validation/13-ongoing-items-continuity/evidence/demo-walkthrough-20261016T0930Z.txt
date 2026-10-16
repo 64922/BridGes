@@ -1,9 +1,9 @@
-# 画像工单 13 走查（20261016T101849Z）
-python=3.11.15  schema=87  # 临时库：.tmp/issue13-demo-20261016T101849Z
+# 画像工单 13 走查（20261016T102248Z）
+python=3.11.15  schema=87  # 临时库：.tmp/issue13-demo-20261016T102248Z
 
 [1] 两会话接续：会话 B 说「继续上次的考研英语准备」
     [PASS] 唯一目标被提及：接续通道给出整组候选
-    [PASS] 接续目标正确（goal=item-GjQ3I8z…）
+    [PASS] 接续目标正确（goal=item-99ACIvf…）
     [PASS] 「我在准备考研英语」按 ongoing 依据采用（basis=task_rules+keyword+ongoing）
     [PASS] 「考研英语的阅读已经刷完一轮」按 ongoing 依据采用（basis=keyword+ongoing）
     [PASS] 「考研英语的冲刺班还没决定报不报」按 ongoing 依据采用（basis=ongoing）

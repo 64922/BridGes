@@ -54,8 +54,8 @@
 导出与逻辑摘要、随备份与账户删除。前端事项卡（暂停/继续/完成确认/失败重试/
 引用展示）接入 profile 页面。验证记录：
 `validation/13-ongoing-items-continuity/verification-record.md`（走查 37 项
-PASS；聚焦 944 通过；全量与 main 失败集一致、分支独有失败 0；mypy 141=141；
-前端 typecheck/单测 302/lint/build 通过）。
+PASS；聚焦 969 通过（合并态）；全量与 main 失败集一致、分支独有失败 0；
+mypy 141=141；前端 typecheck/单测 302/lint/build 通过）。
 
 2026-10-16（评审修复）：按 code-review 双轴评审修复——拆分超限模块
 （`ongoing_projection.py`/`ongoing_api.py`/`api_errors.py`，`ongoing.py` 与
