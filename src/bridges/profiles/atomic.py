@@ -63,6 +63,7 @@ from bridges.contracts.atomic_profile import (
     AtomicProfileItemModifyRequest,
     AtomicProfileItemProjection,
     AtomicProfileItemStatus,
+    AtomicProfileMemoryBlockedReason,
     AtomicProfileMemoryKind,
     AtomicProfileMemoryResult,
     AtomicProfileMemoryStatus,
@@ -123,6 +124,15 @@ from bridges.profiles.purpose import (
     is_resource_constraint,
     task_topic_matches,
 )
+from bridges.profiles.sensitive import (
+    CREDENTIAL_MEMORY_MESSAGE,
+    SENSITIVE_PURPOSE_REQUIRED_MESSAGE,
+    MemorySensitivity,
+    classify_memory_sensitivity,
+    normalize_usage_purpose,
+    parse_usage_purpose,
+    usage_purpose_matches,
+)
 from bridges.profiles.signals import CORRECTION_MARKER
 from bridges.profiles.transactions import joined_transaction
 from bridges.storage.database import BridgesDatabase
@@ -166,6 +176,23 @@ _DIRECTIVE_TAIL_RE = re.compile(r"(?:吧|了|好吗|可以吗|谢谢)[。！!？
 
 class AtomicProfileError(ProfileError):
     """原子画像领域错误；消息可直接展示，不泄漏其他账户的存在。"""
+
+
+class SensitiveMemoryError(AtomicProfileError):
+    """敏感自述/凭据的确定性拒绝（工单 09）。
+
+    消息不含原文、可直接展示；``blocked_reason`` 让上层把「为什么没保存」
+    如实转达（凭据不保存／敏感自述需要说明用途），而不是笼统报错。
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        blocked_reason: AtomicProfileMemoryBlockedReason,
+    ) -> None:
+        super().__init__(message)
+        self.blocked_reason = blocked_reason
 
 
 class MemoryDirective:
@@ -999,6 +1026,30 @@ def _recall_exclusion(item: AtomicProfileItem, now: datetime) -> str | None:
     return None
 
 
+#: 工单 09 的用途门禁原因：敏感自述没有用途时不进上下文（稳定字符串，
+#: 页面与走查据此核对「为什么没用这条」）。
+RECALL_PURPOSE_REQUIRED_REASON = "敏感自述没有说明用途，暂不用于回答"
+RECALL_PURPOSE_MISMATCH_REASON = "用途与当前任务无关，暂不采用"
+
+
+def _purpose_exclusion(item: AtomicProfileItem, task_text: str) -> str | None:
+    """敏感自述的用途门（工单 09）：返回排除原因或 ``None``。
+
+    只有敏感自述（健康/心理/财务等）受用途门控：没有用途时绝不进入回答；
+    有用途时要求用途关键词与当前任务字面匹配。凭据不可能成为条目（写入端
+    拒绝），一旦因历史数据出现同样按「没有用途」拦截。普通条目不受影响。
+    """
+
+    if classify_memory_sensitivity(item.text) is MemorySensitivity.ORDINARY:
+        return None
+    purpose = normalize_usage_purpose(item.usage_purpose)
+    if purpose is None:
+        return RECALL_PURPOSE_REQUIRED_REASON
+    if not usage_purpose_matches(purpose, task_text):
+        return RECALL_PURPOSE_MISMATCH_REASON
+    return None
+
+
 @dataclass(frozen=True)
 class _AdoptedCandidate:
     """用途选择阶段的一条候选（排序前的内部结构）。"""
@@ -1619,6 +1670,11 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 str(value)
                 for value in json.loads(str(row["topics_json"]))  # type: ignore[index]
             ],
+            usage_purpose=(
+                str(row["usage_purpose"])  # type: ignore[index]
+                if row["usage_purpose"] is not None  # type: ignore[index]
+                else None
+            ),
             status=AtomicProfileItemStatus(str(row["status"])),  # type: ignore[index]
             write_origin=AtomicProfileWriteOrigin(str(row["write_origin"])),  # type: ignore[index]
             confidence=FourDimensionConfidence(str(row["confidence"])),  # type: ignore[index]
@@ -1658,11 +1714,11 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "recurrence_json, goal_state, "
             "supersedes_id, superseded_by_id, source_record_id, "
             "source_message_ids_json, source_quotes_json, topic_hint, topics_json, "
-            "status, write_origin, "
+            "usage_purpose, status, write_origin, "
             "confidence, version, created_at, updated_at, user_edited_at, migration_run_id, "
             "retired_reason, conflict_state) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(profile_item_id) DO UPDATE SET text = excluded.text, "
             "identity_key = excluded.identity_key, fact_subject = excluded.fact_subject, "
             "fact_relation = excluded.fact_relation, fact_object = excluded.fact_object, "
@@ -1680,6 +1736,7 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
             "source_message_ids_json = excluded.source_message_ids_json, "
             "source_quotes_json = excluded.source_quotes_json, "
             "topic_hint = excluded.topic_hint, topics_json = excluded.topics_json, "
+            "usage_purpose = excluded.usage_purpose, "
             "status = excluded.status, "
             "write_origin = excluded.write_origin, confidence = excluded.confidence, "
             "version = excluded.version, created_at = excluded.created_at, "
@@ -1712,6 +1769,7 @@ class SqliteAtomicProfileRepository(AtomicProfileRepository):
                 json.dumps(item.source_quotes, ensure_ascii=False),
                 item.topic_hint,
                 json.dumps(item.topics, ensure_ascii=False),
+                item.usage_purpose,
                 item.status.value,
                 item.write_origin.value,
                 item.confidence.value,
@@ -2145,6 +2203,7 @@ class AtomicProfileService:
             updated_at=item.updated_at,
             user_edited_at=item.user_edited_at,
             topics=list(item.topics),
+            usage_purpose=item.usage_purpose,
             source_message_ids=list(item.source_message_ids),
             # 原话仅由按需依据接口核验后返回，列表不复制可能已失效的来源内容。
             evidence_quote=None,
@@ -2286,6 +2345,7 @@ class AtomicProfileService:
             user_edited_at=item.user_edited_at,
             updated_at=item.updated_at,
             topics=list(item.topics),
+            usage_purpose=item.usage_purpose,
             fact_scope=item.fact_scope,
             goal_state=item.goal_state,
             valid_from=item.valid_from,
@@ -2457,6 +2517,14 @@ class AtomicProfileService:
         new_topics = (
             normalize_topics(request.topics) if request.topics is not None else None
         )
+        # 工单 09：``usage_purpose`` 不传表示不修改，空串表示清除用途；普通
+        # 条目也可保存用途，但只有敏感自述的用途参与采用门控。
+        purpose_provided = request.usage_purpose is not None
+        new_purpose = (
+            normalize_usage_purpose(request.usage_purpose)
+            if purpose_provided
+            else None
+        )
         with self._profile_commit.transaction():
             item = self._repository.get_item(account_id, item_id)
             if item.status != AtomicProfileItemStatus.ACTIVE:
@@ -2474,7 +2542,13 @@ class AtomicProfileService:
             new_fact_key = fact_identity_key(account_id, identity)
             text_changed = key != previous_key
             topics_changed = new_topics is not None and new_topics != item.topics
-            if not text_changed and new_fact_key == previous_fact_key and not topics_changed:
+            purpose_changed = purpose_provided and new_purpose != item.usage_purpose
+            if (
+                not text_changed
+                and new_fact_key == previous_fact_key
+                and not topics_changed
+                and not purpose_changed
+            ):
                 # 保存内容与现值一致：不写版本、不标用户编辑时间。
                 return item
             if text_changed:
@@ -2501,6 +2575,9 @@ class AtomicProfileService:
             _apply_fact_identity(item, identity, account_id)
             if new_topics is not None:
                 item.topics = new_topics
+            if purpose_changed:
+                # 用途变化改变可采用范围：清除后敏感自述不再进入回答上下文。
+                item.usage_purpose = new_purpose
             if text_changed:
                 # 用户页面编辑是独立主动来源，不是聊天原话证据：换值后不保留
                 # 旧值的原话引用（含跨轮片段），避免把用户新写的正文伪称为
@@ -2541,9 +2618,14 @@ class AtomicProfileService:
                 revoked = [
                     saved.model_copy(update={"source_message_ids": previous_sources})
                 ]
+            elif purpose_changed:
+                # 仅用途变化：事实身份不变，旧切片与摘要仍按依赖失效。
+                revoked = [
+                    saved.model_copy(update={"source_message_ids": previous_sources})
+                ]
         if revoked:
-            # 用户纠正改变事实身份：依赖旧值的切片与摘要按依赖失效。通知在
-            # 事务提交之后发出——摘要失效各自持有事务，事务内通知会嵌套失败。
+            # 用户纠正改变事实身份或用途：依赖旧值的切片与摘要按依赖失效。
+            # 通知在事务提交之后发出——摘要失效各自持有事务，事务内通知会嵌套失败。
             self._notify_revocation(account_id, revoked, reason="edited")
         return saved
 
@@ -2588,6 +2670,7 @@ class AtomicProfileService:
         source_message_id: str | None = None,
         source_at: datetime | None = None,
         topics: Iterable[str] = (),
+        usage_purpose: str | None = None,
     ) -> AtomicProfileItem:
         """用户明确要求记住：本轮立即成为用户权威条目，并解除同键墓碑。
 
@@ -2595,11 +2678,25 @@ class AtomicProfileService:
         绝对有效期；未提供时用当前时间，绝不按以后的使用当天重解释。
         ``topics`` 是随手动添加附带的开放主题（可空、多选）；聊天「记住」
         不带主题时保持条目现有主题不变。
+
+        工单 09：凭据（密码/验证码/密钥）一律拒绝（``SensitiveMemoryError``
+        带 ``CREDENTIAL``）；敏感自述需要用途——显式 ``usage_purpose``、
+        原文解析、既有条目的用途依次兜底，仍没有用途时如实拒绝
+        （``PURPOSE_REQUIRED``），不静默保存也不编造用途。
         """
 
         normalized = normalize_text(text)
         if not normalized or len(normalized) > _MAX_ITEM_TEXT_LENGTH:
             raise AtomicProfileError("画像内容不合法。")
+        sensitivity = classify_memory_sensitivity(normalized)
+        if sensitivity is MemorySensitivity.CREDENTIAL:
+            raise SensitiveMemoryError(
+                CREDENTIAL_MEMORY_MESSAGE,
+                blocked_reason=AtomicProfileMemoryBlockedReason.CREDENTIAL,
+            )
+        purpose = normalize_usage_purpose(usage_purpose)
+        if purpose is None and sensitivity is MemorySensitivity.SENSITIVE:
+            purpose = parse_usage_purpose(normalized)
         resolved_topics = normalize_topics(topics) if topics else []
         now = _now()
         anchor = _as_aware(source_at) if source_at is not None else now
@@ -2624,10 +2721,26 @@ class AtomicProfileService:
         fact_key = fact_identity_key(account_id, identity)
         window = parse_validity_window(normalized, anchor)
         recurrence = parse_recurrence(normalized)
+        purpose_revoked = False
         with self._profile_commit.transaction():
             existing = self._repository.find_item_by_identity(account_id, key)
             if existing is None:
                 existing = self._repository.find_item_by_fact_key(account_id, fact_key)
+            if (
+                existing is not None
+                and purpose is None
+                and sensitivity is MemorySensitivity.SENSITIVE
+            ):
+                # 用途兜底：本条（含墓碑）此前说明过的用途不因再次「记住」丢失。
+                purpose = normalize_usage_purpose(existing.usage_purpose)
+            if sensitivity is MemorySensitivity.SENSITIVE and purpose is None:
+                # 敏感自述没有用途：如实拒绝并请用户补充，不静默保存、不编造。
+                raise SensitiveMemoryError(
+                    SENSITIVE_PURPOSE_REQUIRED_MESSAGE,
+                    blocked_reason=(
+                        AtomicProfileMemoryBlockedReason.PURPOSE_REQUIRED
+                    ),
+                )
             if existing is not None:
                 if (
                     existing.status == AtomicProfileItemStatus.ACTIVE
@@ -2638,13 +2751,22 @@ class AtomicProfileService:
                         or source_message_id in existing.source_message_ids
                     )
                 ):
-                    if resolved_topics:
-                        existing.topics = list(
-                            dict.fromkeys([*existing.topics, *resolved_topics])
-                        )
+                    purpose_changed = (
+                        purpose is not None and purpose != existing.usage_purpose
+                    )
+                    if resolved_topics or purpose_changed:
+                        if resolved_topics:
+                            existing.topics = list(
+                                dict.fromkeys([*existing.topics, *resolved_topics])
+                            )
+                        if purpose_changed:
+                            existing.usage_purpose = purpose
                         existing.version += 1
                         existing.updated_at = now
                         existing = self._repository.save_item(existing)
+                    if purpose_changed:
+                        # 用途变化改变本条的可采用范围：旧切片按依赖失效。
+                        purpose_revoked = True
                     superseded_items, _blocked = self._reconcile_explicit_change(
                         account_id, normalized, existing
                     )
@@ -2670,6 +2792,9 @@ class AtomicProfileService:
                     existing.write_origin = AtomicProfileWriteOrigin.USER
                     existing.confidence = FourDimensionConfidence.HIGH
                     existing.user_edited_at = now
+                    # 工单 09：明确写入时更新用途；没带用途时保留既有用途。
+                    if purpose is not None:
+                        existing.usage_purpose = purpose
                     # 用户明确写入消除本条目的未解决冲突（工单 06）。
                     existing.conflict_state = AtomicProfileConflictState.NONE
                     existing.updated_at = now
@@ -2708,6 +2833,7 @@ class AtomicProfileService:
                     source_message_ids=[source_message_id] if source_message_id else [],
                     topic_hint=record.dimension.value if record is not None else None,
                     topics=list(resolved_topics),
+                    usage_purpose=purpose,
                     status=AtomicProfileItemStatus.ACTIVE,
                     write_origin=AtomicProfileWriteOrigin.USER,
                     confidence=FourDimensionConfidence.HIGH,
@@ -2727,6 +2853,9 @@ class AtomicProfileService:
             self._notify_revocation(
                 account_id, superseded_items, reason="superseded"
             )
+        if purpose_revoked:
+            # 用途变化同样改变可采用范围：旧切片与摘要按依赖失效。
+            self._notify_revocation(account_id, [saved], reason="edited")
         self._audit_memory_action(
             account_id,
             AuditAction.PROFILE_CREATE,
@@ -2997,6 +3126,7 @@ class AtomicProfileService:
             account_id,
             request.text,
             topics=normalize_topics(request.topics or []),
+            usage_purpose=request.usage_purpose,
         )
 
     def commit_fact(
@@ -3014,6 +3144,10 @@ class AtomicProfileService:
         用户编辑成别的内容（用户优先）、或与已撤回事实近义、身份又无法
         确定的自动新说法暂缓写入（明确重新记住走 :meth:`remember`）。
 
+        工单 09：敏感自述（健康/心理/财务等）与凭据（密码/验证码/密钥）
+        一律不写入——自动路径不做用途推断；只有用户明确「记住」并说明用途
+        才进入长期存储（材料授权的自动写入同样受此边界约束）。
+
         ``fact.dimension`` 只作事实身份解析提示（如裸值「考研」），不再
         对应底层的四维记录；``fact.topics`` 是抽取侧提供的开放主题（可为
         空，不构成写入门槛）。工单 18 的语义保持不变：明确的生命周期信号
@@ -3023,6 +3157,12 @@ class AtomicProfileService:
 
         text = normalize_text(fact.text)
         if not text or len(text) > _MAX_ITEM_TEXT_LENGTH:
+            return None
+        if classify_memory_sensitivity(text) is not MemorySensitivity.ORDINARY:
+            logger.info(
+                "atomic_profile_sensitive_skipped",
+                extra={"account_id": account_id},
+            )
             return None
         try:
             topics = normalize_topics(fact.topics)
@@ -3460,6 +3600,13 @@ class AtomicProfileService:
         # 工单 07：明确回顾任务（复盘/总结）额外采用词面相关的真实经历：
         # 被替代的历史值、已完成与已过期的条目只在回顾用途进入切片。
         review_mode = effective.task_kind is ProfileTaskKind.REVIEW
+        # 工单 09：敏感自述按「用途 × 当前任务」门控；任务文本取本轮问题与
+        # 模块/阶段信息，收不到任何任务依据时敏感条目一律不采用。
+        task_text = " ".join(
+            part
+            for part in (query, effective.module_id, effective.learning_stage)
+            if part
+        )
         # 条目与撤回版本取自同一快照：编译中途发生的撤回要么已反映、要么
         # 使版本落后而在发送前被 `is_slice_current` 拦下（工单 18）。
         snapshot = self._repository.list_items(account_id, include_withdrawn=True)
@@ -3470,7 +3617,7 @@ class AtomicProfileService:
         overridden_reason = "本轮明确要求优先，默认偏好本轮不采用"
         for item in snapshot:
             if item.status != AtomicProfileItemStatus.ACTIVE:
-                if review_mode:
+                if review_mode and _purpose_exclusion(item, task_text) is None:
                     history = self._review_history_candidate(item, query=query)
                     if history is not None:
                         candidates.append(history)
@@ -3486,7 +3633,11 @@ class AtomicProfileService:
                 continue
             gate_reason = _recall_exclusion(item, moment)
             if gate_reason is not None:
-                if review_mode and gate_reason in REVIEW_HISTORY_GATE_REASONS:
+                if (
+                    review_mode
+                    and gate_reason in REVIEW_HISTORY_GATE_REASONS
+                    and _purpose_exclusion(item, task_text) is None
+                ):
                     history = self._review_history_candidate(item, query=query)
                     if history is not None:
                         candidates.append(history)
@@ -3496,6 +3647,16 @@ class AtomicProfileService:
                         profile_item_id=item.profile_item_id,
                         fact_text=item.text,
                         exclusion_reason=gate_reason,
+                    )
+                )
+                continue
+            purpose_gate_reason = _purpose_exclusion(item, task_text)
+            if purpose_gate_reason is not None:
+                exclusions.append(
+                    ProfileSliceExclusion(
+                        profile_item_id=item.profile_item_id,
+                        fact_text=item.text,
+                        exclusion_reason=purpose_gate_reason,
                     )
                 )
                 continue

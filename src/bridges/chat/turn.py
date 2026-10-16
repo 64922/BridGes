@@ -1793,6 +1793,10 @@ _MEMORY_RESULT_COPY: dict[tuple[str, str], str] = {
         "本轮用户明确要求记住一条信息，已真实写入用户画像列表。可以确认已记住，"
         "但只能依据本轮用户消息说明内容；不得补充未提供的信息。"
     ),
+    ("remember", "unresolved"): (
+        "本轮用户要求记住，但这条信息没有被保存。不得声称已记住、已保存或"
+        "以后会记得；只能如实说明没有保存，并给出可直接执行的办法。"
+    ),
     ("forget", "forgotten"): (
         "本轮用户明确要求忘掉，已从用户画像中删除匹配的条目。可以确认已删除；"
         "不得声称还记得相关内容，也不得再引用被删除的内容。"
@@ -1804,19 +1808,40 @@ _MEMORY_RESULT_COPY: dict[tuple[str, str], str] = {
     ),
 }
 
+#: 记忆指令被隐私门拒绝时的差异化约束（工单 09）：按确定性原因给出
+#: 回应方式，绝不回显被拒绝的原文（尤其是凭据）。
+_MEMORY_BLOCKED_COPY: dict[str, str] = {
+    "credential": (
+        "用户要求保存的是凭据类信息（密码、验证码、密钥等）。系统不会长期"
+        "保存凭据，即使明确要求也不保存；不得声称已记住，也不要复述或展示"
+        "凭据内容，可建议用户使用密码管理工具自行保管。"
+    ),
+    "purpose_required": (
+        "这条自述属于敏感信息（如健康、心理等），需要用户说明用途（例如用在"
+        "什么场景）后才能保存。不得声称已记住；请如实说明需要用途，并邀请"
+        "用户补充用途，或建议到用户画像页查看手动添加。"
+    ),
+}
+
 
 def profile_memory_context(metadata: dict[str, Any] | None) -> str | None:
     """把本轮「记住／忘掉」结果编译为只含结果状态的模型上下文。
 
     V2 Issue 08：删除与写入都已在本轮生成前生效，模型只能据此如实回应；
     上下文不携带被记住或被删除的正文，正文另有当前用户消息作为唯一来源。
+    工单 09：未保存的「记住」按 ``blocked_reason`` 给出差异化约束。
     """
 
     if not metadata:
         return None
     kind = str(metadata.get("memory_kind") or "")
     status = str(metadata.get("status") or "")
-    copy = _MEMORY_RESULT_COPY.get((kind, status))
+    blocked_reason = str(metadata.get("blocked_reason") or "")
+    copy: str | None = None
+    if kind == "remember" and status == "unresolved" and blocked_reason:
+        copy = _MEMORY_BLOCKED_COPY.get(blocked_reason)
+    if copy is None:
+        copy = _MEMORY_RESULT_COPY.get((kind, status))
     if copy is None:
         return None
     matched = metadata.get("matched_count")

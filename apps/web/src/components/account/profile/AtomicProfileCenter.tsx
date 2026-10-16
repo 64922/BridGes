@@ -185,8 +185,10 @@ export function AtomicProfileCenter() {
   const [adding, setAdding] = useState(false);
   const [addDraft, setAddDraft] = useState("");
   const [addTopics, setAddTopics] = useState("");
+  const [addPurpose, setAddPurpose] = useState("");
   const [addBusy, setAddBusy] = useState(false);
   const [draftTopics, setDraftTopics] = useState("");
+  const [draftPurpose, setDraftPurpose] = useState("");
 
   const load = async () => {
     try {
@@ -267,6 +269,7 @@ export function AtomicProfileCenter() {
     setEditingId(item.profile_item_id);
     setDraft(item.text);
     setDraftTopics(topicsToInput(item.topics));
+    setDraftPurpose(item.usage_purpose ?? "");
     if (expandedId === item.profile_item_id) setExpandedId(null);
   };
 
@@ -274,6 +277,7 @@ export function AtomicProfileCenter() {
     setEditingId(null);
     setDraft("");
     setDraftTopics("");
+    setDraftPurpose("");
   };
 
   const saveEdit = async () => {
@@ -284,10 +288,12 @@ export function AtomicProfileCenter() {
     if (current === undefined) return;
     try {
       setBusyId(editingId);
+      // 用途：空输入即清除；清除后敏感自述不再进入回答上下文。
       const updated = await modifyAtomicProfileItem(editingId, {
         text,
         version: current.version,
         topics: parseTopics(draftTopics),
+        usage_purpose: draftPurpose.trim(),
       });
       setItems(
         (previous) =>
@@ -348,6 +354,7 @@ export function AtomicProfileCenter() {
     setAdding(false);
     setAddDraft("");
     setAddTopics("");
+    setAddPurpose("");
   };
 
   const submitAdd = async () => {
@@ -360,6 +367,7 @@ export function AtomicProfileCenter() {
       const created = await createAtomicProfileItem({
         text,
         topics: parseTopics(addTopics),
+        usage_purpose: addPurpose.trim(),
       });
       setItems((previous) => {
         if (previous === null) return [created];
@@ -617,6 +625,14 @@ export function AtomicProfileCenter() {
               placeholder="主题（可选，用逗号分隔，如：兴趣与喜好）"
               onChange={(event) => setAddTopics(event.target.value)}
             />
+            <input
+              className={styles.topicsInput}
+              value={addPurpose}
+              maxLength={60}
+              aria-label="长期信息用途"
+              placeholder="用途（可选；健康等敏感信息需说明用途，如：户外建议）"
+              onChange={(event) => setAddPurpose(event.target.value)}
+            />
             <div className={styles.actions}>
               <button type="button" onClick={cancelAdd} disabled={addBusy}>
                 取消
@@ -690,6 +706,14 @@ export function AtomicProfileCenter() {
                       placeholder="主题（可选，用逗号分隔；清空表示无主题）"
                       onChange={(event) => setDraftTopics(event.target.value)}
                     />
+                    <input
+                      className={styles.topicsInput}
+                      value={draftPurpose}
+                      maxLength={60}
+                      aria-label="长期信息用途"
+                      placeholder="用途（可选；清空表示不设用途，敏感信息将不再用于回答）"
+                      onChange={(event) => setDraftPurpose(event.target.value)}
+                    />
                     <div className={styles.actions}>
                       <button
                         type="button"
@@ -737,6 +761,15 @@ export function AtomicProfileCenter() {
                           </li>
                         ))}
                       </ul>
+                    ) : null}
+                    {item.usage_purpose ? (
+                      // 工单 09：用途是敏感自述的采用范围；清空后不再进入回答。
+                      <p
+                        className={styles.purpose}
+                        data-testid="atomic-usage-purpose"
+                      >
+                        用途：{item.usage_purpose}
+                      </p>
                     ) : null}
                     <div className={styles.actions}>
                       <button

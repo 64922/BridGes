@@ -25,12 +25,12 @@
 
 ## 验收标准
 
-- [ ] 心理学兴趣可记录，答辩焦虑默认仅用于会话，不生成长期心理/情绪标签。
-- [ ] 明确要求记住的过敏信息用于户外建议，其他问题不携带该内容。
-- [ ] 授权某一项不扩大为全部敏感信息；材料授权也不自动成为敏感授权。
-- [ ] 密码、验证码和访问密钥不进入记忆及派生存储，即使用户明确要求。
-- [ ] 删除或缩小用途后，旧采用及迟到提交均失效，恢复不能扩大范围。
-- [ ] 失败不声明已保存，不新增自动记录默认逐条确认流程。
+- [x] 心理学兴趣可记录，答辩焦虑默认仅用于会话，不生成长期心理/情绪标签。
+- [x] 明确要求记住的过敏信息用于户外建议，其他问题不携带该内容。
+- [x] 授权某一项不扩大为全部敏感信息；材料授权也不自动成为敏感授权。
+- [x] 密码、验证码和访问密钥不进入记忆及派生存储，即使用户明确要求。
+- [x] 删除或缩小用途后，旧采用及迟到提交均失效，恢复不能扩大范围。
+- [x] 失败不声明已保存，不新增自动记录默认逐条确认流程。
 
 ## 验证与交付
 
@@ -43,3 +43,11 @@
 ## Comments
 
 2026-10-15：用户回复「按此发布」，确认本次拆分与依赖。已发布为 ready-for-agent，尚无实施记录。
+
+2026-10-16：实施与验证完成（分支 `codex/issue-09-explicit-sensitive-memory`，基点 `26ac16cb`）。
+
+- 交付：敏感/凭据分类与用途规则模块 `sensitive.py`（心理学/密码学负向断言，不误拦）；`profile_items.usage_purpose`（迁移 83，旧行空=未说明用途）；记忆结果新增 `blocked_reason`（credential / purpose_required）与聊天上下文诚实约束；抽取结果新增 `SUCCEEDED_MEMORY_UNRESOLVED`；`remember` 凭据拒绝、敏感自述用途解析/兜底/缺用途拒绝；`commit_fact` 敏感与凭据零写入（材料与自动写入共用边界）；采用快照敏感条目用途门（无用途/不匹配不采用并给出排除原因）；被拒消息运行快照不保留原文、出站来源快照凭据值遮罩（`source_hash` 仍按原文）；候选级敏感门禁（保持既有禁止值失败关闭语义）；详情展示用途并支持填写/清除；OpenAPI 与前端合同再生。
+- 测试：新增 17 项（`tests/profiles/test_issue09_explicit_sensitive_memory.py` 15 项、`tests/storage/test_schema_v83_profile_usage_purpose.py` 2 项）；既有测试 3 处过敏样例改中性文本（语义不变）；`pytest tests/profiles tests/contracts tests/storage tests/lifecycle` 848 通过；全量对 main（327 vs 329 failed）逐条差集分支独有失败 0（另 2 项 main 独有为既有 flaky `test_api_boot`）；前端 293 通过、typecheck/lint/build 通过。
+- 走查（确定性，真实 SQLite + 真实聊天管线）：心理学兴趣正常保存采用、焦虑/过敏自动路径零写入、缺用途拒绝（幂等、运行记账不含原文）、按用途保存与采用、凭据三类拒绝且明文不落库、用途清除/恢复与迟到提交、跨重启持久化与聊天诚实约束——全部检查通过。
+- 验证记录：`.scratch/profile-memory-redesign/validation/09-explicit-sensitive-memory/verification-record.md`；走查证据 `.../evidence/demo-walkthrough-20261016.txt`，脚本 `.../tools/walk_issue09_sensitive_memory_demo.py`（可复跑）。
+- 已知限制：用途匹配为确定性字面规则（同义不匹配宁可漏用）；敏感词表为本地维护清单；模型侧对「未保存不得声称已记住」的遵从未做真实模型评测（属 18 票范畴），详见验证记录 §6。

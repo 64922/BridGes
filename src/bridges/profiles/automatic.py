@@ -28,6 +28,7 @@ from bridges.contracts.ai import (
     ModelRunLock,
 )
 from bridges.contracts.atomic_profile import (
+    AtomicProfileMemoryBlockedReason,
     AtomicProfileMemoryKind,
     AtomicProfileMemoryResult,
     AtomicProfileMemoryStatus,
@@ -72,6 +73,7 @@ from bridges.profiles.atomic import (
     AtomicProfileService,
     GoalLifecycleOutcome,
     MemoryDirective,
+    SensitiveMemoryError,
     parse_fact_identity,
     parse_goal_lifecycle_signal,
     parse_memory_directive,
@@ -87,6 +89,11 @@ from bridges.profiles.four_dimensions import (
     is_recallable_confidence,
 )
 from bridges.profiles.ports import ProfileRepository
+from bridges.profiles.sensitive import (
+    MemorySensitivity,
+    classify_memory_sensitivity,
+    redact_credentials,
+)
 from bridges.profiles.signals import (
     HARD_FORBIDDEN_REASONS,
     ProfileSignalCategory,
@@ -507,6 +514,16 @@ def _evidence_quote(content: str, normalized_value: str) -> str:
         suffix = "…" if end < len(quote) else ""
         return prefix + quote[start:end] + suffix
     return quote[: _MAX_EVIDENCE_QUOTE_LENGTH - 1] + "…"
+
+
+def _snapshot_for_storage(content: str) -> str:
+    """运行记账的来源快照：凭据赋值先做值遮罩（工单 09）。
+
+    消息正文仍是聊天自身的数据；这里只保证画像抽取的派生记账不复制凭据值。
+    ``source_hash`` 仍按原文计算，重放去重不受遮罩影响。
+    """
+
+    return redact_credentials(content)
 
 
 @dataclass(frozen=True)
@@ -2203,7 +2220,7 @@ class AutomaticProfileService:
                     message_id=message_id,
                     extractor_version=self.extractor_version,
                     source_hash=source_hash,
-                    source_snapshot=content,
+                    source_snapshot=_snapshot_for_storage(content),
                     status=ProfileExtractionStatus.EXHAUSTED,
                     outcome=ProfileExtractionOutcome.NO_SIGNAL,
                     attempts=0,
@@ -2575,7 +2592,7 @@ class AutomaticProfileService:
             message_id=message_id,
             extractor_version=self.extractor_version,
             source_hash=source_hash,
-            source_snapshot=content,
+            source_snapshot=_snapshot_for_storage(content),
             status=status,
             outcome=outcome,
             attempts=0,
@@ -2750,7 +2767,7 @@ class AutomaticProfileService:
                 message_id=message_id,
                 extractor_version=self.extractor_version,
                 source_hash=source_hash,
-                source_snapshot=content,
+                source_snapshot=_snapshot_for_storage(content),
                 status=ProfileExtractionStatus.EXHAUSTED,
                 outcome=ProfileExtractionOutcome.NO_SIGNAL,
                 attempts=0,
@@ -2791,21 +2808,44 @@ class AutomaticProfileService:
         Issue 08：显式记忆指令在本轮回答生成前生效（``preprocess_message``
         由请求路径调用），因此本轮切片立即包含或排除对应条目。指令消息不再
         进入自动抽取，避免同一轮既按用户原话写入又按规则推断。
+
+        工单 09：明确要求保存凭据、或敏感自述没有用途时，如实返回
+        ``UNRESOLVED`` 与阻断原因（``blocked_reason``），零写入；该消息的
+        运行快照不保留被拒绝的原文（凭据不进入派生存储）。
         """
 
         atomic = self._atomic_profiles
         assert atomic is not None
+        blocked_reason: AtomicProfileMemoryBlockedReason | None = None
+        run_outcome = ProfileExtractionOutcome.SUCCEEDED_MEMORY_DIRECTIVE
+        audit_reason = "memory_directive"
         if directive.kind == AtomicProfileMemoryKind.REMEMBER:
-            atomic.remember(
-                account_id, directive.target, source_message_id=message_id
-            )
-            memory = AtomicProfileMemoryResult(
-                kind=AtomicProfileMemoryKind.REMEMBER,
-                status=AtomicProfileMemoryStatus.REMEMBERED,
-                matched_count=1,
-            )
+            try:
+                atomic.remember(
+                    account_id, directive.target, source_message_id=message_id
+                )
+            except SensitiveMemoryError as exc:
+                blocked_reason = exc.blocked_reason
+                memory = AtomicProfileMemoryResult(
+                    kind=AtomicProfileMemoryKind.REMEMBER,
+                    status=AtomicProfileMemoryStatus.UNRESOLVED,
+                    blocked_reason=blocked_reason,
+                )
+                run_outcome = ProfileExtractionOutcome.SUCCEEDED_MEMORY_UNRESOLVED
+                audit_reason = "memory_directive_blocked"
+            else:
+                memory = AtomicProfileMemoryResult(
+                    kind=AtomicProfileMemoryKind.REMEMBER,
+                    status=AtomicProfileMemoryStatus.REMEMBERED,
+                    matched_count=1,
+                )
         else:
             memory = atomic.forget(account_id, directive.target)
+        snapshot = (
+            ""
+            if blocked_reason is not None
+            else _snapshot_for_storage(content)
+        )
         run = existing or ProfileExtractionRun(
             extraction_id=_stable_id(
                 "profile-extract",
@@ -2818,23 +2858,26 @@ class AutomaticProfileService:
             message_id=message_id,
             extractor_version=self.extractor_version,
             source_hash=source_hash,
-            source_snapshot=content,
+            source_snapshot=snapshot,
             status=ProfileExtractionStatus.SUCCEEDED,
-            outcome=ProfileExtractionOutcome.SUCCEEDED_MEMORY_DIRECTIVE,
+            outcome=run_outcome,
             attempts=1,
             source=ProfileExtractionSource.LOCAL_RULE,
             created_at=now,
             updated_at=now,
         )
         run.status = ProfileExtractionStatus.SUCCEEDED
-        run.outcome = ProfileExtractionOutcome.SUCCEEDED_MEMORY_DIRECTIVE
+        run.outcome = run_outcome
         run.attempts = max(1, run.attempts)
         run.last_error = None
         if run.source is None:
             run.source = ProfileExtractionSource.LOCAL_RULE
+        if blocked_reason is not None:
+            # 被拒绝的敏感原文不留在运行记账里；保留来源哈希供重放去重。
+            run.source_snapshot = ""
         run.updated_at = now
         self._repository.save_run(run)
-        self._audit_outcome(run, result=AuditResult.SUCCESS, reason="memory_directive")
+        self._audit_outcome(run, result=AuditResult.SUCCESS, reason=audit_reason)
         return ProfilePreprocessResult(run=run, memory=memory)
 
     def _lifecycle_result(
@@ -2862,7 +2905,7 @@ class AutomaticProfileService:
             message_id=message_id,
             extractor_version=self.extractor_version,
             source_hash=source_hash,
-            source_snapshot=content,
+            source_snapshot=_snapshot_for_storage(content),
             status=ProfileExtractionStatus.SUCCEEDED,
             outcome=ProfileExtractionOutcome.SUCCEEDED_LIFECYCLE_SIGNAL,
             attempts=1,
@@ -2924,7 +2967,7 @@ class AutomaticProfileService:
             message_id=message_id,
             extractor_version=self.extractor_version,
             source_hash=source_hash,
-            source_snapshot=content,
+            source_snapshot=_snapshot_for_storage(content),
             status=ProfileExtractionStatus.SUCCEEDED,
             outcome=ProfileExtractionOutcome.SUCCEEDED_TURN_CONTROL,
             attempts=1,
@@ -3974,6 +4017,13 @@ class AutomaticProfileService:
                 "画像抽取值包含禁止内容",
                 retryable=False,
             )
+        if (
+            classify_memory_sensitivity(candidate_text)
+            is not MemorySensitivity.ORDINARY
+        ):
+            # 工单 09：敏感自述（健康/心理/财务等）与凭据候选零写入。自动
+            # 路径不做用途推断；明确记住并说明用途走 ``remember`` 专用路径。
+            return ProfileExtractionAction.IGNORE
         if item.action == ProfileExtractionAction.OBSERVE:
             if (
                 segment_classification.category

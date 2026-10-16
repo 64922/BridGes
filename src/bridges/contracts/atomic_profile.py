@@ -211,6 +211,17 @@ class AtomicProfileMemoryStatus(StrEnum):
     UNRESOLVED = "unresolved"
 
 
+class AtomicProfileMemoryBlockedReason(StrEnum):
+    """记忆指令未保存的确定性原因（工单 09）；只给原因，不携带原文。
+
+    ``CREDENTIAL``：要求保存凭据类信息（密码/验证码/密钥），任何路径都不
+    保存；``PURPOSE_REQUIRED``：敏感自述没有说明用途，需要用户补充用途。
+    """
+
+    CREDENTIAL = "credential"
+    PURPOSE_REQUIRED = "purpose_required"
+
+
 class AtomicProfileMigrationStatus(StrEnum):
     """账户级原子化迁移状态；成功与可重试失败分开，便于页面给出准确结论。"""
 
@@ -346,6 +357,14 @@ class AtomicProfileItem(BaseModel):
             "也不复制同内容条目。"
         ),
     )
+    usage_purpose: str | None = Field(
+        default=None,
+        max_length=60,
+        description=(
+            "工单 09：敏感自述的使用用途（如「户外建议」）。只有用途与当前"
+            "任务匹配的敏感条目才进入回答；普通条目不受用途门控。"
+        ),
+    )
     status: AtomicProfileItemStatus = Field(description="活动条目或删除墓碑。")
     write_origin: AtomicProfileWriteOrigin = Field(description="条目最近一次写入来源。")
     confidence: FourDimensionConfidence = Field(
@@ -398,6 +417,10 @@ class AtomicProfileItemProjection(BaseModel):
     )
     topics: list[str] = Field(
         default_factory=list, description="开放主题；可空、多选，只组织浏览。"
+    )
+    usage_purpose: str | None = Field(
+        default=None,
+        description="工单 09：敏感自述的使用用途；没有说明用途时为空。",
     )
     source_message_ids: list[str] = Field(
         default_factory=list, description="证据来源消息标识。"
@@ -633,6 +656,10 @@ class AtomicProfileItemEvidenceProjection(BaseModel):
     topics: list[str] = Field(
         default_factory=list, description="开放主题；可空、多选，只组织浏览。"
     )
+    usage_purpose: str | None = Field(
+        default=None,
+        description="工单 09：敏感自述的使用用途；没有说明用途时为空。",
+    )
     fact_scope: AtomicProfileFactScope = Field(description="适用范围。")
     goal_state: AtomicProfileGoalState = Field(description="目标生命周期标记。")
     valid_from: datetime | None = Field(default=None, description="有效期起点。")
@@ -668,10 +695,17 @@ class AtomicProfileItemCreateRequest(BaseModel):
         default=None,
         description="可选主题（多选、可扩展）；不传或空列表表示无主题。",
     )
+    usage_purpose: str | None = Field(
+        default=None,
+        max_length=60,
+        description=(
+            "可选用途；敏感自述（健康、心理等）必须说明用途才能保存。"
+        ),
+    )
 
 
 class AtomicProfileItemModifyRequest(BaseModel):
-    """行内编辑的乐观锁请求；主题可选修改，不改变事实身份。"""
+    """行内编辑的乐观锁请求；主题与用途可选修改，不改变事实身份。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -680,6 +714,14 @@ class AtomicProfileItemModifyRequest(BaseModel):
     topics: list[str] | None = Field(
         default=None,
         description="替换后的主题；不传表示不修改主题，空列表表示清空主题。",
+    )
+    usage_purpose: str | None = Field(
+        default=None,
+        max_length=60,
+        description=(
+            "替换后的用途；不传表示不修改，空字符串表示清除用途。"
+            "清除后敏感自述不再进入回答上下文。"
+        ),
     )
 
 
@@ -699,15 +741,22 @@ class AtomicProfileMemoryResult(BaseModel):
     kind: AtomicProfileMemoryKind = Field(description="本轮记忆指令类型。")
     status: AtomicProfileMemoryStatus = Field(description="指令结果。")
     matched_count: int = Field(default=0, ge=0, description="命中的条目条数。")
+    blocked_reason: AtomicProfileMemoryBlockedReason | None = Field(
+        default=None,
+        description="未保存时的确定性原因（工单 09）；已保存或未定位时为空。",
+    )
 
     def context_metadata(self) -> dict[str, str | int]:
         """返回允许进入聊天提示词的最小脱敏元数据。"""
 
-        return {
+        metadata: dict[str, str | int] = {
             "memory_kind": self.kind.value,
             "status": self.status.value,
             "matched_count": self.matched_count,
         }
+        if self.blocked_reason is not None:
+            metadata["blocked_reason"] = self.blocked_reason.value
+        return metadata
 
 
 class AtomicProfileMigrationReport(BaseModel):

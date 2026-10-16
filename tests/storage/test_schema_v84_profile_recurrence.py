@@ -1,6 +1,7 @@
-"""画像工单 07：v83 迁移为原子条目补齐周期安排列。
+"""画像工单 07：v84 迁移为原子条目补齐周期安排列。
 
-从 v82 起步应用 v83 后，旧行 recurrence_json 取默认值（空 = 没有周期
+工单 09 先行并入 main 使用了 v83（敏感自述用途列），本迁移顺延为 v84。
+从 v83 起步应用 v84 后，旧行 recurrence_json 取默认值（空 = 没有周期
 表达），此后写入的周期数据在同一库中落盘；重复初始化保持幂等。
 """
 
@@ -12,20 +13,20 @@ from pathlib import Path
 from bridges.storage.database import MIGRATIONS, SCHEMA_VERSION, BridgesDatabase
 
 
-def _build_v82_database(path: Path) -> None:
+def _build_v83_database(path: Path) -> None:
     with sqlite3.connect(path) as connection:
-        for version in range(1, 83):
+        for version in range(1, 84):
             for statement in MIGRATIONS[version]:
                 connection.execute(statement)
         connection.execute(
             "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
         )
-        connection.execute("INSERT INTO schema_meta VALUES ('version', '82')")
+        connection.execute("INSERT INTO schema_meta VALUES ('version', '83')")
 
 
-def test_upgrade_from_v82_adds_recurrence_column(tmp_path: Path) -> None:
-    path = tmp_path / "upgrade-82.db"
-    _build_v82_database(path)
+def test_upgrade_from_v83_adds_recurrence_column(tmp_path: Path) -> None:
+    path = tmp_path / "upgrade-83.db"
+    _build_v83_database(path)
 
     database = BridgesDatabase(path)
     assert database.initialize() == SCHEMA_VERSION
@@ -43,9 +44,9 @@ def test_upgrade_from_v82_adds_recurrence_column(tmp_path: Path) -> None:
     database.close()
 
 
-def test_v83_migration_keeps_legacy_rows_without_recurrence(tmp_path: Path) -> None:
-    path = tmp_path / "upgrade-82-rows.db"
-    _build_v82_database(path)
+def test_v84_migration_keeps_legacy_rows_without_recurrence(tmp_path: Path) -> None:
+    path = tmp_path / "upgrade-83-rows.db"
+    _build_v83_database(path)
     with sqlite3.connect(path) as connection:
         connection.execute(
             "INSERT INTO profile_items ("

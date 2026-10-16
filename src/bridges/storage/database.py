@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 83
+SCHEMA_VERSION = 84
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3674,11 +3674,20 @@ MIGRATIONS: dict[int, list[str]] = {
         ADD COLUMN conflict_state TEXT NOT NULL DEFAULT 'none'
         """,
     ],
+    # 画像工单 09：敏感自述的使用用途。只有说明用途（且用途与当前任务匹配）
+    # 的敏感自述才进入回答；凭据类信息在任何路径都不写入（因此本列只会出现在
+    # 普通或敏感条目上）。既有行以 NULL 启始：未说明用途的敏感自述不用于回答。
+    83: [
+        """
+        ALTER TABLE profile_items
+        ADD COLUMN usage_purpose TEXT
+        """,
+    ],
     # 画像工单 07：周期安排的结构化条件（kind/weekdays/time_of_day/phrase）。
     # 既有行取默认值（空 = 没有周期表达），不重解释、不编造周期；周期安排
     # 本身没有期限，不设统一 TTL。列名与 JSON 载荷形式与 validity_phrase
-    # 等既有时间字段一致。
-    83: [
+    # 等既有时间字段一致。（工单 09 先行并入 main 使用了 83，本迁移顺延为 84。）
+    84: [
         """
         ALTER TABLE profile_items
         ADD COLUMN recurrence_json TEXT
@@ -4076,6 +4085,7 @@ REQUIRED_TABLE_COLUMNS: dict[str, frozenset[str]] = {
         "validity_phrase",
         "goal_state",
         "topics_json",
+        "usage_purpose",
         "recurrence_json",
     }),
     "profile_item_migrations": frozenset({
@@ -4137,6 +4147,7 @@ MIGRATION_ADDED_COLUMNS: dict[str, frozenset[str]] = {
         "goal_state",
         "topics_json",
         "source_quotes_json",
+        "usage_purpose",
         "recurrence_json",
     }),
     "profile_item_migrations": frozenset({"identity_backfilled"}),

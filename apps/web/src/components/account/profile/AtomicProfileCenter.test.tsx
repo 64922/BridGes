@@ -405,6 +405,7 @@ describe("AtomicProfileCenter", () => {
         text: "我每周三晚上跑步",
         version: 1,
         topics: [],
+        usage_purpose: "",
       })
     );
     await waitFor(() =>
@@ -523,6 +524,7 @@ describe("AtomicProfileCenter", () => {
       expect(api.createAtomicProfileItem).toHaveBeenCalledWith({
         text: "我养了一只猫叫团子",
         topics: ["兴趣与喜好", "日常习惯与现实约束"],
+        usage_purpose: "",
       })
     );
     const row = await screen.findByTestId("atomic-item");
@@ -584,10 +586,48 @@ describe("AtomicProfileCenter", () => {
         text: "我在准备雅思考试",
         version: 1,
         topics: ["目标与计划"],
+        usage_purpose: "",
       })
     );
     await waitFor(() =>
       expect(screen.getByTestId("atomic-topics").textContent).toContain("目标与计划")
+    );
+  });
+
+  it("shows the usage purpose and clears it through the edit form", async () => {
+    api.listAtomicProfileItems.mockResolvedValue([
+      item({ text: "我有花粉过敏，户外建议要注意", usage_purpose: "户外" }),
+    ]);
+    api.modifyAtomicProfileItem.mockResolvedValue(
+      item({
+        text: "我有花粉过敏，户外建议要注意",
+        version: 2,
+        write_origin: "user",
+        usage_purpose: null,
+      })
+    );
+
+    render(<AtomicProfileCenter />);
+    const purpose = await screen.findByTestId("atomic-usage-purpose");
+    expect(purpose.textContent).toContain("户外");
+
+    fireEvent.click(screen.getByText("修改"));
+    const purposeInput = screen.getByLabelText("长期信息用途") as HTMLInputElement;
+    expect(purposeInput.value).toBe("户外");
+    // 清空用途：保存后该条不再展示用途（服务端同时停止在回答中采用）。
+    fireEvent.change(purposeInput, { target: { value: "" } });
+    fireEvent.click(screen.getByText("保存"));
+
+    await waitFor(() =>
+      expect(api.modifyAtomicProfileItem).toHaveBeenCalledWith("item-1", {
+        text: "我有花粉过敏，户外建议要注意",
+        version: 1,
+        topics: [],
+        usage_purpose: "",
+      })
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId("atomic-usage-purpose")).toBeNull()
     );
   });
 
