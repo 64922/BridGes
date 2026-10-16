@@ -125,6 +125,7 @@ def test_domain_reference_route_sets_and_clears() -> None:
     )
     assert set_reference.status_code == 200, set_reference.text
     references = set_reference.json()["items"][0]["domain_references"]
+    # 画像工单 14：投影新增领域对象版本字段；未接通领域时如实为空。
     assert references == [
         {
             "domain": "learning",
@@ -132,6 +133,7 @@ def test_domain_reference_route_sets_and_clears() -> None:
             "resolved": False,
             "display": None,
             "state_code": None,
+            "version": None,
         }
     ]
 

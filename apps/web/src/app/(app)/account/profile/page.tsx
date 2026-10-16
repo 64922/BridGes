@@ -1,4 +1,5 @@
 import { AtomicProfileCenter } from "@/components/account/profile/AtomicProfileCenter";
+import { LearningReferencesCard } from "@/components/account/profile/LearningReferencesCard";
 import { OngoingItemsCard } from "@/components/account/profile/OngoingItemsCard";
 import { ProfileControlsCard } from "@/components/account/profile/ProfileControlsCard";
 import { MainContent } from "@/components/layout/MainContent";
@@ -19,12 +20,16 @@ export const metadata = {
  *
  * 画像工单 13：控制区下方是进行中事项区（目标／进展／待续问题与暂停、
  * 完成、继续），逐条信息列表仍在其后。
+ *
+ * 画像工单 14：事项区下方是学习引用区（学习模块自己的目标与学情判断，
+ * 只读实时反映；自述条目仍只在上方「你的信息」里）。
  */
 export default function ProfileCenterPage() {
   return (
     <MainContent>
       <ProfileControlsCard />
       <OngoingItemsCard />
+      <LearningReferencesCard />
       <AtomicProfileCenter />
     </MainContent>
   );

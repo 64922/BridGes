@@ -14,12 +14,13 @@ from fastapi import APIRouter, Depends, Request, status
 
 from bridges.api.auth import SubjectDep
 from bridges.contracts.ongoing_profile import (
+    OngoingDomainReferenceError,
     OngoingDomainReferenceUpdateRequest,
     OngoingItemsProjection,
     OngoingItemStateUpdateRequest,
 )
 from bridges.contracts.profiles import ProfileError
-from bridges.profiles.api_errors import atomic_error
+from bridges.profiles.api_errors import atomic_error, profile_error
 from bridges.profiles.atomic import AtomicProfileError
 from bridges.profiles.ongoing import OngoingItemsService
 
@@ -72,12 +73,23 @@ async def update_ongoing_item_state(
     item_id: str,
     request: OngoingItemStateUpdateRequest,
 ) -> OngoingItemsProjection:
-    """暂停/完成/继续进行中目标；返回刷新后的事项区。"""
+    """暂停/完成/继续进行中目标；返回刷新后的事项区。
+
+    条目关联学习等领域时状态由所属领域执行：请求须带页面读到的领域版本
+    （``reference_version``），领域冲突/不可用按领域错误如实映射，不把
+    失败显示为成功，也不在画像侧写第二份状态。
+    """
 
     try:
         service.set_state(
-            subject.account_id, item_id, request.action, version=request.version
+            subject.account_id,
+            item_id,
+            request.action,
+            version=request.version,
+            reference_version=request.reference_version,
         )
+    except OngoingDomainReferenceError as exc:
+        raise profile_error(exc.status_code, exc.code, exc.message) from exc
     except AtomicProfileError as exc:
         raise atomic_error(exc, "ongoing_item_state_failed") from exc
     return service.list_items(subject.account_id)

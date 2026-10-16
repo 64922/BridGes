@@ -31,10 +31,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime
-from typing import Protocol
 
 from bridges.contracts.atomic_profile import (
     AtomicProfileDomainReference,
@@ -47,24 +45,28 @@ from bridges.contracts.ongoing_profile import (
     OngoingContextState,
     OngoingContinuationGroup,
     OngoingDomainReferenceProjection,
-    OngoingDomainReferenceState,
-    OngoingEntryProjection,
     OngoingGoalAction,
     OngoingItemProjection,
-    OngoingItemRole,
     OngoingItemsProjection,
 )
 from bridges.contracts.profile_extraction import ProfileAccountControlsProjection
 from bridges.profiles.atomic import (
+    AtomicProfileError,
     AtomicProfileService,
     ProfileEvidenceSourceReader,
     ongoing_goal_mentioned,
 )
+from bridges.profiles.ongoing_domains import (
+    OngoingDomainReferenceProvider,
+    OngoingDomainRegistry,
+    OngoingDomainStateProvider,
+    effective_goal_state,
+)
 from bridges.profiles.ongoing_projection import (
     ONGOING_USAGE_DISABLED_NOTICE,
-    _entry_projection,
     _group_items,
     _is_fresh,
+    _item_projection,
     _now,
     _OngoingGroup,
 )
@@ -73,19 +75,8 @@ from bridges.profiles.ongoing_repository import (
     StoredOngoingContext,
 )
 
-logger = logging.getLogger(__name__)
-
 #: 重建在竞争/失效下重试的次数；仍不稳定则如实返回「重建中」，绝不回退旧内容。
 _ONGOING_REBUILD_ATTEMPTS = 2
-
-
-class OngoingDomainReferenceProvider(Protocol):
-    """领域引用解析端口：按领域注册，读取时实时解析当前状态。"""
-
-    def resolve(
-        self, account_id: str, reference: AtomicProfileDomainReference
-    ) -> OngoingDomainReferenceState | None:
-        """返回领域状态；对象不存在或不可读时返回 ``None``（未解析）。"""
 
 
 class OngoingItemsService:
@@ -110,7 +101,9 @@ class OngoingItemsService:
         # 来源可用性/内容摘要依赖消息读取；未注入时按「不可读」处理，
         # 绝不伪造来源仍存在。
         self._message_reader = message_reader
-        self._domain_providers: dict[str, OngoingDomainReferenceProvider] = {}
+        # 画像工单 13/14：领域引用解析与状态操作注册表；未接通领域时如实
+        # 显示未解析，关联条目的状态操作如实拒绝，不写画像条目冒充领域状态。
+        self._domains = OngoingDomainRegistry()
 
     # ------------------------------------------------------------------
     # 组合根装配
@@ -121,7 +114,14 @@ class OngoingItemsService:
     ) -> None:
         """注册/替换一个领域的引用解析提供方（学习对接由工单 14 接线）。"""
 
-        self._domain_providers[domain] = provider
+        self._domains.register_provider(domain, provider)
+
+    def register_domain_state_provider(
+        self, domain: str, provider: OngoingDomainStateProvider
+    ) -> None:
+        """注册/替换一个领域的状态操作提供方（画像工单 14；学习目标）。"""
+
+        self._domains.register_state_provider(domain, provider)
 
     # ------------------------------------------------------------------
     # 事项投影（页面与管理操作）
@@ -133,16 +133,14 @@ class OngoingItemsService:
         """实时生成事项页投影：加载/空态由前端按 ``items`` 渲染。
 
         使用开关关闭时仍然列出事项供管理（含说明提示），但不代表回答会
-        使用它们；完成的目标不再出现。
+        使用它们；完成的目标不再出现（关联领域的目标以领域实时状态为准，
+        领域状态完成时不显示，画像条目本身不动）。
         """
 
         moment = now or _now()
         controls = self._controls_reader(account_id)
         groups = _group_items(self._atomic.list_items(account_id))
-        items = [
-            self._item_projection(account_id, group, now=moment)
-            for group in groups
-        ]
+        items, _ = self._item_projections(account_id, groups, now=moment)
         return OngoingItemsProjection(
             usage_enabled=controls.usage_enabled,
             notice=(
@@ -158,12 +156,36 @@ class OngoingItemsService:
         action: OngoingGoalAction,
         *,
         version: int,
+        reference_version: int | None = None,
     ) -> AtomicProfileItem:
-        """暂停/完成/继续进行中目标：精确条目 + 乐观锁（委托原子服务）。"""
+        """暂停/完成/继续进行中目标：精确条目 + 乐观锁。
 
-        return self._atomic.set_ongoing_state(
-            account_id, item_id, action, version=version
+        条目未关联领域时委托原子服务（原有行为）。条目已关联领域（如学习
+        目标）时，状态由所属领域拥有：本方法只校验页面读到的条目版本未被
+        并发修改，再把操作连同页面读到的领域对象版本交给注册的领域状态
+        提供方，由领域按其守卫执行；画像条目不写（不产生第二份状态）。
+        领域版本缺失、冲突或不可用时如实报错，不覆盖领域新状态。
+        """
+
+        item = self._atomic.get_item(account_id, item_id)
+        reference = item.domain_reference
+        if reference is None:
+            return self._atomic.set_ongoing_state(
+                account_id, item_id, action, version=version
+            )
+        if version != item.version:
+            raise AtomicProfileError("版本冲突，请刷新后重试。")
+        provider = self._domains.state_provider(reference.domain)
+        if provider is None:
+            raise AtomicProfileError(
+                "该事项由所属领域管理，当前未接通状态操作。"
+            )
+        if reference_version is None:
+            raise AtomicProfileError("缺少所属领域对象版本，请刷新后重试。")
+        provider.set_state(
+            account_id, reference, action, expected_version=reference_version
         )
+        return item
 
     def set_domain_reference(
         self,
@@ -179,54 +201,46 @@ class OngoingItemsService:
             account_id, item_id, reference, version=version
         )
 
-    def _item_projection(
-        self, account_id: str, group: _OngoingGroup, *, now: datetime | None
-    ) -> OngoingItemProjection:
-        moment = now or _now()
-        progress: list[OngoingEntryProjection] = []
-        pending: list[OngoingEntryProjection] = []
-        for entry in sorted(
-            group.entries,
-            key=lambda item: (-item.updated_at.timestamp(), item.profile_item_id),
-        ):
-            projection = _entry_projection(entry, now=moment)
-            if projection.role is OngoingItemRole.PENDING_QUESTION:
-                pending.append(projection)
-            else:
-                progress.append(projection)
-        return OngoingItemProjection(
-            goal=_entry_projection(group.goal, now=moment),
-            progress=progress,
-            pending_questions=pending,
-            domain_references=(
-                [self._resolve_domain_reference(account_id, group.goal.domain_reference)]
-                if group.goal.domain_reference is not None
-                else []
-            ),
-        )
+    def _item_projections(
+        self, account_id: str, groups: Sequence[_OngoingGroup], *, now: datetime
+    ) -> tuple[list[OngoingItemProjection], dict[str, OngoingDomainReferenceProjection]]:
+        """按组生成投影并返回同一份领域引用解析（指纹与载荷共用）。
 
-    def _resolve_domain_reference(
-        self, account_id: str, reference: AtomicProfileDomainReference
-    ) -> OngoingDomainReferenceProjection:
-        provider = self._domain_providers.get(reference.domain)
-        state: OngoingDomainReferenceState | None = None
-        if provider is not None:
-            try:
-                state = provider.resolve(account_id, reference)
-            except Exception:  # noqa: BLE001 - 领域故障只降级为未解析
-                logger.warning(
-                    "进行中事项领域引用解析失败，按未解析展示",
-                    exc_info=True,
-                    extra={"domain": reference.domain},
+        关联领域的目标以领域实时状态参与「完成即隐藏」与展示：领域状态
+        未解析时保留画像自身状态并如实标注未解析，绝不伪造领域结论。
+        """
+
+        resolutions = self._resolve_references(account_id, groups)
+        items: list[OngoingItemProjection] = []
+        for group in groups:
+            reference = resolutions.get(group.goal.profile_item_id)
+            effective = effective_goal_state(group.goal, reference)
+            if effective is AtomicProfileGoalState.COMPLETED:
+                continue
+            items.append(
+                _item_projection(
+                    group,
+                    now=now,
+                    reference=reference,
+                    effective_goal_state=effective,
                 )
-                state = None
-        return OngoingDomainReferenceProjection(
-            domain=reference.domain,
-            reference_id=reference.reference_id,
-            resolved=state is not None,
-            display=state.display if state is not None else None,
-            state_code=state.state_code if state is not None else None,
-        )
+            )
+        return items, resolutions
+
+    def _resolve_references(
+        self, account_id: str, groups: Sequence[_OngoingGroup]
+    ) -> dict[str, OngoingDomainReferenceProjection]:
+        """解析所有关联领域目标；键为画像条目标识（未关联的组不在其中）。"""
+
+        resolutions: dict[str, OngoingDomainReferenceProjection] = {}
+        for group in groups:
+            reference = group.goal.domain_reference
+            if reference is None:
+                continue
+            resolutions[group.goal.profile_item_id] = self._domains.resolve(
+                account_id, reference
+            )
+        return resolutions
 
     # ------------------------------------------------------------------
     # 近期工作上下文（失效、守卫与读取）
@@ -298,14 +312,11 @@ class OngoingItemsService:
         moment = now or _now()
         controls = self._controls_reader(account_id)
         groups = _group_items(snapshot)
-        fingerprint = self._fingerprint(account_id, groups, controls)
-        payload = [
-            projection.model_dump(mode="json")
-            for projection in (
-                self._item_projection(account_id, group, now=moment)
-                for group in groups
-            )
-        ]
+        items, resolutions = self._item_projections(account_id, groups, now=moment)
+        fingerprint = self._fingerprint(
+            account_id, groups, controls, resolutions
+        )
+        payload = [projection.model_dump(mode="json") for projection in items]
         return self._store.commit_rebuild(
             account_id,
             captured_epoch=0 if stored is None else stored.epoch,
@@ -322,7 +333,11 @@ class OngoingItemsService:
         query: str,
         semantic_item_ids: Iterable[str] = (),
     ) -> OngoingContinuationGroup | None:
-        """「继续某事项」的编译提供方：上下文不新鲜时不给接续依据。"""
+        """「继续某事项」的编译提供方：上下文不新鲜时不给接续依据。
+
+        关联领域的目标以领域实时状态判定是否仍可接续：领域状态暂停/完成
+        时不接续；引用无法解析时同样不接续（不能确认领域状态就不伪造）。
+        """
 
         controls = self._controls_reader(account_id)
         if not controls.usage_enabled:
@@ -333,10 +348,19 @@ class OngoingItemsService:
             # 上下文不可新鲜（失效或重建竞争）：本轮不启用接续依据，
             # 其余召回通道照旧；绝不拿旧上下文冒充当前。
             return None
+        groups = _group_items(snapshot)
+        resolutions = self._resolve_references(account_id, groups)
         semantic = set(semantic_item_ids)
         matched: list[_OngoingGroup] = []
-        for group in _group_items(snapshot):
-            if group.goal.goal_state is not AtomicProfileGoalState.ACTIVE:
+        for group in groups:
+            reference = resolutions.get(group.goal.profile_item_id)
+            if group.goal.domain_reference is not None and (
+                reference is None or not reference.resolved
+            ):
+                continue
+            if effective_goal_state(group.goal, reference) is not (
+                AtomicProfileGoalState.ACTIVE
+            ):
                 continue
             mentioned = bool(query) and ongoing_goal_mentioned(group.goal, query)
             entry_hit = any(
@@ -370,7 +394,8 @@ class OngoingItemsService:
             return None, self._atomic.list_items(account_id)
         snapshot = self._atomic.list_items(account_id)
         groups = _group_items(snapshot)
-        fingerprint = self._fingerprint(account_id, groups, controls)
+        resolutions = self._resolve_references(account_id, groups)
+        fingerprint = self._fingerprint(account_id, groups, controls, resolutions)
         stored = self._store.read(account_id)
         if stored is None and not groups:
             # 从未建立且没有事项：如实为空，不落一行空上下文。
@@ -388,7 +413,10 @@ class OngoingItemsService:
                 return None, snapshot
             snapshot = self._atomic.list_items(account_id)
             groups = _group_items(snapshot)
-            fingerprint = self._fingerprint(account_id, groups, controls)
+            resolutions = self._resolve_references(account_id, groups)
+            fingerprint = self._fingerprint(
+                account_id, groups, controls, resolutions
+            )
             stored = self._store.read(account_id)
             if stored is not None and _is_fresh(stored, fingerprint):
                 return stored, snapshot
@@ -399,8 +427,9 @@ class OngoingItemsService:
         account_id: str,
         groups: Sequence[_OngoingGroup],
         controls: ProfileAccountControlsProjection,
+        resolutions: dict[str, OngoingDomainReferenceProjection],
     ) -> str:
-        """依赖指纹：条目版本、来源消息可用性与内容、控制状态与合同版本。"""
+        """依赖指纹：条目版本、领域引用实时状态、来源消息、控制与合同版本。"""
 
         lines = [
             ONGOING_CONTEXT_CONTRACT_VERSION,
@@ -411,6 +440,15 @@ class OngoingItemsService:
             lines.append(
                 f"g|{goal.profile_item_id}|{goal.version}|{goal.goal_state.value}"
             )
+            reference = resolutions.get(goal.profile_item_id)
+            if reference is not None:
+                # 画像工单 14：领域的纠正/删除/暂停/切换/版本变化让上下文
+                # 立即失效——领域状态只引用，不复制进画像。
+                lines.append(
+                    f"d|{goal.profile_item_id}|{reference.domain}"
+                    f"|{reference.reference_id}|{int(reference.resolved)}"
+                    f"|{reference.state_code or ''}|{reference.version or ''}"
+                )
             for entry in sorted(
                 group.entries, key=lambda item: item.profile_item_id
             ):

@@ -75,3 +75,13 @@ export type OngoingItemStateUpdateRequest =
 
 export type OngoingDomainReferenceUpdateRequest =
   components["schemas"]["OngoingDomainReferenceUpdateRequest"];
+
+// 画像工单 14：记忆页学习引用区（学习领域持有、这里只读引用）。
+export type LearningReferencesProjection =
+  components["schemas"]["LearningReferencesProjection"];
+
+export type LearningGoalReference =
+  components["schemas"]["LearningGoalReference"];
+
+export type LearningEvidenceReference =
+  components["schemas"]["LearningEvidenceReference"];
