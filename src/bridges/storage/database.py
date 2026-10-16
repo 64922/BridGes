@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 88
+SCHEMA_VERSION = 89
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3794,6 +3794,58 @@ MIGRATIONS: dict[int, list[str]] = {
         )
         """,
     ],
+    # 画像工单 17：历史重整的进度台账（账户级维护审计）。重整在已验证备份的
+    # 隔离副本中执行，台账随工作副本一起落库：进度、幂等标识（消息/任务/
+    # 抽取标识与来源哈希）、跳过原因与失败状态逐条记录，可跨进程重启恢复；
+    # 台账只保存标识、计数与摘要，不保存消息或条目正文。它是账户数据：随
+    # 账户删除清除、进入导出（审计类别）与逻辑摘要比对、随备份恢复返回。
+    89: [
+        """
+        CREATE TABLE IF NOT EXISTS profile_rebuild_runs (
+            rebuild_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            policy_version TEXT NOT NULL,
+            extractor_version TEXT NOT NULL,
+            source_digest TEXT NOT NULL,
+            state_digest TEXT NOT NULL,
+            schema_version INTEGER NOT NULL,
+            window_start_at TEXT,
+            window_end_at TEXT,
+            baseline_json TEXT NOT NULL DEFAULT '{}',
+            window_total INTEGER NOT NULL DEFAULT 0,
+            eligible_count INTEGER NOT NULL DEFAULT 0,
+            extracted_count INTEGER NOT NULL DEFAULT 0,
+            committed_count INTEGER NOT NULL DEFAULT 0,
+            skipped_count INTEGER NOT NULL DEFAULT 0,
+            failed_count INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT,
+            reconciled_at TEXT
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS profile_rebuild_items (
+            rebuild_id TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            source_created_at TEXT NOT NULL,
+            status TEXT NOT NULL,
+            skip_reason TEXT,
+            source_hash TEXT,
+            task_key TEXT,
+            extraction_id TEXT,
+            committed_count INTEGER NOT NULL DEFAULT 0,
+            observed_count INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (rebuild_id, message_id)
+        )
+        """,
+    ],
 }
 
 #: 启动完整性校验要求必须存在的核心契约表。
@@ -3871,8 +3923,13 @@ REQUIRED_TABLES: frozenset[str] = frozenset({
     "profile_ongoing_context",
     # 画像工单 15：整体概览的派生表。「关于我的记忆」页面无条件读取；迁移
     # 半执行时须在启动阶段失败关闭，而不是把概览不可用伪装成「没有记忆」。
-    # 概览可重建，不持有独立事实真相，也不进入提取或回答编译。
+    # 概览可重建，不持有独立事实，也不进入提取或回答编译。
     "profile_overview",
+    # 画像工单 17：历史重整进度台账。维护入口（profile-rebuild）在启动任何
+    # 重整前无条件读取/写入这两张表；迁移半执行时须在入口阶段失败关闭，
+    # 而不是让重整跑到一半才发现台账缺失。台账是账户级维护审计，不含正文。
+    "profile_rebuild_runs",
+    "profile_rebuild_items",
     # 改进工单 10：持久节点执行内核的产物、收据与待投递事件；通勤模块
     # 在启动装配后无条件经内核查询，迁移半执行时须在启动阶段失败关闭。
     "node_artifacts",

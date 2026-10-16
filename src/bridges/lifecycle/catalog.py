@@ -131,6 +131,9 @@ ACCOUNT_TABLES: tuple[str, ...] = (
     "profile_ongoing_context",
     # 画像工单 15：整体概览（可重建派生视图，不持有独立事实真相）。
     "profile_overview",
+    # 画像工单 17：历史重整进度台账（账户级维护审计，子表先于运行行删除）。
+    "profile_rebuild_items",
+    "profile_rebuild_runs",
     "profile_items",
     "profile_item_migrations",
     # 工单 01：逐条对账台账（账户级迁移审计），随账户删除并进入导出。
@@ -361,6 +364,14 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
         ),
         512,
     ),
+    # 画像工单 17：历史重整进度台账（运行状态、窗口、计数、跳过原因与
+    # 幂等标识；逐行可读，不含消息或条目正文）。
+    ExportCategory(
+        "profile_history_rebuild",
+        "画像历史重整审计",
+        ("profile_rebuild_runs", "profile_rebuild_items"),
+        256,
+    ),
     ExportCategory("learning_projects", "历史归档材料", ("learning_projects",), 256),
     ExportCategory(
         "learning_project_migration",
@@ -554,6 +565,10 @@ def logical_summary(
         "profile_item_migrations",
         "profile_item_migration_records",
         "profile_item_feedback",
+        # 画像工单 17：历史重整台账（运行与逐条进度）随账户删除与备份，
+        # 参与导出与恢复一致性比对。
+        "profile_rebuild_runs",
+        "profile_rebuild_items",
         "learning_projects",
         "learning_project_migration_runs",
         "learning_project_migrations",

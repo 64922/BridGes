@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from dataclasses import dataclass, replace
 
 from bridges.profiles.atomic import identity_key
 from bridges.profiles.automatic import normalize_message_content
@@ -25,6 +26,7 @@ from bridges.profiles.history_contracts import (
 )
 from bridges.profiles.history_repository import (
     HistoryItemRecord,
+    HistoryMessageRecord,
     ProfileHistorySnapshotReader,
 )
 from bridges.profiles.sensitive import MemorySensitivity, classify_memory_sensitivity
@@ -39,6 +41,66 @@ def _matches_content_block(normalized_content: str, blocks: tuple[str, ...]) -> 
         or normalized_content in block
         for block in blocks
     )
+
+
+@dataclass(frozen=True)
+class HistoryMessageDecision:
+    """一条用户消息在历史重整门控下的确定性判定（不含正文）。"""
+
+    message_id: str
+    conversation_id: str
+    created_at: str
+    readable: bool
+    eligible: bool
+    skip_reason: str | None
+
+
+def classify_history_message(
+    message: HistoryMessageRecord,
+    *,
+    account_id: str,
+    tombstoned_message_ids: set[str] | frozenset[str],
+    withdrawn_source_ids: set[str] | frozenset[str],
+    withdrawn_identity_keys: set[str] | frozenset[str],
+    content_blocks: tuple[str, ...],
+    recording_enabled: bool,
+) -> HistoryMessageDecision:
+    """历史消息门控的唯一实现（预览与重整共用同一合同）。
+
+    ``readable`` 表示该消息可作为有效来源参与证据核验（用户消息、回合完成、
+    非空、且未被墓碑删除）；``eligible`` 表示在可读基础上未被禁止内容、
+    撤回抑制或停止记录拦截，可以进入语义提取范围。跳过原因词表与预览
+    ``chat_scope`` 计数一一对应。
+    """
+
+    base = HistoryMessageDecision(
+        message_id=message.message_id,
+        conversation_id=message.conversation_id,
+        created_at=message.created_at,
+        readable=False,
+        eligible=False,
+        skip_reason=None,
+    )
+    if message.role != "user":
+        return base
+    if message.status != "done":
+        return replace(base, skip_reason="unfinished")
+    if not message.content.strip():
+        return replace(base, skip_reason="empty")
+    if message.message_id in tombstoned_message_ids:
+        return replace(base, skip_reason="tombstoned")
+    readable = replace(base, readable=True)
+    normalized = normalize_message_content(message.content)
+    if _matches_content_block(normalized, content_blocks):
+        return replace(readable, skip_reason="content_blocked")
+    if (
+        message.message_id in withdrawn_source_ids
+        or identity_key(account_id, message.content) in withdrawn_identity_keys
+    ):
+        return replace(readable, skip_reason="withdrawn_suppressed")
+    if not recording_enabled:
+        return replace(readable, skip_reason="recording_off")
+    return replace(readable, eligible=True)
 
 
 def _classify_items(
@@ -164,35 +226,36 @@ def compute_account_snapshot(
         if message.role != "user":
             continue
         user_total += 1
-        if message.status != "done":
-            skipped_unfinished += 1
-            continue
-        if not message.content.strip():
-            skipped_empty += 1
-            continue
-        if message.message_id in tombstoned:
+        decision = classify_history_message(
+            message,
+            account_id=account_id,
+            tombstoned_message_ids=tombstoned,
+            withdrawn_source_ids=withdrawn_source_ids,
+            withdrawn_identity_keys=withdrawn_keys,
+            content_blocks=controls.content_blocks,
+            recording_enabled=controls.recording_enabled,
+        )
+        if decision.readable:
+            readable_user_ids.add(message.message_id)
+        if decision.eligible:
+            eligible += 1
+            eligible_conversations.add(message.conversation_id)
+            if eligible_first is None or message.created_at < eligible_first:
+                eligible_first = message.created_at
+            if eligible_last is None or message.created_at > eligible_last:
+                eligible_last = message.created_at
+        elif decision.skip_reason == "tombstoned":
             skipped_tombstoned += 1
-            continue
-        readable_user_ids.add(message.message_id)
-        normalized = normalize_message_content(message.content)
-        if _matches_content_block(normalized, controls.content_blocks):
+        elif decision.skip_reason == "unfinished":
+            skipped_unfinished += 1
+        elif decision.skip_reason == "empty":
+            skipped_empty += 1
+        elif decision.skip_reason == "content_blocked":
             skipped_content_blocked += 1
-            continue
-        if (
-            message.message_id in withdrawn_source_ids
-            or identity_key(account_id, message.content) in withdrawn_keys
-        ):
+        elif decision.skip_reason == "withdrawn_suppressed":
             skipped_withdrawn_suppressed += 1
-            continue
-        if not controls.recording_enabled:
+        elif decision.skip_reason == "recording_off":
             skipped_recording_off += 1
-            continue
-        eligible += 1
-        eligible_conversations.add(message.conversation_id)
-        if eligible_first is None or message.created_at < eligible_first:
-            eligible_first = message.created_at
-        if eligible_last is None or message.created_at > eligible_last:
-            eligible_last = message.created_at
 
     for item in sorted(items, key=lambda entry: entry.profile_item_id):
         text_digest = hashlib.sha256(item.text.encode("utf-8")).hexdigest()
@@ -262,4 +325,8 @@ def compute_account_snapshot(
     )
 
 
-__all__ = ["compute_account_snapshot"]
+__all__ = [
+    "HistoryMessageDecision",
+    "classify_history_message",
+    "compute_account_snapshot",
+]

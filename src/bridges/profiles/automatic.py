@@ -166,6 +166,9 @@ AUTOMATIC_PRIVACY_NOTICE_TEXT = (
 )
 PROFILE_EXTRACTION_QUEUE = "profile-extraction"
 PROFILE_REPLAY_QUEUE = "profile-replay-v2"
+#: 画像工单 17：历史重整工作副本的专用队列名；与在线队列、旧回放队列
+#: 隔离，避免维护驱动误领其他生产者登记的任务。
+PROFILE_REBUILD_QUEUE = "profile-history-rebuild"
 PROFILE_REPLAY_SOURCE_HASH_PREFIX = ":replay-v1:"
 PROFILE_CORRECTION_RULES_VERSION = "profile_correction_v1"
 PROFILE_EXTRACTION_MAX_RETRIES = 3
@@ -2087,33 +2090,39 @@ class AutomaticProfileService:
             )
             if task is not None:
                 continue
-            now = _now()
-            recovery_code = "profile_extraction_recovered_after_restart"
-            task = ProfileExtractionRetryTask(
-                task_id=_stable_id(
-                    "profile-retry",
-                    run.account_id,
-                    run.message_id,
-                    run.extractor_version,
-                    run.source_hash,
-                ),
-                account_id=run.account_id,
-                message_id=run.message_id,
-                extractor_version=run.extractor_version,
-                source_hash=run.source_hash,
-                status=ProfileExtractionStatus.PENDING,
-                attempts=run.attempts,
-                last_error=recovery_code,
-                created_at=now,
-                updated_at=now,
-            )
-            run.status = ProfileExtractionStatus.PENDING
-            run.outcome = ProfileExtractionOutcome.PENDING_RETRY
-            run.last_error = recovery_code
-            run.updated_at = now
-            with self._repository.transaction():
-                self._repository.save_run(run)
-                self._repository.save_task(task)
+            self._recover_run(run)
+
+    def _recover_run(self, run: ProfileExtractionRun) -> None:
+        """把一条丢失重试任务的运行重置为 PENDING 并重新入队（恢复子步骤）。"""
+
+        now = _now()
+        recovery_code = "profile_extraction_recovered_after_restart"
+        task = ProfileExtractionRetryTask(
+            task_id=_stable_id(
+                "profile-retry",
+                run.account_id,
+                run.message_id,
+                run.extractor_version,
+                run.source_hash,
+            ),
+            account_id=run.account_id,
+            message_id=run.message_id,
+            extractor_version=run.extractor_version,
+            source_hash=run.source_hash,
+            status=ProfileExtractionStatus.PENDING,
+            attempts=run.attempts,
+            last_error=recovery_code,
+            created_at=now,
+            updated_at=now,
+        )
+        run.status = ProfileExtractionStatus.PENDING
+        run.outcome = ProfileExtractionOutcome.PENDING_RETRY
+        run.last_error = recovery_code
+        run.updated_at = now
+        with self._repository.transaction():
+            self._repository.save_run(run)
+            self._repository.save_task(task)
+            if self._queue is not None:
                 self._queue.enqueue(
                     self._queue_name,
                     task.task_id,
@@ -2124,6 +2133,57 @@ class AutomaticProfileService:
                         "source_hash": run.source_hash,
                     },
                 )
+
+    def ensure_task_queued(
+        self,
+        account_id: str,
+        *,
+        message_id: str,
+        extractor_version: str,
+        source_hash: str,
+    ) -> bool:
+        """把一条既有运行登记进本服务的队列（工单 17 的重整接入口径）。
+
+        与在线调度语义一致：运行不存在、已终态（succeeded/exhausted）或
+        材料类运行不入队；PENDING/RUNNING 且已有重试任务时按本服务队列
+        幂等入队（已被领取且租约未过期的任务不被打断）；PENDING/RUNNING
+        但没有重试任务时走与启动恢复相同的补建语义。返回是否已保证该
+        运行可被本队列领取。
+        """
+
+        if self._queue is None:
+            return False
+        run = self._repository.get_run(
+            account_id, message_id, extractor_version, source_hash
+        )
+        if run is None:
+            return False
+        if run.status in {
+            ProfileExtractionStatus.SUCCEEDED,
+            ProfileExtractionStatus.EXHAUSTED,
+        }:
+            return False
+        if run.run_kind == ProfileExtractionKind.MATERIAL:
+            return False
+        task = self._repository.get_task(
+            account_id, message_id, extractor_version, source_hash
+        )
+        if task is None:
+            self._recover_run(run)
+            return True
+        if task.status == ProfileExtractionStatus.EXHAUSTED:
+            return False
+        self._queue.enqueue(
+            self._queue_name,
+            task.task_id,
+            payload={
+                "account_id": account_id,
+                "message_id": message_id,
+                "extractor_version": extractor_version,
+                "source_hash": source_hash,
+            },
+        )
+        return True
 
     @staticmethod
     def _success_outcome(
