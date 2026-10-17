@@ -60,8 +60,9 @@
   - 订阅释放：切换会话或卸载只 abort 本地读取并递增 epoch，不调用停止接口；后台运行继续，回来从权威历史 `active_run.cursor` 续读；迟到终态投影经 `setConversation` 收敛。
   - 停止与终态竞态：停止接口返回后重新读取最新运行，仅当仍是同一消息且 streaming 才写 done；迟到 done/error 不会被旧快照覆盖，已到达正文不回退。
   - 失败态期间同时保留本轮用户气泡与部分正文（避免问题在历史刷新前短暂消失）；历史接管后的展示与旧实现一致。无 API、数据库或 schema 变化，无双写或兼容层。
+- 2026-10-17：合并本地 main `69da3c5b`（issue-02 消息呈现边界）并解决 `page.tsx` 冲突：保留本票的运行/历史/学习拆分，把流式消息合成改为消费新的 `ChatMessageView`（`body` 承载流式光标），不恢复已删除的内联渲染块；随后重跑 typecheck、44 文件 / 354 用例、lint、生产构建与 E2E，全部通过。
 - 2026-10-17：验证（Conda agent 环境，worktree `01-conversation-lifecycle`，基点 main `4100e87e`）：
-  - `npm run typecheck` 通过；`npm run test:unit` 41 文件 / 334 用例通过；`npm run lint` 通过（仅既有 3 条 warning：search `<img>`、ImageTaskCard `<img>`、Composer exhaustive-deps）。
+  - `npm run typecheck` 通过；`npm run test:unit` 44 文件 / 354 用例通过；`npm run lint` 通过（仅既有 2 条 warning：search `<img>`、ImageTaskCard `<img>`）。
   - `npm run build` 通过（23 页）；Windows 下工作树 node_modules 为 junction，standalone 复制阶段出现 EPERM symlink 警告，命令退出码 0，属环境链接限制，非代码失败。
   - 新增 E2E（临时 Playwright 配置，API 8101 / web 3101 / SMTP 8125 / HTTP 8126 / IMAP 8144；配置未提交）：`issue01-conversation-lifecycle` 4 项（双击发送、刷新中途恢复、切换后迟到事件、终态交接）全部通过；`issue06-stream-replay-consistency` 3 项（受保护片段、刷新重连、停止）全部通过；`issue03-atomic-first-turn` 的首轮原子发送、双击/同键重放、刷新新会话 3 项通过。
   - 后端相关回归：`pytest tests/chat/test_issue03_atomic_first_turn.py tests/chat/test_v2_02_resumable_runs.py -q` 为 25 passed / 1 failed；失败项 `test_ordinary_text_persists_without_auto_selecting_legacy_modules` 在未改动的 main 同样失败（「帮我规划职业方向」已按退役能力返回 ordinary，测试仍期待 clarify），属既有基线。`pip check` 通过。`mypy src` 仍报 141 个既有错误（23 个后端文件，均不在本票 diff 内）。

@@ -2,16 +2,14 @@
 
 import { useEffect, useRef } from "react";
 
-import {
-  MessageList,
-  type ChatMessage,
-} from "@/components/bridges/MessageList";
+import { MessageList } from "@/components/bridges/MessageList";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 import type { ChatModuleId } from "@/lib/api";
 
 import styles from "./chat.module.css";
 
 interface ChatThreadProps {
-  messages: ChatMessage[];
+  messages: ChatMessageView[];
   onRetry?: (messageId: string) => void;
   onStop?: () => void;
   onTeachingSkip?: (messageId: string) => void;

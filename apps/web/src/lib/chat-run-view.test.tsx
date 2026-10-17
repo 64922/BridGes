@@ -1,30 +1,30 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { ChatMessage } from "@/components/bridges/MessageList";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 
 import type { ActiveRun, PendingUserMessage } from "./chat-run";
 import { composeConversationMessages } from "./chat-run-view";
 
-function userMessage(id: string, text: string): ChatMessage {
+function userMessage(id: string, text: string): ChatMessageView {
   return {
     id,
     role: "user",
     plainText: text,
-    content: <p>{text}</p>,
+    body: <p>{text}</p>,
   };
 }
 
 function assistantMessage(
   id: string,
   text: string,
-  status?: ChatMessage["status"]
-): ChatMessage {
+  status?: ChatMessageView["status"]
+): ChatMessageView {
   return {
     id,
     role: "assistant",
     plainText: text,
-    content: <p>{text}</p>,
+    body: <p>{text}</p>,
     status,
   };
 }
@@ -126,7 +126,7 @@ describe("会话线程合成", () => {
     const assistant = messages[messages.length - 1];
     expect(assistant.plainText).toBe("完整回答");
     expect(assistant.status).toBeUndefined();
-    const { container } = render(<>{assistant.content}</>);
+    const { container } = render(<>{assistant.body}</>);
     expect(container.querySelector("span")).toBeNull();
   });
 });

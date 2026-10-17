@@ -1,4 +1,4 @@
-import type { ChatMessage } from "@/components/bridges/MessageList";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 
 import type { ActiveRun, PendingUserMessage } from "./chat-run";
 
@@ -9,11 +9,11 @@ import type { ActiveRun, PendingUserMessage } from "./chat-run";
  * 失败状态在终态交接期间保持渲染，直到权威历史接管。
  */
 export function composeConversationMessages(
-  baseMessages: ChatMessage[],
+  baseMessages: ChatMessageView[],
   activeRun: ActiveRun | null,
   pendingUser: PendingUserMessage | null,
   streamCursorClassName: string
-): ChatMessage[] {
+): ChatMessageView[] {
   const pendingUserId = activeRun?.kind === "send" ? pendingUser?.id : null;
   const messages = baseMessages.filter(
     (item) => item.id !== activeRun?.messageId && item.id !== pendingUserId
@@ -28,11 +28,6 @@ export function composeConversationMessages(
       role: "user",
       plainText: pendingUser.text,
       attachments: pendingUser.attachments ?? [],
-      content: (
-        <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
-          {pendingUser.text}
-        </p>
-      ),
     });
   }
   messages.push({
@@ -50,7 +45,7 @@ export function composeConversationMessages(
     careerProcess: activeRun.careerProcess,
     image: activeRun.imageProcess?.task ?? undefined,
     video: activeRun.videoProcess?.task ?? undefined,
-    content: (
+    body: (
       <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
         {activeRun.content}
         {isStreaming && <span className={streamCursorClassName} aria-hidden="true" />}

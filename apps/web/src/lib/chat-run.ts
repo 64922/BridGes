@@ -1,4 +1,4 @@
-import type { ChatThinking } from "@/components/bridges/MessageList";
+import type { ChatThinking } from "@/lib/chat-message";
 import {
   isChatStreamEventOf,
   type ArxivSearchProjection,
