@@ -48,4 +48,4 @@
 
 ## Comments
 
-2026-10-17：由工单 18 真实闭环评测（证据 `validation/18-real-model-loop-evaluation/evidence/loop-eval-real-20261017T024350Z.json`，117/137 判定通过，11/48 场景未全通过，硬边界 0 失败）回传创建。
+2026-10-17：由工单 18 真实闭环评测（证据 `validation/18-real-model-loop-evaluation/evidence/loop-eval-real-20261017T030759Z.json`，117/137 判定通过，11/48 场景未全通过，硬边界 0 失败）回传创建。

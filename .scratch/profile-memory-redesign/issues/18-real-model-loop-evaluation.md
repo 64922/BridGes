@@ -49,7 +49,8 @@
 2026-10-15：用户回复「按此发布」，确认本次拆分与依赖。已发布为 ready-for-agent，尚无实施记录。
 
 2026-10-17：真实模型闭环评测完成（证据
-`validation/18-real-model-loop-evaluation/evidence/loop-eval-real-20261017T024350Z.json`）。
+`validation/18-real-model-loop-evaluation/evidence/loop-eval-real-20261017T030759Z.json`，
+合并后干净工作区、运行锁可复算）。
 48 条记录（20 场景 + 28 补充），117/137 判定通过，37/48 场景全通过，
 硬边界 0 失败；01 旅程对照 8/8 符合期望；历史重整演练 9/9 通过；故障注入
 6/6 通过。11 条未全通过：6 类已确认产品缺陷（T04 偏好覆盖身份事实、

@@ -1,9 +1,9 @@
 {
   "kind": "profile-loop-fault-injection",
-  "generated_at": "2026-10-17T03:05:00+00:00",
-  "git_commit": "3035164277a8d4a35ba68ee34e39732437bb277f",
+  "generated_at": "2026-10-17T03:21:12+00:00",
+  "git_commit": "b2fa0648758bc2ed9bd57187b824cd4e409621dd",
   "response_mode": "stub",
-  "run_dir": "D:\\BridGes\\.worktrees\\18-real-model-loop-evaluation\\.tmp\\issue18-fault-20261017T030453Z-8e9a19",
+  "run_dir": "D:\\BridGes\\.tmp\\issue18-fault-20261017T032105Z-ad1e99",
   "scenarios": [
     {
       "scenario_id": "fault-chat-generation",

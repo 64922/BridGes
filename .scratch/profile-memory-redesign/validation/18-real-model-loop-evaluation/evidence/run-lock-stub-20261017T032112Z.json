@@ -1,25 +1,34 @@
 {
-  "kind": "profile-baseline-run-lock",
-  "corpus_version": "profile-loop-corpus-v2",
-  "corpus_sha256": "a4158c4c2c29b23ce39dbfe402cc8cfa03b0534bd02c43566b82d14e0cdd976f",
-  "journeys": [
-    "t01-name",
-    "t01-pet",
-    "t01-habit",
-    "t02-psychology",
-    "t03-time-limit",
-    "t04-cross-turn",
-    "positive-academic-control",
-    "recall-academic-control"
+  "kind": "profile-loop-evaluation-run-lock",
+  "eval_version": "profile-loop-eval-v1",
+  "eval_assets_sha256": "d35ae60b4aacdbd75b88b0d72e62c8ba102b78178f491fb56710bada2d5ee3ac",
+  "scenarios": [
+    "T01",
+    "T02",
+    "T03",
+    "T04",
+    "T05",
+    "T06",
+    "T07",
+    "T08",
+    "T09",
+    "T10",
+    "T11",
+    "T12",
+    "T13",
+    "T14",
+    "T15",
+    "T16",
+    "T17",
+    "T18",
+    "T19",
+    "T20"
   ],
-  "response_mode": "real",
-  "injected_models_overridden": false,
-  "stub_profile_extraction": false,
-  "stub_chat": false,
-  "git_commit": "3035164277a8d4a35ba68ee34e39732437bb277f",
-  "git_dirty": true,
-  "pipeline_snapshot_sha256": "5974045a55277e404312fca0507d98ff1ad74429f27d22356cae11eadfcc3f64",
-  "evaluation_sha256": "c3b7ccfd12f46990654d7dfe5d31db85b195ae915ef34d41ead1798eb9756486",
+  "response_mode": "stub",
+  "git_commit": "b2fa0648758bc2ed9bd57187b824cd4e409621dd",
+  "git_dirty": false,
+  "pipeline_snapshot_sha256": "42d9f4497efa0a39132291ab8fa126d7cb6b07f3f22f3d7777035ec0a7151e2b",
+  "evaluation_sha256": "be5c38e38587c7a70ccf603233969dc54a00b3c40a16fba97b39b4c0c4646dcb",
   "python_version": "3.11.15",
   "model_config": {
     "model_id": "qwen3.7-plus-2026-05-26",
@@ -51,10 +60,10 @@
     "profile_extraction_max_neighbors": 4
   },
   "credentials": {
-    "qwen_configured": true,
-    "qwen_source": "credential_store",
-    "tavily_configured": true,
-    "tavily_source": "credential_store"
+    "qwen_configured": false,
+    "qwen_source": "none",
+    "tavily_configured": false,
+    "tavily_source": "none"
   },
-  "started_at": "2026-10-17T02:56:14+00:00"
+  "started_at": "2026-10-17T03:21:42+00:00"
 }

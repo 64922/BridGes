@@ -1,22 +1,22 @@
 # 18 — 验证真实模型下的画像闭环（验证记录）
 
 **分支：** `codex/issue-18-real-model-loop-evaluation`（worktree
-`.worktrees/18-real-model-loop-evaluation`，基线提交 `30351642`；证据生成时
-工作区含本票改动，`git_dirty=true`，代码状态以运行锁中的
-`eval_assets_sha256` 与 `pipeline_snapshot_sha256` 固定）。
+`.worktrees/18-real-model-loop-evaluation`，基线提交 `30351642`）。证据在
+合并后的 main 干净工作区重新生成（提交 `b2fa0648`，`git_dirty=false`）；
+运行锁中的文件摘要按 LF 归一化计算，跨 checkout 可复算。
 **环境：** conda `agent`，Python 3.11.15，Windows；真实主模型
 `qwen3.7-plus-2026-05-26`（development 环境 + 操作系统凭据库，经代理
 `http://127.0.0.1:7890`）。
 **证据：**
 
-- 真实全量：`evidence/loop-eval-real-20261017T024350Z.json` / `.md`
-  （运行锁 `evidence/run-lock-real-20261017T024350Z.json`）
-- 01 候选旅程：`evidence/01-journeys/baseline-real-20261017T025509Z.json`
-- 历史重整演练：`evidence/rebuild-drill-20261017T022926Z.json` / `.md`
-- 故障注入（替身，分开报告）：`evidence/fault-injection-20261017T030453Z.json`
-- 脚本化冒烟（替身，仅验证管道）：`evidence/loop-eval-stub-20261017T030346Z.json`
-- 运行数据库保留：`.tmp/issue18-real-20261017T024350Z-*/bridges.db`、
-  `.tmp/issue18-rebuild-20261017T022926Z-*/bridges.db`
+- 真实全量：`evidence/loop-eval-real-20261017T030759Z.json` / `.md`
+  （运行锁 `evidence/run-lock-real-20261017T030759Z.json`）
+- 01 候选旅程：`evidence/01-journeys/baseline-real-20261017T031906Z.json`
+- 历史重整演练：`evidence/rebuild-drill-20261017T032036Z.json` / `.md`
+- 故障注入（替身，分开报告）：`evidence/fault-injection-20261017T032105Z.json`
+- 脚本化冒烟（替身，仅验证管道）：`evidence/loop-eval-stub-20261017T032112Z.json`
+- 运行数据库保留：`.tmp/issue18-real-20261017T030759Z-*/bridges.db`、
+  `.tmp/issue18-rebuild-20261017T032036Z-*/bridges.db`
 
 **复现命令（仓库根目录、conda `agent`）：**
 
@@ -67,14 +67,14 @@
 | 完成适用的后端全检查、前端检查及构建，记录既有失败与新增失败的区别 | `ruff check` 453=main 453；`ruff format --check` 1026=main 1026；`mypy src` 141=main 基线；`pytest tests/profiles tests/evaluation` 12 failed/1094 passed（12 条均为 main 既有失败）；前端 `typecheck`/`lint`（仅既有警告）/`build` 通过 | 达成（新增 0） |
 | 报告包含样本量、统计口径、人工复核、局限和未达标项，候选版本可复现 | 本文第 1–8 节；证据含运行锁、场景矩阵、资源与延迟、基线对照 | 达成 |
 
-## 3. 真实运行结果（2026-10-17T02:43:53Z 起，wall clock 673 秒）
+## 3. 真实运行结果（2026-10-17T03:07:59Z 起，wall clock 661 秒）
 
 **样本：** 48 条（20 场景 + 28 补充）。**场景状态：** 37 pass / 9 partial
 / 2 fail。**判定：** 117/137 通过（85.4%）。**硬失败：** 0。
 
 | 判定口径 | 通过/总数 | 通过率 | 说明 |
 | --- | --- | --- | --- |
-| fact | 35/44 | 79.5% | 9 条事实召回未命中（模型抽取质量与 T04/T12 缺陷） |
+| fact | 34/44 | 77.3% | 10 条事实召回未命中（模型抽取质量与 T04/T12 缺陷） |
 | dedup | 4/5 | 80.0% | T08-holdout 跑步条目未合并 |
 | follow-up | 4/5 | 80.0% | T04 追问未采用专业条目 |
 | forbidden | 16/17 | 94.1% | T06-negation 写入一次性拒绝 |
@@ -87,15 +87,15 @@
 | ongoing / overview | 4/4 / 4/4 | 100% | 接续与总览 |
 | attribution / authority / boundary / controls / forget / idempotency / isolation / preference / recovery / negation / feedback / retroactive / setup | 全部 100% | — | 含 10 条凭据硬边界判定 |
 
-**资源（只报用量，无价格依据）：** 模型调用 253 次——文本对话 115/115
-成功、画像提取 64 次（63 成功、1 失败后重试成功）、向量 74/74 成功；
-输入 134,079 / 输出 20,103 token。回答延迟 99 个样本：中位 2,343 ms、
-p90 5,889 ms、max 20,843 ms；提取延迟 86 个样本：中位 3,000 ms、
-p90 5,000 ms、max 9,000 ms。提取任务终态 69 成功、2 耗尽；观测队列深度
-峰值 1（52 个采样点）。
+**资源（只报用量，无价格依据）：** 模型调用 250 次——文本对话 110/110
+成功、画像提取 66 次（65 成功、1 失败后重试成功）、向量 74/74 成功；
+输入 123,239 / 输出 20,167 token。回答延迟 99 个样本：中位 2,218 ms、
+p90 7,483 ms、max 27,672 ms；提取延迟 88 个样本：中位 3,000 ms、
+p90 5,000 ms、max 10,000 ms。提取任务终态 70 成功、3 耗尽；观测队列深度
+峰值 1（50 个采样点）。
 
 **01 冻结基线对照：** 冻结基线取自 `b3d68967`（corpus v1），候选为
-`30351642` + 本票改动（corpus v2）；8 条旅程候选全部符合期望（基线中
+`b2fa0648`（corpus v2）；8 条旅程候选全部符合期望（基线中
 5 条 known_failing、2 条 partial、1 条 pass）。语料版本不同，本对照只说明
 候选旅程级不回归，不作为效果提升的因果证明。
 
@@ -227,8 +227,8 @@ p90 5,000 ms、max 9,000 ms。提取任务终态 69 成功、2 耗尽；观测�
   的抽取遗漏可能随运行变化；未做多轮重复测量，不报告置信区间。
 - 只有一个真实模型（`qwen3.7-plus-2026-05-26`）；无第二个模型对照。
 - 缺价格依据，只报 token/调用量，不折算费用。
-- 证据生成时工作区含本票改动（`git_dirty=true`）；可复现性由运行锁中的
-  评测资产摘要与流水线快照摘要固定，代码以合并后的提交为准。
+- 证据在干净工作区生成（`git_dirty=false`）；运行锁的文件摘要按 LF
+  归一化，跨 `core.autocrlf` 设置可复算。
 - 01 基线语料 v1 与候选 v2 不同；旅程对照仅说明不回归。
 - Windows/本地 SQLite 环境下观察到跨线程共享连接的事务嵌套告警；
   未在部署形态下复测。

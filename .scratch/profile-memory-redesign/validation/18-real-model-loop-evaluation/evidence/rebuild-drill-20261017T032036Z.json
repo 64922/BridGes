@@ -1,11 +1,11 @@
 {
   "kind": "profile-loop-real-rebuild-drill",
-  "generated_at": "2026-10-17T02:29:53+00:00",
-  "git_commit": "3035164277a8d4a35ba68ee34e39732437bb277f",
+  "generated_at": "2026-10-17T03:21:02+00:00",
+  "git_commit": "b2fa0648758bc2ed9bd57187b824cd4e409621dd",
   "model_id": "qwen3.7-plus-2026-05-26",
-  "run_dir": "D:\\BridGes\\.worktrees\\18-real-model-loop-evaluation\\.tmp\\issue18-rebuild-20261017T022926Z-ba1a5c",
-  "work_dir": "D:\\BridGes\\.worktrees\\18-real-model-loop-evaluation\\.scratch\\profile-memory-redesign\\validation\\18-real-model-loop-evaluation\\evidence\\rebuild-drill\\20261017T022926Z\\work",
-  "rebuild_id": "profile-rebuild-92d767410e2c38330f2ecfba2064b01b",
+  "run_dir": "D:\\BridGes\\.tmp\\issue18-rebuild-20261017T032036Z-48948c",
+  "work_dir": "D:\\BridGes\\.scratch\\profile-memory-redesign\\validation\\18-real-model-loop-evaluation\\evidence-next\\rebuild-drill\\20261017T032036Z\\work",
+  "rebuild_id": "profile-rebuild-90ba1601623fd60f00e136bd9fbe4301",
   "progress": {
     "status": "completed",
     "window_total": 3,
@@ -34,17 +34,17 @@
     {
       "check_id": "drill:source-tombstoned",
       "passed": true,
-      "detail": "删除消息=OZ97-sIEHt97YSjBaLA3mg 墓碑错误=None"
+      "detail": "删除消息=n0RKc_g8oHAeIub0huNPqA 墓碑错误=None"
     },
     {
       "check_id": "drill:online-write-before-rebuild",
       "passed": true,
-      "detail": "在线事实=['我叫路遥', '我每周三晚上去游泳。', '我有一只猫叫小满'] 删除消息=OZ97-sIEHt97YSjBaLA3mg 引用条目=['item-39FhZeQrHRmGMABk6b05Yg']"
+      "detail": "在线事实=['我叫路遥', '我每周三晚上去游泳。', '我有一只猫叫小满'] 删除消息=n0RKc_g8oHAeIub0huNPqA 引用条目=['item-iiQdH9ViwaTyCD5RTgI_JA']"
     },
     {
       "check_id": "rebuild:window-excludes-deleted-source",
       "passed": true,
-      "detail": "chat_scope={\"user_messages_total\": 3, \"eligible\": 2, \"skipped_tombstoned\": 1, \"skipped_unfinished\": 0, \"skipped_empty\": 0, \"skipped_content_blocked\": 0, \"skipped_withdrawn_suppressed\": 0, \"skipped_recording_off\": 0, \"eligible_first_at\": \"2026-10-17T02:29:32.607678+00:00\", \"eligible_last_at\": \"2026-10-17T02:29:46.548522+00:00\", \"eligible_conversation_ids\": [\"vVDATuhQW6H-zs1kdgSB6w\"]}"
+      "detail": "chat_scope={\"user_messages_total\": 3, \"eligible\": 2, \"skipped_tombstoned\": 1, \"skipped_unfinished\": 0, \"skipped_empty\": 0, \"skipped_content_blocked\": 0, \"skipped_withdrawn_suppressed\": 0, \"skipped_recording_off\": 0, \"eligible_first_at\": \"2026-10-17T03:20:41.828352+00:00\", \"eligible_last_at\": \"2026-10-17T03:20:55.572547+00:00\", \"eligible_conversation_ids\": [\"B3SfPXSH1XxnUQ-jCWKV-w\"]}"
     },
     {
       "check_id": "rebuild:completed-with-real-extractor",
@@ -64,12 +64,12 @@
     {
       "check_id": "rebuild:deleted-source-not-resurrected",
       "passed": true,
-      "detail": "重整前引用=['item-39FhZeQrHRmGMABk6b05Yg'] 重整后引用=['item-39FhZeQrHRmGMABk6b05Yg']（既有条目保留、不得新增引用；新增即复活）"
+      "detail": "重整前引用=['item-iiQdH9ViwaTyCD5RTgI_JA'] 重整后引用=['item-iiQdH9ViwaTyCD5RTgI_JA']（既有条目保留、不得新增引用；新增即复活）"
     },
     {
       "check_id": "rebuild:tombstone-barrier-clean",
       "passed": true,
-      "detail": "tombstoned_late_success=0 known_tombstone_refs=['item-39FhZeQrHRmGMABk6b05Yg:OZ97-sIEHt97YSjBaLA3mg'] tombstone_refs=[] 重整后活动条目=['我叫路遥', '我每周三晚上去游泳。', '我有一只猫叫小满']（已知墓碑证据条目按基线保留，在线条目数=3）"
+      "detail": "tombstoned_late_success=0 known_tombstone_refs=['item-iiQdH9ViwaTyCD5RTgI_JA:n0RKc_g8oHAeIub0huNPqA'] tombstone_refs=[] 重整后活动条目=['我叫路遥', '我每周三晚上去游泳。', '我有一只猫叫小满']（已知墓碑证据条目按基线保留，在线条目数=3）"
     },
     {
       "check_id": "rebuild:other-account-isolated",

@@ -25,10 +25,10 @@
     "T20"
   ],
   "response_mode": "real",
-  "git_commit": "3035164277a8d4a35ba68ee34e39732437bb277f",
-  "git_dirty": true,
-  "pipeline_snapshot_sha256": "5974045a55277e404312fca0507d98ff1ad74429f27d22356cae11eadfcc3f64",
-  "evaluation_sha256": "c244bfd952b4d31526ed988bff22788ea5c27389f76ce1739fe4c9cf4e64a7e4",
+  "git_commit": "b2fa0648758bc2ed9bd57187b824cd4e409621dd",
+  "git_dirty": false,
+  "pipeline_snapshot_sha256": "42d9f4497efa0a39132291ab8fa126d7cb6b07f3f22f3d7777035ec0a7151e2b",
+  "evaluation_sha256": "be5c38e38587c7a70ccf603233969dc54a00b3c40a16fba97b39b4c0c4646dcb",
   "python_version": "3.11.15",
   "model_config": {
     "model_id": "qwen3.7-plus-2026-05-26",
@@ -65,5 +65,5 @@
     "tavily_configured": true,
     "tavily_source": "credential_store"
   },
-  "started_at": "2026-10-17T02:55:09+00:00"
+  "started_at": "2026-10-17T03:19:06+00:00"
 }
