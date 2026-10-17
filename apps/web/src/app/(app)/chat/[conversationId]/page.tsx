@@ -7,9 +7,11 @@ import { StateBlock } from "@/components/bridges/StateBlock";
 import { ChatHeader } from "@/components/bridges/chat/ChatHeader";
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
+import { CitationViewerPanel } from "@/components/bridges/chat/CitationViewerPanel";
 import { Composer } from "@/components/bridges/Composer";
 import { StudyProgress } from "@/components/bridges/chat/StudyProgress";
 import type { CapabilityAvailability } from "@/components/bridges/chat/capability-availability";
+import type { CitationProjection } from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { buildThreadMessages } from "@/lib/chat-thread";
@@ -31,6 +33,12 @@ import styles from "@/components/bridges/chat/chat.module.css";
  * 不再按账户探测禁用入口——新账户无需任何个人 Qwen 配置即可使用。
  */
 const MEDIA_ALWAYS_AVAILABLE: CapabilityAvailability = { available: true };
+
+interface CitationSelection {
+  conversationId: string;
+  messageId: string;
+  citation: CitationProjection;
+}
 
 /**
  * 对话页：权威历史、运行控制、学习操作与页面布局的组合。
@@ -74,11 +82,45 @@ export default function ChatConversationPage() {
 
   const [moduleId, setModuleId] = useState<ChatModuleSelectionId | null>(null);
   const resumeModuleCheckedRef = useRef<string | null>(null);
+  const [citationSelection, setCitationSelection] = useState<CitationSelection | null>(null);
+  const citationTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     resumeModuleCheckedRef.current = null;
     setModuleId(null);
   }, [conversationId]);
+
+  // 切换会话立即释放旧资料面板与未完成请求；迟到响应不会串到新会话。
+  useEffect(() => {
+    citationTriggerRef.current = null;
+    setCitationSelection(null);
+  }, [conversationId]);
+
+  const openCitation = useCallback(
+    (messageId: string, citation: CitationProjection, trigger: HTMLButtonElement) => {
+      citationTriggerRef.current = trigger;
+      setCitationSelection({ conversationId, messageId, citation });
+    },
+    [conversationId]
+  );
+
+  const closeCitation = useCallback(() => {
+    setCitationSelection(null);
+    const trigger = citationTriggerRef.current;
+    citationTriggerRef.current = null;
+    window.requestAnimationFrame(() => {
+      if (trigger?.isConnected) {
+        trigger.focus({ preventScroll: true });
+        return;
+      }
+      const composer = document.getElementById("composer-input");
+      if (composer instanceof HTMLElement) {
+        composer.focus({ preventScroll: true });
+        return;
+      }
+      document.getElementById(MAIN_CONTENT_ID)?.focus({ preventScroll: true });
+    });
+  }, []);
 
   // V2 Issue 06：已发送文件附件的解析在后台继续，卡片状态要刷新才会从
   // 「排队解析中」走到「已解析，可引用／解析失败／无法识别正文」。只要还有
@@ -177,6 +219,8 @@ export default function ChatConversationPage() {
     activeRun,
     pendingUser
   );
+  const activeCitationSelection =
+    citationSelection?.conversationId === conversationId ? citationSelection : null;
 
   return (
     <AppShell>
@@ -239,6 +283,7 @@ export default function ChatConversationPage() {
                 }
                 conversationId={conversationId}
                 onRefreshMessages={() => void load(true)}
+                onOpenCitation={openCitation}
                 announcement={announcement}
               />
               {sendError && <ChatSendErrorBanner message={sendError} />}
@@ -261,6 +306,11 @@ export default function ChatConversationPage() {
             </>
           )}
         </main>
+        <CitationViewerPanel
+          conversationId={conversationId}
+          selection={activeCitationSelection}
+          onClose={closeCitation}
+        />
       </div>
     </AppShell>
   );

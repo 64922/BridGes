@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 
 import { MessageList } from "@/components/bridges/MessageList";
 import type { ChatMessageView } from "@/lib/chat-message-view";
-import type { ChatModuleId } from "@/lib/api";
+import type { ChatModuleId, CitationProjection } from "@/lib/api";
 
 import styles from "./chat.module.css";
 
@@ -19,6 +19,12 @@ interface ChatThreadProps {
   conversationId?: string;
   /** Issue 31：图片任务成功（资产落库）后刷新消息列表 */
   onRefreshMessages?: () => void;
+  /** 打开该轮真实引用对应的右侧资料面板 */
+  onOpenCitation?: (
+    messageId: string,
+    citation: CitationProjection,
+    trigger: HTMLButtonElement
+  ) => void;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
   announcement?: string | null;
 }
@@ -38,17 +44,25 @@ export function ChatThread({
   onUseModuleSuggestion,
   conversationId,
   onRefreshMessages,
+  onOpenCitation,
   announcement,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedToBottom = useRef(true);
+
+  // 只在会话内容真正变化时跟随底部；打开/关闭资料面板等纯布局变化不应
+  // 因为消息数组重建而把用户位置拉回底部。
+  const lastMessage = messages[messages.length - 1];
+  const autoScrollKey = `${messages.length}:${lastMessage?.id ?? ""}:${
+    lastMessage?.plainText.length ?? 0
+  }:${lastMessage?.status ?? ""}`;
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el && pinnedToBottom.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages]);
+  }, [autoScrollKey]);
 
   const handleScroll = () => {
     const el = scrollRef.current;
@@ -68,6 +82,7 @@ export function ChatThread({
           onUseModuleSuggestion={onUseModuleSuggestion}
           conversationId={conversationId}
           onRefreshMessages={onRefreshMessages}
+          onOpenCitation={onOpenCitation}
         />
       </div>
       <p className="sc-visually-hidden" role="status" aria-live="polite">
