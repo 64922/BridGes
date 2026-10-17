@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -181,6 +181,28 @@ const cancelledResult: TurnResultProjection = {
   task_version: null,
 };
 
+const partialResult: TurnResultProjection = {
+  ...cancelledResult,
+  outcome: "partial",
+  outcome_label: "本轮先交付有效部分，其余未完成。",
+  trust: "evidence_bound",
+  trust_label: "结果已附证据，仍有未完成核验的范围。",
+  delivered: [
+    { module_id: "paper", label: "论文检索", state: "success", trust: "qualified", detail: "" },
+  ],
+  blocked: [
+    { module_id: "tieba", label: "贴吧搜集", state: "error", trust: "evidence_bound", detail: "接口失败" },
+  ],
+  gaps: ["贴吧来源未读取"],
+};
+
+const needsInputResult: TurnResultProjection = {
+  ...cancelledResult,
+  outcome: "needs_input",
+  outcome_label: "等待你补充信息后继续；任务保持待输入。",
+  wait_reason: "请补充出发地点",
+};
+
 function assistant(overrides: Partial<ChatMessageView> = {}): ChatMessageView {
   return {
     id: "assistant-1",
@@ -218,7 +240,13 @@ describe("消息呈现边界（工单 02）", () => {
       />
     );
 
-    expect(screen.getByTestId("context-note-card")).toBeTruthy();
+    expect(screen.getAllByTestId("public-process")).toHaveLength(2);
+    const process = screen.getAllByTestId("public-process")[0];
+    expect(within(process).queryByTestId("public-process-details")).toBeNull();
+    fireEvent.click(within(process).getByTestId("public-process-toggle"));
+    expect(within(process).getByTestId("context-note-details").textContent).toContain(
+      "本轮使用了 1 条已授权背景信息"
+    );
     expect(screen.getByTestId("paper-search-card-success")).toBeTruthy();
     expect(screen.getByTestId("tieba-research-card-success")).toBeTruthy();
     expect(screen.getByTestId("resources-card-success")).toBeTruthy();
@@ -255,6 +283,39 @@ describe("消息呈现边界（工单 02）", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getAllByRole("toolbar", { name: "消息操作" })).toHaveLength(2);
     expect(screen.queryByRole("button", { name: /朗读/ })).toBeNull();
+  });
+
+  it("错误、待补充与部分失败直接可见，不依赖展开公开过程", () => {
+    render(
+      <MessageList
+        conversationId="conversation-1"
+        messages={[
+          assistant({
+            id: "assistant-partial",
+            plainText: "已交付的正文",
+            status: "error",
+            errorText: "部分来源读取失败。",
+            turnResult: partialResult,
+            thinking: {
+              steps: ["检索论文"],
+              evidence: [],
+              tools: [],
+              quality: [],
+              seconds: null,
+            },
+          }),
+          assistant({ id: "assistant-needs-input", turnResult: needsInputResult }),
+        ]}
+      />
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain("部分来源读取失败");
+    expect(screen.getByText("已交付的正文")).toBeTruthy();
+    const results = screen.getAllByTestId("turn-result");
+    expect(results[0].textContent).toContain("本轮先交付有效部分");
+    expect(results[1].textContent).toContain("请补充出发地点");
+    expect(screen.getAllByTestId("public-process-toggle")).toHaveLength(2);
+    expect(screen.queryByTestId("public-process-details")).toBeNull();
   });
 
   it("流式正文不继承历史消息的宽松行高", () => {

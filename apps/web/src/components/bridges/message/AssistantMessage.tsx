@@ -9,7 +9,7 @@ import { AttemptHistory } from "./AttemptHistory";
 import { DeliveryStatus } from "./DeliveryStatus";
 import { AssistantBody } from "./MessageBody";
 import { MediaTaskCards, SourceProjectionCards } from "./ProjectionCards";
-import { GenerationStageLine, ThinkingSummary } from "./PublicProcess";
+import { PublicProcess } from "./PublicProcess";
 import type { ChatMessageView } from "@/lib/chat-message-view";
 
 export function AssistantMessage({
@@ -37,8 +37,6 @@ export function AssistantMessage({
     trigger: HTMLButtonElement
   ) => void;
 }) {
-  const streaming = message.status === "streaming";
-
   return (
     <article
       data-testid="assistant-message"
@@ -73,9 +71,7 @@ export function AssistantMessage({
           onUseModuleSuggestion={onUseModuleSuggestion}
         />
 
-        {message.thinking && (
-          <ThinkingSummary thinking={message.thinking} streaming={streaming} />
-        )}
+        <PublicProcess message={message} conversationId={conversationId} />
 
         <AssistantBody message={message} conversationId={conversationId} />
 
@@ -87,8 +83,6 @@ export function AssistantMessage({
         />
 
         <DeliveryStatus message={message} onRetry={onRetry} />
-
-        <GenerationStageLine message={message} />
 
         <AssistantActions message={message} onRetry={onRetry} />
 

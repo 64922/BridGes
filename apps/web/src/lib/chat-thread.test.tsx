@@ -138,6 +138,62 @@ describe("buildThreadMessages（工单 38）", () => {
     ]);
   });
 
+  it("公开过程与上下文只属于最新尝试，不追加旧轮来源", () => {
+    const oldNote: ContextNoteProjection = {
+      state: "off",
+      profile_enabled: false,
+      mode: "companion",
+      used_at: NOW,
+      profile_item_count: 0,
+      material_categories: [],
+      note: "旧轮未使用背景信息。",
+    };
+    const newNote: ContextNoteProjection = {
+      state: "ready",
+      profile_enabled: true,
+      mode: "companion",
+      used_at: NOW,
+      profile_item_count: 2,
+      material_categories: ["知识库材料"],
+      note: "新轮采用了 2 条背景信息。",
+    };
+    const items = buildThreadMessages([
+      message({
+        message_id: "a-1",
+        attempt_number: 1,
+        status: "error",
+        content: "旧部分正文",
+        thinking: {
+          steps: ["旧轮步骤"],
+          evidence: ["旧轮来源"],
+          tools: [],
+          quality: ["生成失败"],
+        },
+        context_note: oldNote,
+      }),
+      message({
+        message_id: "a-2",
+        attempt_number: 2,
+        status: "done",
+        content: "新回答",
+        thinking: {
+          steps: ["新轮步骤"],
+          evidence: ["新轮来源"],
+          tools: [],
+          quality: ["回答已完整生成并保存"],
+        },
+        context_note: newNote,
+      }),
+    ]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe("a-2");
+    expect(items[0].thinking?.steps).toEqual(["新轮步骤"]);
+    expect(items[0].thinking?.evidence).toEqual(["新轮来源"]);
+    expect(items[0].contextNote).toBe(newNote);
+    expect(items[0].previousAttempts).toHaveLength(1);
+  });
+
   it("完整服务端投影跨层保留正文、来源、模块与媒体字段", () => {
     const paper = paperSearch();
     const tieba = tiebaResearch();

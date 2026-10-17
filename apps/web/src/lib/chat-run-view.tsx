@@ -20,6 +20,7 @@ export function composeConversationMessages(
   if (!activeRun) return messages;
 
   const isError = activeRun.status === "error";
+  const isStopped = activeRun.status === "stopped";
   const isStreaming = activeRun.status === "streaming";
   if (pendingUser && activeRun.kind === "send") {
     messages.push({
@@ -44,7 +45,7 @@ export function composeConversationMessages(
     careerProcess: activeRun.careerProcess,
     image: activeRun.imageProcess?.task ?? undefined,
     video: activeRun.videoProcess?.task ?? undefined,
-    status: isError ? "error" : isStreaming ? "streaming" : undefined,
+    status: isError ? "error" : isStopped ? "stopped" : isStreaming ? "streaming" : undefined,
     errorText: isError ? activeRun.errorText : undefined,
   });
   return messages;

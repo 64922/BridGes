@@ -47,7 +47,7 @@ test("真实浏览器链路：学习、画像、论文三条旅程与画像回�
   await openNewChat(page);
   await sendFromNewChat(page, PROFILE_ACADEMIC_QUERY);
   await expect(page.getByTestId("chat-thread")).toContainText(PROFILE_ACADEMIC_QUERY);
-  await expect(page.getByTestId("thinking-summary")).toContainText("已思考", {
+  await expect(page.getByTestId("public-process")).toContainText("回答已生成", {
     timeout: 45_000,
   });
 

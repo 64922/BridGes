@@ -137,6 +137,45 @@ describe("对话运行状态所有者", () => {
     expect(createChatRun).not.toHaveBeenCalled();
   });
 
+  it("停止成功后立即显示停止状态，不等待历史刷新", async () => {
+    vi.mocked(createChatRun).mockResolvedValue(startedResponse());
+    vi.mocked(subscribeChatRunWithReconnect).mockImplementation(
+      (subscription) =>
+        new Promise<void>((resolve) => {
+          subscription.signal.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+        })
+    );
+    vi.mocked(stopChatMessage).mockResolvedValue({} as never);
+
+    const { result } = renderHook(() =>
+      useConversationRun(
+        options(
+          conversation([
+            message({ message_id: "u-1", role: "user", content: "旧问题" }),
+            message({ message_id: "a-1", role: "assistant", status: "done" }),
+          ])
+        )
+      )
+    );
+
+    let sending: Promise<boolean> | null = null;
+    act(() => {
+      sending = result.current.sendMessage("继续");
+    });
+    await waitFor(() =>
+      expect(subscribeChatRunWithReconnect).toHaveBeenCalled()
+    );
+    expect(result.current.activeRun?.status).toBe("streaming");
+
+    await act(async () => {
+      await result.current.stop();
+      await sending;
+    });
+    expect(result.current.activeRun?.status).toBe("stopped");
+  });
+
   it("停止等待期间收到终态事件时不回退正文与错误状态", async () => {
     vi.mocked(createChatRun).mockResolvedValue(startedResponse());
     let onEvent: ((event: ChatStreamEvent) => void) | null = null;
