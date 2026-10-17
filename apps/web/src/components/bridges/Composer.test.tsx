@@ -3,6 +3,14 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Composer } from "./Composer";
+import {
+  PDF_MEDIA_TYPE,
+  draftProjection,
+  pdfFile,
+  pickFiles,
+  pngFile,
+  waitForThumb,
+} from "./composer-test-fixtures";
 import type { ChatModuleSelectionId } from "@/lib/chat-modules";
 import {
   listChatAttachmentDrafts,
@@ -20,52 +28,9 @@ vi.mock("@/lib/api", () => ({
   chatAttachmentDraftContentUrl: (objectId: string) => `/api/chat/attachment-drafts/${objectId}/content`,
 }));
 
-function draftProjection(
-  objectId: string,
-  filename: string,
-  mediaType = "image/png",
-  ingestionStatus = "none",
-  ingestionError: string | null = null
-) {
-  return {
-    object_id: objectId,
-    original_filename: filename,
-    media_type: mediaType,
-    content_length: 1024,
-    content_hash: "hash",
-    ingestion_status: ingestionStatus,
-    ingestion_error: ingestionError,
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
-  };
-}
-
-const PDF_MEDIA_TYPE = "application/pdf";
-
-function pngFile(name = "截图.png", size = 100): File {
-  const file = new File([new Uint8Array(size)], name, { type: "image/png" });
-  return file;
-}
-
-function pdfFile(name = "讲义.pdf", size = 100): File {
-  return new File([new Uint8Array(size)], name, { type: "application/pdf" });
-}
-
 function renderComposer(onSend = vi.fn().mockResolvedValue(true)) {
   render(<Composer onSend={onSend} />);
   return onSend;
-}
-
-function pickFiles(files: File[]) {
-  const composer = screen.getByTestId("composer");
-  const fileInput = composer.querySelector('input[type="file"]') as HTMLInputElement;
-  if (!fileInput) throw new Error("缺少隐藏的文件选择 input");
-  Object.defineProperty(fileInput, "files", { value: files, configurable: true });
-  fireEvent.change(fileInput);
-}
-
-async function waitForThumb(filename: string) {
-  return await waitFor(() => screen.getAllByText(filename)[0]);
 }
 
 /** V2 Issue 11：模块选择是受控的，用宿主状态组件验证选择→chip→移除。 */
