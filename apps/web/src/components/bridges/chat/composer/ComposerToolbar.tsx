@@ -12,7 +12,13 @@ import type { CapabilityAvailability } from "../capability-availability";
 import { Menu, type MenuItem } from "../../Menu";
 import styles from "../chat.module.css";
 import { iconButtonStyle } from "./composer-styles";
-import { formatDictationTime, type useDictation } from "./useDictation";
+import type { useDictation } from "./useDictation";
+
+function formatDictationTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+}
 
 type DictationState = ReturnType<typeof useDictation>;
 
@@ -26,8 +32,8 @@ interface ComposerToolbarProps {
   generating: boolean;
   canSend: boolean;
   fileInputRef: RefObject<HTMLInputElement>;
-  onFilesSelected: () => void;
-  onModuleSelect: (moduleId: ChatModuleSelectionId) => void;
+  onFileInputChange: () => void;
+  onModuleSelect?: (moduleId: ChatModuleSelectionId) => void;
   onSend: () => void;
   onStop?: () => void;
 }
@@ -48,7 +54,7 @@ export function ComposerToolbar({
   generating,
   canSend,
   fileInputRef,
-  onFilesSelected,
+  onFileInputChange,
   onModuleSelect,
   onSend,
   onStop,
@@ -70,7 +76,7 @@ export function ComposerToolbar({
       label: module.label,
       description: module.description,
       icon: module.icon,
-      onSelect: () => onModuleSelect(module.id),
+      onSelect: () => onModuleSelect?.(module.id),
     })),
   ];
 
@@ -191,7 +197,7 @@ export function ComposerToolbar({
         type="file"
         accept={CHAT_ATTACHMENT_ACCEPT}
         multiple
-        onChange={onFilesSelected}
+        onChange={onFileInputChange}
         style={{ display: "none" }}
       />
       {/* V2 Issue 11：`+` 上拉菜单（添加照片和文件 + 显式模块选择）。

@@ -151,7 +151,36 @@ describe("Composer 发送合同", () => {
     );
   });
 
-  it("发送成功后已绑定附件不会因迟到的草稿恢复重新出现在下一轮", async () => {
+  it("已绑定附件不会因迟到的草稿恢复重新出现，其他草稿仍可恢复", async () => {
+    let resolveDrafts!: (rows: ReturnType<typeof draftProjection>[]) => void;
+    vi.mocked(listChatAttachmentDrafts).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveDrafts = resolve;
+        })
+    );
+    const onSend = renderComposer();
+    pickFiles([pngFile("已绑定.png")]);
+    await waitForThumb("已绑定.png");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "先发送" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() =>
+      expect(onSend).toHaveBeenCalledWith("先发送", ["obj-已绑定.png"])
+    );
+
+    await act(async () => {
+      resolveDrafts([
+        draftProjection("obj-已绑定.png", "已绑定.png"),
+        draftProjection("obj-other", "其他草稿.png"),
+      ]);
+    });
+
+    await waitFor(() => expect(screen.getByText("其他草稿.png")).toBeTruthy());
+    expect(screen.queryByText("已绑定.png")).toBeNull();
+    expect(removeChatAttachmentDraft).not.toHaveBeenCalled();
+  });
+
+  it("纯文字发送不会丢弃在途恢复的其他账户草稿", async () => {
     let resolveDrafts!: (rows: ReturnType<typeof draftProjection>[]) => void;
     vi.mocked(listChatAttachmentDrafts).mockImplementationOnce(
       () =>
@@ -162,14 +191,13 @@ describe("Composer 发送合同", () => {
     const onSend = renderComposer();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "先发送" } });
     fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
-    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith("先发送", []));
 
     await act(async () => {
-      resolveDrafts([draftProjection("obj-stale", "已绑定.png")]);
+      resolveDrafts([draftProjection("obj-restored", "账户草稿.png")]);
     });
 
-    await waitFor(() => expect(screen.queryByText("已绑定.png")).toBeNull());
-    expect(removeChatAttachmentDraft).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText("账户草稿.png")).toBeTruthy());
   });
 
   it("切到学习模式时清除无效的日常模块选择", () => {

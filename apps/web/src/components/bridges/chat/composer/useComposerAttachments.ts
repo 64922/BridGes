@@ -48,8 +48,9 @@ export function useComposerAttachments() {
   const [brokenPreviews, setBrokenPreviews] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftErrorSeqRef = useRef(0);
-  // 发送成功会清空草稿；代际变化后忽略此前发出的读取响应。
-  const epochRef = useRef(0);
+  // 发送成功后按 object_id 过滤迟到的读取响应：只挡住已绑定附件，
+  // 不丢弃同账户其他仍在草稿域的附件。
+  const discardedDraftIdsRef = useRef<Set<string>>(new Set());
 
   const addDraftError = useCallback((message: string, filename?: string) => {
     draftErrorSeqRef.current += 1;
@@ -64,7 +65,6 @@ export function useComposerAttachments() {
   /** 按服务端同款规则预校验后上传为草稿；单张失败不影响其他草稿与正文。 */
   const uploadDrafts = useCallback(
     async (files: File[]) => {
-      const epoch = epochRef.current;
       for (const file of files) {
         try {
           const projection = await uploadChatAttachmentDraft(
@@ -72,14 +72,12 @@ export function useComposerAttachments() {
             file.name,
             crypto.randomUUID()
           );
-          if (epoch !== epochRef.current) continue;
           setDrafts((current) =>
             current.some((draft) => draft.object_id === projection.object_id)
               ? current
               : [...current, projection]
           );
         } catch (error) {
-          if (epoch !== epochRef.current) continue;
           addDraftError(
             error instanceof Error ? error.message : "上传失败，请检查网络后重试。",
             file.name
@@ -159,20 +157,24 @@ export function useComposerAttachments() {
     });
   }, []);
 
-  /** 发送成功：草稿已在服务端随消息绑定，本地清空并阻止旧响应复活。 */
-  const clearAfterSend = useCallback(() => {
-    epochRef.current += 1;
+  /** 发送成功：草稿已在服务端随消息绑定，本地清空并阻止这些对象复活。 */
+  const clearAfterSend = useCallback((sentObjectIds: string[]) => {
+    sentObjectIds.forEach((objectId) =>
+      discardedDraftIdsRef.current.add(objectId)
+    );
     setDrafts([]);
     setDraftErrors([]);
   }, []);
 
   // 页面重开后恢复账户既有草稿（草稿账户隔离，刷新/重登不丢失）。
   useEffect(() => {
-    const epoch = epochRef.current;
     let cancelled = false;
     listChatAttachmentDrafts()
       .then((rows) => {
-        if (!cancelled && epoch === epochRef.current) setDrafts(rows);
+        if (cancelled) return;
+        setDrafts(
+          rows.filter((row) => !discardedDraftIdsRef.current.has(row.object_id))
+        );
       })
       .catch(() => {
         // 恢复失败不打断输入：草稿仍在服务端，可稍后重试或重新添加。
@@ -193,15 +195,19 @@ export function useComposerAttachments() {
   useEffect(() => {
     if (pendingParseCount === 0) return;
     const timer = window.setInterval(() => {
-      const epoch = epochRef.current;
       listChatAttachmentDrafts()
         .then((rows) => {
-          if (epoch !== epochRef.current) return;
+          const availableRows = rows.filter(
+            (row) => !discardedDraftIdsRef.current.has(row.object_id)
+          );
           setDrafts((current) => {
-            const byId = new Map(rows.map((row) => [row.object_id, row]));
+            const byId = new Map(availableRows.map((row) => [row.object_id, row]));
             const merged = current.map((draft) => byId.get(draft.object_id) ?? draft);
             const known = new Set(merged.map((draft) => draft.object_id));
-            return [...merged, ...rows.filter((row) => !known.has(row.object_id))];
+            return [
+              ...merged,
+              ...availableRows.filter((row) => !known.has(row.object_id)),
+            ];
           });
         })
         .catch(() => {

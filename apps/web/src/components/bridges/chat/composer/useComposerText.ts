@@ -106,7 +106,6 @@ export function useComposerText({ prefill, onSubmit }: UseComposerTextOptions) {
     onKeyDown,
     onCompositionStart,
     onCompositionEnd,
-    autoGrow,
     resetText,
     replaceText,
   };

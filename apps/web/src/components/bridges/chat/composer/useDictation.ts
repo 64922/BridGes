@@ -8,7 +8,7 @@ import type { CapabilityAvailability } from "../capability-availability";
 // Issue 30：录音硬上限（服务端 ASR 同款 300 秒限制，客户端提前自动停止）。
 const MAX_RECORDING_SECONDS = 299;
 
-export type DictationPhase = "idle" | "recording" | "transcribing" | "error";
+type DictationPhase = "idle" | "recording" | "transcribing" | "error";
 
 interface UseDictationOptions {
   conversationId?: string;
@@ -18,12 +18,6 @@ interface UseDictationOptions {
   onTranscribed: (transcript: string) => void;
   /** 用户显式重录：清掉上一段转写文本，不遗留待发送内容。 */
   onRetake: () => void;
-}
-
-export function formatDictationTime(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
 }
 
 /**

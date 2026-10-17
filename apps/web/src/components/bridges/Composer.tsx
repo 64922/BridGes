@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/design-system/Icon";
 import { CHAT_MODULES, type ChatModuleSelectionId } from "@/lib/chat-modules";
@@ -89,7 +89,7 @@ export function Composer({
     attachments.uploadingCount === 0 &&
     !submitting;
 
-  const send = useCallback(async () => {
+  const send = async () => {
     if (!canSend || generating || submittingRef.current) return;
     submittingRef.current = true;
     setSubmitting(true);
@@ -99,7 +99,7 @@ export function Composer({
       if (accepted === false) return;
       // 发送成功：文字与草稿一并清空（草稿已在服务端随消息绑定）。
       textInput.resetText();
-      attachments.clearAfterSend();
+      attachments.clearAfterSend(attachmentIds);
       dictation.cancelRecording();
     } catch (error) {
       // 发送错误由宿主页面统一呈现，文字与附件保留等待重试。
@@ -108,7 +108,7 @@ export function Composer({
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [attachments, canSend, dictation, generating, onSend, textInput]);
+  };
 
   sendRef.current = () => {
     void send();
@@ -238,8 +238,8 @@ export function Composer({
         generating={generating}
         canSend={canSend}
         fileInputRef={attachments.fileInputRef}
-        onFilesSelected={attachments.onFileInputChange}
-        onModuleSelect={(nextModuleId) => onModuleChange?.(nextModuleId)}
+        onFileInputChange={attachments.onFileInputChange}
+        onModuleSelect={onModuleChange}
         onSend={() => void send()}
         onStop={onStop}
       />
