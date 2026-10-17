@@ -11,10 +11,13 @@ import styles from "./MarkdownBody.module.css";
 const REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 const REHYPE_PLUGINS = [rehypeSanitize];
 
+function isHttpUrl(value: string | undefined): value is string {
+  return typeof value === "string" && /^https?:\/\//i.test(value);
+}
+
 const components: Components = {
   a({ href, children }) {
-    const external =
-      typeof href === "string" && /^https?:\/\//i.test(href);
+    const external = isHttpUrl(href);
     return (
       <a
         href={href}
@@ -28,7 +31,7 @@ const components: Components = {
   },
   img({ src, alt }) {
     // 正文图片不自动加载远程资源；保留可点击链接或替代文本。
-    if (typeof src === "string" && /^https?:\/\//i.test(src)) {
+    if (isHttpUrl(src)) {
       return (
         <a href={src} target="_blank" rel="noopener noreferrer">
           {alt || "查看图片"}

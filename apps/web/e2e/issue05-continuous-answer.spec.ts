@@ -159,6 +159,14 @@ test("同一份多段回答在流式与历史读取中连续、一致且安全",
   await expect(thread.getByText("最后一段。")).toBeVisible();
   expect(await copyAssistantBody(page)).toBe(FULL_TEXT);
 
+  await page.goto("/");
+  await page.goto(`/chat/${conversationId}`);
+  await expect(
+    thread.getByRole("heading", { level: 2, name: "连续正文验收" })
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(thread.getByText("最后一段。")).toBeVisible();
+  expect(await copyAssistantBody(page)).toBe(FULL_TEXT);
+
   // 用户文本仍是普通气泡；助手正文没有统一大卡片。
   await expect(page.getByTestId("user-message-bubble")).toContainText(MATCH);
   const assistantStyle = await page

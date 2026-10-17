@@ -91,12 +91,11 @@
   margin: 0;
 }
 
-.markdown .task-list-item,
-.markdown li.task-list-item {
+.markdown :global(.task-list-item) {
   list-style: none;
 }
 
-.markdown li.task-list-item input {
+.markdown :global(.task-list-item) input {
   margin-right: var(--space-2);
 }
 
@@ -182,10 +181,6 @@
 
 .markdown del {
   color: var(--color-text-secondary);
-}
-
-.markdown img {
-  max-width: 100%;
 }
 
 .streaming > :last-child::after,

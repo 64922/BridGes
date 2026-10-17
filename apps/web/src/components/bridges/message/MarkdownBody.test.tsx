@@ -15,10 +15,13 @@ describe("助手连续正文", () => {
       "",
       "- 列表一",
       "- 列表二",
+      "- [x] 已完成",
       "",
       "```ts",
       "const x = 1;",
       "```",
+      "",
+      "公式 E = mc^2 仍按原文保留。",
       "",
       "| 名称 | 值 |",
       "| --- | --- |",
@@ -32,7 +35,11 @@ describe("助手连续正文", () => {
     ).toBeTruthy();
     expect(container.querySelector("p br")).toBeTruthy();
     expect(screen.getByText("列表一").tagName).toBe("LI");
+    expect(
+      container.querySelector("li.task-list-item input[type=checkbox]")
+    ).toBeTruthy();
     expect(screen.getByText("const x = 1;").closest("pre")).toBeTruthy();
+    expect(screen.getByText(/E = mc\^2/)).toBeTruthy();
     expect(screen.getByRole("table")).toBeTruthy();
     expect(screen.getByRole("cell", { name: "A" })).toBeTruthy();
   });
@@ -45,6 +52,10 @@ describe("助手连续正文", () => {
 
     rerender(<MarkdownBody text={"开头 **加粗** 结束"} streaming />);
     expect(screen.getByText("加粗").tagName).toBe("STRONG");
+
+    rerender(<MarkdownBody text={"开头 `行内代码"} streaming />);
+    expect(container.textContent).toContain("`行内代码");
+    expect(container.querySelector("code")).toBeNull();
 
     rerender(<MarkdownBody text={"```python\nprint(1)"} streaming />);
     expect(screen.getByText("print(1)").closest("pre")).toBeTruthy();
