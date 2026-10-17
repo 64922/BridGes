@@ -1,0 +1,57 @@
+{
+  "kind": "profile-loop-fault-injection",
+  "generated_at": "2026-10-17T03:05:00+00:00",
+  "git_commit": "3035164277a8d4a35ba68ee34e39732437bb277f",
+  "response_mode": "stub",
+  "run_dir": "D:\\BridGes\\.worktrees\\18-real-model-loop-evaluation\\.tmp\\issue18-fault-20261017T030453Z-8e9a19",
+  "scenarios": [
+    {
+      "scenario_id": "fault-chat-generation",
+      "injection": "聊天流式适配器首次调用失败，重试的新回合成功。",
+      "checks": [
+        {
+          "check_id": "fault:generation-failure-visible",
+          "passed": true,
+          "detail": "失败运行=[{'status': 'failed', 'error_code': 'internal_error'}] 自动重试=1 最终状态='done'"
+        },
+        {
+          "check_id": "fault:generation-retry-succeeds",
+          "passed": true,
+          "detail": "status='done' content='故障恢复后的脚本化回答。'"
+        }
+      ]
+    },
+    {
+      "scenario_id": "fault-extraction-retry",
+      "injection": "提取适配器首次调用失败，重试尝试成功且只写入一次。",
+      "checks": [
+        {
+          "check_id": "fault:extraction-failure-retried",
+          "passed": true,
+          "detail": "attempts=[2] status=['succeeded']"
+        },
+        {
+          "check_id": "fault:extraction-recovered-once",
+          "passed": true,
+          "detail": "活动条目=['我每周三去实验室']"
+        }
+      ]
+    },
+    {
+      "scenario_id": "fault-save-retry",
+      "injection": "原子提交入口首次调用失败，重试后恢复且只写入一次。",
+      "checks": [
+        {
+          "check_id": "fault:save-failure-recovered-once",
+          "passed": true,
+          "detail": "活动条目=['我喜欢下围棋']"
+        },
+        {
+          "check_id": "fault:save-failure-recorded",
+          "passed": true,
+          "detail": "attempts=[2] last_error=[None]"
+        }
+      ]
+    }
+  ]
+}

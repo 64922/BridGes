@@ -1,0 +1,69 @@
+{
+  "kind": "profile-loop-evaluation-run-lock",
+  "eval_version": "profile-loop-eval-v1",
+  "eval_assets_sha256": "d35ae60b4aacdbd75b88b0d72e62c8ba102b78178f491fb56710bada2d5ee3ac",
+  "scenarios": [
+    "T01",
+    "T02",
+    "T03",
+    "T04",
+    "T05",
+    "T06",
+    "T07",
+    "T08",
+    "T09",
+    "T10",
+    "T11",
+    "T12",
+    "T13",
+    "T14",
+    "T15",
+    "T16",
+    "T17",
+    "T18",
+    "T19",
+    "T20"
+  ],
+  "response_mode": "real",
+  "git_commit": "3035164277a8d4a35ba68ee34e39732437bb277f",
+  "git_dirty": true,
+  "pipeline_snapshot_sha256": "5974045a55277e404312fca0507d98ff1ad74429f27d22356cae11eadfcc3f64",
+  "evaluation_sha256": "c244bfd952b4d31526ed988bff22788ea5c27389f76ce1739fe4c9cf4e64a7e4",
+  "python_version": "3.11.15",
+  "model_config": {
+    "model_id": "qwen3.7-plus-2026-05-26",
+    "capabilities": {
+      "text": true,
+      "image": true,
+      "tool_calling": true,
+      "structured_output": true
+    },
+    "context_window": 1000000,
+    "max_input_tokens": 999000,
+    "metadata_version": "bailian-model-list-v1",
+    "validated_at": null,
+    "revision": 0,
+    "source": "factory"
+  },
+  "contract_versions": {
+    "automatic_extractor": "profile-auto-v2",
+    "signal_classifier": "profile-signal-v3",
+    "prompt": "profile-extraction-prompt-v6",
+    "recipe": "profile-extraction-recipe-v1",
+    "context": "profile-extraction-context-v1",
+    "quality_policy": "profile-extraction-quality-v1",
+    "atomic_migration": "profile-atomic-v1"
+  },
+  "budget_constants": {
+    "turn_timeout_seconds": 600.0,
+    "profile_extraction_max_retries": 3,
+    "profile_extraction_max_neighbors": 4
+  },
+  "credentials": {
+    "qwen_configured": true,
+    "qwen_source": "credential_store",
+    "tavily_configured": true,
+    "tavily_source": "credential_store"
+  },
+  "started_at": "2026-10-17T02:55:09+00:00"
+}

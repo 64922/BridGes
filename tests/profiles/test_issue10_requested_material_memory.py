@@ -392,6 +392,31 @@ def test_worker_extracts_only_verified_quotes_from_material() -> None:
     assert [entry.fact_text for entry in adopted] == ["本科就读于某某大学"]
 
 
+def test_material_prompt_lists_allowed_dimension_values() -> None:
+    """工单 18 回归：材料提示词必须给出 dimension 的合法取值。
+
+    真实模型曾因提示词未列出合法取值而返回 `education` 等自造维度，
+    触发 `profile_extraction_contract_invalid` 永久失败（T14 实测）。
+    """
+
+    reader = _FakeMaterialReader()
+    reader.add(MESSAGE, _material(), _read())
+    _, automatic, gateway = _stack(reader, {"subject": "user", "items": []})
+
+    assert _sync(automatic) is not None
+    automatic.run_retry_tick()
+
+    system_prompt = str(gateway.payloads[0]["messages"][0]["content"])
+    for dimension_value in (
+        "academic_status",
+        "knowledge_interest",
+        "hobby",
+        "stage_goal",
+    ):
+        assert dimension_value in system_prompt
+    assert "其他开放事实填 null" in system_prompt
+
+
 def test_material_sources_project_evidence_with_locator_and_status() -> None:
     reader = _FakeMaterialReader()
     reader.add(MESSAGE, _material(), _read())
