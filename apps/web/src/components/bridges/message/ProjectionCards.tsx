@@ -5,7 +5,6 @@ import { CareerPlanningResultCard } from "@/components/bridges/CareerPlanningRes
 import { ContextNoteCard } from "@/components/bridges/ContextNoteCard";
 import { HumanizerProcessCard } from "@/components/bridges/HumanizerProcessCard";
 import { HumanizerResultCard } from "@/components/bridges/HumanizerResultCard";
-import { RetrievalCard } from "@/components/bridges/RetrievalCard";
 import { TeachingCard } from "@/components/bridges/TeachingCard";
 import { WebSearchCard } from "@/components/bridges/WebSearchCard";
 import { ArxivPaperSearchCard } from "@/components/bridges/ArxivPaperSearchCard";
@@ -135,12 +134,6 @@ export function SourceProjectionCards({
         streaming={streaming}
         onRetry={() => onRetry?.(message.id)}
         onCancel={onStop}
-      />
-
-      <RetrievalCard
-        retrieval={message.retrieval ?? null}
-        conversationId={conversationId}
-        messageId={message.id}
       />
 
       {(message.humanizerProcess != null ||

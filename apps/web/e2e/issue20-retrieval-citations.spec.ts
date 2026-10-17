@@ -69,6 +69,31 @@ test.describe("Issue 20 — 紧凑引用与详情错误恢复", () => {
         },
       ],
     };
+    await page.route(
+      "**/api/chat/conversations/" + CONVERSATION_ID + "/messages/*/citations/*",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            citation: {
+              citation_id: "cit-1",
+              source_layer: "knowledge_base",
+              object_id: "obj-1",
+              filename: "课程笔记.md",
+              media_type: "text/markdown",
+              page_number: 3,
+              section_title: "熵增原理",
+              snippet: "熵在孤立系统中不会减少。",
+              rank: 1,
+            },
+            access_status: "accessible",
+            access_message: "原文可访问。",
+            download_url: "/knowledge-base/materials/obj-1/download",
+          }),
+        });
+      }
+    );
     await openConversation(page, [
       message("u-1", "user", "解释熵增"),
       message("a-1", "assistant", "熵是系统无序程度的度量。", retrieval),
@@ -80,9 +105,18 @@ test.describe("Issue 20 — 紧凑引用与详情错误恢复", () => {
     await expect(card).toContainText("熵增原理");
     await expect(page.getByText("本地检索")).toHaveCount(0);
     await expect(page.getByText("检索充分")).toHaveCount(0);
+    await expect(page.getByTestId("citation-viewer")).toHaveCount(0);
 
     await card.getByTestId("citation-item-1").press("Enter");
-    await expect(card.getByTestId("citation-detail-1")).toContainText("熵在孤立系统中不会减少");
+    const viewer = page.getByTestId("citation-viewer");
+    await expect(viewer).toBeVisible();
+    await expect(viewer).toContainText("课程笔记.md");
+    await expect(viewer).toContainText("第 3 页");
+    await expect(viewer).toContainText("熵增原理");
+    await expect(page.getByTestId("citation-viewer-snippet")).toContainText(
+      "熵在孤立系统中不会减少"
+    );
+    await expect(page.getByTestId("citation-viewer")).toBeFocused();
   });
 
   test("详情失败显示中文局部错误并支持重试", async ({ page }) => {
@@ -91,7 +125,8 @@ test.describe("Issue 20 — 紧凑引用与详情错误恢复", () => {
       "**/api/chat/conversations/" + CONVERSATION_ID + "/messages/*/citations/*",
       async (route) => {
         detailAttempts += 1;
-        if (detailAttempts === 1) {
+        // React StrictMode 在开发服务器上会挂载 effect 两次，前两次都失败。
+        if (detailAttempts <= 2) {
           await route.fulfill({
             status: 503,
             contentType: "application/json",
@@ -133,9 +168,9 @@ test.describe("Issue 20 — 紧凑引用与详情错误恢复", () => {
 
     const item = page.getByTestId("citation-item-1");
     await item.press("Enter");
-    await expect(page.getByTestId("citation-detail-error-1")).toContainText("引用详情加载失败");
-    await page.getByTestId("citation-detail-retry-1").click();
-    await expect(page.getByTestId("citation-detail-1")).toContainText("详情恢复成功");
+    await expect(page.getByTestId("citation-viewer-error")).toContainText("资料读取失败");
+    await page.getByTestId("citation-viewer-retry").click();
+    await expect(page.getByTestId("citation-viewer-snippet")).toContainText("详情恢复成功");
   });
 
   test("无引用时不渲染旧的本地检索过程卡", async ({ page }) => {

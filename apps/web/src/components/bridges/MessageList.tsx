@@ -1,6 +1,6 @@
 "use client";
 
-import type { ChatModuleId } from "@/lib/api";
+import type { ChatModuleId, CitationProjection } from "@/lib/api";
 
 import { AssistantMessage } from "./message/AssistantMessage";
 import { UserMessage } from "./message/UserMessage";
@@ -17,6 +17,12 @@ interface MessageListProps {
   conversationId?: string;
   /** 图片任务成功（资产落库）后刷新消息列表（正文/投影同步） */
   onRefreshMessages?: () => void;
+  /** 打开该轮真实引用对应的右侧资料面板 */
+  onOpenCitation?: (
+    messageId: string,
+    citation: CitationProjection,
+    trigger: HTMLButtonElement
+  ) => void;
 }
 
 /**
@@ -32,6 +38,7 @@ export function MessageList({
   onTeachingBeginnerStart,
   onUseModuleSuggestion,
   onRefreshMessages,
+  onOpenCitation,
 }: MessageListProps) {
   return (
     <ol
@@ -53,6 +60,7 @@ export function MessageList({
               onTeachingBeginnerStart={onTeachingBeginnerStart}
               onUseModuleSuggestion={onUseModuleSuggestion}
               onRefreshMessages={onRefreshMessages}
+              onOpenCitation={onOpenCitation}
             />
           )}
         </li>

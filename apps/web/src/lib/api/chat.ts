@@ -475,11 +475,12 @@ export async function restartStudyConversation(
 export async function getCitationDetail(
   conversationId: string,
   messageId: string,
-  citationId: string
+  citationId: string,
+  signal?: AbortSignal
 ): Promise<CitationDetailProjection> {
   const res = await fetch(
     `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/citations/${encodeURIComponent(citationId)}`,
-    { credentials: "same-origin", cache: "no-store" }
+    { credentials: "same-origin", cache: "no-store", signal }
   );
   if (!res.ok) throw await parseApiError(res);
   return res.json();

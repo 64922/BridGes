@@ -1,7 +1,8 @@
 "use client";
 
 import { BrandLogo } from "@/components/bridges/BrandLogo";
-import type { ChatModuleId } from "@/lib/api";
+import { RetrievalCard } from "@/components/bridges/RetrievalCard";
+import type { ChatModuleId, CitationProjection } from "@/lib/api";
 
 import { AssistantActions } from "./AssistantActions";
 import { AttemptHistory } from "./AttemptHistory";
@@ -20,6 +21,7 @@ export function AssistantMessage({
   onTeachingBeginnerStart,
   onUseModuleSuggestion,
   onRefreshMessages,
+  onOpenCitation,
 }: {
   message: ChatMessageView;
   conversationId?: string;
@@ -29,6 +31,11 @@ export function AssistantMessage({
   onTeachingBeginnerStart?: (messageId: string) => void;
   onUseModuleSuggestion?: (messageId: string, moduleId: ChatModuleId) => void;
   onRefreshMessages?: () => void;
+  onOpenCitation?: (
+    messageId: string,
+    citation: CitationProjection,
+    trigger: HTMLButtonElement
+  ) => void;
 }) {
   const streaming = message.status === "streaming";
 
@@ -71,6 +78,13 @@ export function AssistantMessage({
         )}
 
         <AssistantBody message={message} conversationId={conversationId} />
+
+        <RetrievalCard
+          retrieval={message.retrieval ?? null}
+          onOpenCitation={(citation, trigger) =>
+            onOpenCitation?.(message.id, citation, trigger)
+          }
+        />
 
         <DeliveryStatus message={message} onRetry={onRetry} />
 
