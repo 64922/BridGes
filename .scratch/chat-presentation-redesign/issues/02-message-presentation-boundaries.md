@@ -114,7 +114,7 @@
 - `npm run typecheck`：通过。
 - `npm run test:unit`：合入 main 的 issue-03 后 40 个测试文件、340 项通过。
 - `npm run lint`：通过；仅保留 2 条既有 `<img>` 警告。
-- `npm run build`：Next.js 编译、类型检查和 23 个静态页面生成通过；worktree 使用 Junction 的 `node_modules`，standalone trace 复制出现既有 `EPERM symlink` 警告。合并到 main 后在真实依赖目录复跑。
+- `npm run build`：Next.js 编译、类型检查和 23 个静态页面生成通过；worktree 使用 Junction 的 `node_modules`，standalone trace 复制出现既有 `EPERM symlink` 警告。合并后在 main 的真实依赖目录复跑，编译、类型检查、静态生成与 standalone trace 全部完成，无 EPERM。
 - Playwright（`BRIDGES_PYTHON` 指向 conda `agent` Python）：`issue06-stream-replay-consistency`、`issue38-trusted-progress`、`issue08-article-result-projection`、`issue30-dictation-reading` 的相关 18 项全部通过，覆盖流式/重放、停止、终态历史、部分交付、旧投影、正文复制和朗读入口退役。
 - 重构前后对照：临时 parity 测试覆盖普通、学习、论文、贴吧、职业、GitHub、学习资料、通勤、模块建议、检索引用、人味化历史结果、生涯规划历史结果、图片/视频历史任务、历史尝试、流式、停止、部分失败、空正文和旧字段缺省；重构前记录基线，重构后同组通过，临时文件已删除。
 - 集成：执行期间 main 已合入 issue-03（`76e0c8d9`）；本分支合入 `main@58882a15` 无冲突，并在合并后重跑 typecheck、单测、lint、build 与上述 18 项浏览器测试。
