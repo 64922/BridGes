@@ -1,0 +1,215 @@
+/* 助手连续正文：标题、段落、列表、代码、表格与链接在阅读列内排版。 */
+
+.markdown {
+  min-width: 0;
+  color: var(--color-text-primary);
+  font-size: var(--text-base);
+  line-height: var(--line-height-relaxed);
+  overflow-wrap: break-word;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown p {
+  margin: 0 0 var(--space-4);
+  overflow-wrap: break-word;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  line-height: var(--line-height-tight);
+  margin: var(--space-6) 0 var(--space-3);
+  overflow-wrap: break-word;
+}
+
+.markdown h1 {
+  font-size: var(--text-2xl);
+}
+
+.markdown h2 {
+  font-size: var(--text-xl);
+}
+
+.markdown h3 {
+  font-size: var(--text-lg);
+}
+
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font-size: var(--text-base);
+}
+
+.markdown strong {
+  font-weight: 600;
+}
+
+.markdown em {
+  font-style: italic;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0 0 var(--space-4);
+  padding-left: var(--space-6);
+}
+
+.markdown ul {
+  list-style: disc;
+}
+
+.markdown ul ul {
+  list-style: circle;
+}
+
+.markdown ul ul ul {
+  list-style: square;
+}
+
+.markdown ol {
+  list-style: decimal;
+}
+
+.markdown li {
+  margin: var(--space-1) 0;
+  overflow-wrap: break-word;
+}
+
+.markdown li > p {
+  margin: 0;
+}
+
+.markdown .task-list-item,
+.markdown li.task-list-item {
+  list-style: none;
+}
+
+.markdown li.task-list-item input {
+  margin-right: var(--space-2);
+}
+
+.markdown blockquote {
+  border-left: 2px solid var(--color-border-strong);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-4);
+  padding-left: var(--space-4);
+}
+
+.markdown hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  margin: var(--space-6) 0;
+}
+
+.markdown a {
+  color: var(--color-accent-primary);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown a:hover {
+  color: var(--color-accent-primary-hover);
+}
+
+.markdown code {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  overflow-wrap: anywhere;
+}
+
+.markdown pre {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin: 0 0 var(--space-4);
+  max-width: 100%;
+  overflow-x: auto;
+  padding: var(--space-3);
+}
+
+.markdown pre code {
+  background: transparent;
+  border-radius: 0;
+  display: block;
+  font-size: var(--text-sm);
+  line-height: var(--line-height-relaxed);
+  overflow-wrap: normal;
+  padding: 0;
+  white-space: pre;
+}
+
+.tableScroll {
+  margin: 0 0 var(--space-4);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.tableScroll table {
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  min-width: 100%;
+  width: max-content;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--color-border);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown th {
+  background: var(--color-bg-secondary);
+  font-weight: 600;
+}
+
+.markdown del {
+  color: var(--color-text-secondary);
+}
+
+.markdown img {
+  max-width: 100%;
+}
+
+.streaming > :last-child::after,
+.streamingEmpty::after {
+  animation: cursor-blink 1s steps(1) infinite;
+  background-color: var(--color-accent-primary);
+  content: "";
+  display: inline-block;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  width: 2px;
+}
+
+@keyframes cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streaming > :last-child::after,
+  .streamingEmpty::after {
+    animation: none;
+    opacity: 1;
+  }
+}

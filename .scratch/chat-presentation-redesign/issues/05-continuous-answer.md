@@ -55,3 +55,4 @@
 
 - 2026-10-17：依据已验收原型、设计原则及当前代码只读核对形成草案；未开始业务开发。
 - 2026-10-17：用户确认「发布」，按已批准拆分转为 ready-for-agent；未开始业务开发。
+- 2026-10-17：领取执行。执行者 opencode；分支 `05-continuous-answer`；工作树 `.worktrees/05-continuous-answer`；基点 `origin/main@3b2546e4`。前置 02 的呈现边界重构已合入 main（`ded1bc42`、`69da3c5b`），交接记录包含单测、构建与 18 项浏览器验收；工单文件仍显示 `ready-for-human`，属于正式人工关闭标签滞后，不改变已合入实现与验收记录。本票预计修改 `apps/web/src/components/bridges/message/`、历史/流式消息组装、样式、单测与 E2E，仅影响展示路径。

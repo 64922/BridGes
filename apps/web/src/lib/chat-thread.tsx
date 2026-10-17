@@ -42,18 +42,9 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
     items.push({
       id: latest.message_id,
       role: "assistant",
+      // 历史与流式共用 AssistantBody 的 Markdown 渲染路径；
+      // 这里只保留原文，供复制、朗读等语义使用。
       plainText: latest.content,
-      body: (
-        <p
-          style={{
-            whiteSpace: "pre-wrap",
-            overflowWrap: "break-word",
-            lineHeight: "var(--line-height-relaxed)",
-          }}
-        >
-          {latest.content}
-        </p>
-      ),
       thinking: latest.thinking ? projectionThinking(latest) : undefined,
       // Issue 20：本轮分层检索轮次（含引用）；无检索作用域时为 null
       retrieval: latest.retrieval ?? null,

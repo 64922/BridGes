@@ -137,30 +137,6 @@
   text-align: center;
 }
 
-/* 流式光标：回答正文后的闪烁竖线 */
-.streamCursor {
-  display: inline-block;
-  width: 2px;
-  height: 1.1em;
-  margin-left: 2px;
-  vertical-align: -0.15em;
-  background-color: var(--color-accent-primary);
-  animation: cursor-blink 1s steps(1) infinite;
-}
-
-@keyframes cursor-blink {
-  50% {
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .streamCursor {
-    animation: none;
-    opacity: 1;
-  }
-}
-
 /* 尝试历史与状态行由消息呈现组件内联样式承载，不在此重复定义。 */
 
 /* ---- 画像通知卡片（Issue 26） ---- */

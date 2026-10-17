@@ -11,8 +11,7 @@ import type { ActiveRun, PendingUserMessage } from "./chat-run";
 export function composeConversationMessages(
   baseMessages: ChatMessageView[],
   activeRun: ActiveRun | null,
-  pendingUser: PendingUserMessage | null,
-  streamCursorClassName: string
+  pendingUser: PendingUserMessage | null
 ): ChatMessageView[] {
   const pendingUserId = activeRun?.kind === "send" ? pendingUser?.id : null;
   const messages = baseMessages.filter(
@@ -45,12 +44,6 @@ export function composeConversationMessages(
     careerProcess: activeRun.careerProcess,
     image: activeRun.imageProcess?.task ?? undefined,
     video: activeRun.videoProcess?.task ?? undefined,
-    body: (
-      <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
-        {activeRun.content}
-        {isStreaming && <span className={streamCursorClassName} aria-hidden="true" />}
-      </p>
-    ),
     status: isError ? "error" : isStreaming ? "streaming" : undefined,
     errorText: isError ? activeRun.errorText : undefined,
   });

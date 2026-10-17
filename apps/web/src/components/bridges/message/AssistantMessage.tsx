@@ -33,7 +33,10 @@ export function AssistantMessage({
   const streaming = message.status === "streaming";
 
   return (
-    <article style={{ display: "flex", gap: "var(--space-3)", minWidth: 0 }}>
+    <article
+      data-testid="assistant-message"
+      style={{ display: "flex", gap: "var(--space-3)", minWidth: 0 }}
+    >
       <span style={{ flexShrink: 0, paddingTop: "var(--space-1)" }} aria-hidden="true">
         <BrandLogo variant="icon" width={24} />
       </span>

@@ -1,4 +1,3 @@
-import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { ChatMessageView } from "@/lib/chat-message-view";
@@ -66,8 +65,7 @@ describe("会话线程合成", () => {
     const messages = composeConversationMessages(
       base,
       run({ content: "流式正文" }),
-      pending,
-      "cursor"
+      pending
     );
     expect(messages.map((message) => message.id)).toEqual([
       "u-1",
@@ -88,8 +86,7 @@ describe("会话线程合成", () => {
     const messages = composeConversationMessages(
       base,
       run({ messageId: "a-1", content: "已有正文", kind: "resume" }),
-      null,
-      "cursor"
+      null
     );
     expect(messages).toHaveLength(2);
     expect(messages.filter((message) => message.id === "a-1")).toHaveLength(1);
@@ -101,8 +98,7 @@ describe("会话线程合成", () => {
     const messages = composeConversationMessages(
       base,
       run({ status: "error", content: "部分正文", errorText: "生成中断。" }),
-      pending,
-      "cursor"
+      pending
     );
     expect(messages.map((message) => message.id)).toEqual([
       "u-1",
@@ -120,13 +116,11 @@ describe("会话线程合成", () => {
     const messages = composeConversationMessages(
       base,
       run({ status: "done", content: "完整回答" }),
-      pending,
-      "cursor"
+      pending
     );
     const assistant = messages[messages.length - 1];
     expect(assistant.plainText).toBe("完整回答");
     expect(assistant.status).toBeUndefined();
-    const { container } = render(<>{assistant.body}</>);
-    expect(container.querySelector("span")).toBeNull();
+    expect(assistant.body).toBeUndefined();
   });
 });

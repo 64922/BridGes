@@ -174,8 +174,7 @@ export default function ChatConversationPage() {
   const threadMessages = composeConversationMessages(
     baseMessages,
     activeRun,
-    pendingUser,
-    styles.streamCursor
+    pendingUser
   );
 
   return (

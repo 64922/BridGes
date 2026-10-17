@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { copyTextToClipboard } from "@/lib/clipboard";
 import type {
   CareerPlanningProjection,
   ChatAttachmentProjection,
@@ -310,6 +311,52 @@ describe("消息呈现边界（工单 02）", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "回答有帮助" }));
     expect(screen.getByText("已在当前页面标记为有帮助")).toBeTruthy();
+  });
+
+  it("助手正文按连续 Markdown 渲染，复制保留完整原文", async () => {
+    const markdown = [
+      "## 结论",
+      "",
+      "**先看重点**，再看代码：",
+      "",
+      "```ts",
+      "const answer = 42;",
+      "```",
+    ].join("\n");
+
+    render(<MessageList messages={[assistant({ plainText: markdown })]} />);
+
+    expect(screen.getByRole("heading", { level: 2, name: "结论" })).toBeTruthy();
+    expect(screen.getByText("先看重点").tagName).toBe("STRONG");
+    expect(screen.getByText("const answer = 42;").closest("pre")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "复制" }));
+    expect(copyTextToClipboard).toHaveBeenCalledWith(markdown);
+  });
+
+  it("用户消息仍按纯文本处理，助手正文不套统一大卡片", () => {
+    render(
+      <MessageList
+        messages={[
+          {
+            id: "user-markdown",
+            role: "user",
+            plainText: "**这不是标题**",
+          },
+          assistant({ plainText: "## 这是助手标题" }),
+        ]}
+      />
+    );
+
+    expect(screen.getByText("**这不是标题**").tagName).toBe("P");
+    expect(screen.queryByRole("heading", { name: "这不是标题" })).toBeNull();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "这是助手标题" })
+    ).toBeTruthy();
+
+    const article = screen.getByTestId("assistant-message");
+    expect(article.style.backgroundColor).toBe("");
+    expect(article.style.border).toBe("");
   });
 
   it("退役能力的历史结果仍可读，但不新增启动入口", () => {

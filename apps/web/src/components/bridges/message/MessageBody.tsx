@@ -3,19 +3,12 @@
 import { Icon } from "@/components/design-system/Icon";
 import type { ChatMessageView } from "@/lib/chat-message-view";
 
-import styles from "@/components/bridges/chat/chat.module.css";
+import { MarkdownBody } from "./MarkdownBody";
 
-function PlainTextBody({
-  text,
-  streaming = false,
-}: {
-  text: string;
-  streaming?: boolean;
-}) {
+function PlainTextBody({ text }: { text: string }) {
   return (
     <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
       {text}
-      {streaming && <span className={styles.streamCursor} aria-hidden="true" />}
     </p>
   );
 }
@@ -65,7 +58,10 @@ export function AssistantBody({
     message.body !== undefined ? (
       <>{message.body}</>
     ) : (
-      <PlainTextBody text={message.plainText} streaming={message.status === "streaming"} />
+      <MarkdownBody
+        text={message.plainText}
+        streaming={message.status === "streaming"}
+      />
     );
 
   if (message.status === "error" && message.skill == null) {

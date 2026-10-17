@@ -1,4 +1,3 @@
-import { isValidElement } from "react";
 import { describe, expect, it } from "vitest";
 
 import { buildThreadMessages } from "./chat-thread";
@@ -282,12 +281,8 @@ describe("buildThreadMessages（工单 38）", () => {
       image,
       video,
     });
-    const body = items[1].body;
-    expect(isValidElement(body)).toBe(true);
-    if (isValidElement(body)) {
-      expect(
-        (body.props as { style?: { lineHeight?: string } }).style?.lineHeight
-      ).toBe("var(--line-height-relaxed)");
-    }
+    // 历史边界只保留原文；连续正文由 AssistantBody 的共享 Markdown 路径渲染。
+    expect(items[1].plainText).toBe("完整回答");
+    expect(items[1].body).toBeUndefined();
   });
 });

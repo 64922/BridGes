@@ -18,6 +18,7 @@ export function UserMessage({
   return (
     <div style={{ display: "flex", justifyContent: "flex-end" }}>
       <div
+        data-testid="user-message-bubble"
         style={{
           maxWidth: "85%",
           padding: "var(--space-3) var(--space-4)",
