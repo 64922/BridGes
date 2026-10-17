@@ -40,7 +40,10 @@ describe("单行公开过程（工单 06）", () => {
           thinking: {
             steps: ["理解问题", "检索资料"],
             evidence: ["采用 2 篇论文"],
-            tools: ["arXiv 检索完成"],
+            tools: [
+              "arXiv 检索完成",
+              "已参考 1 条你已授权的用户背景信息（仅限当前任务）",
+            ],
             quality: ["引用已核验"],
             seconds: 4,
           },
@@ -65,6 +68,7 @@ describe("单行公开过程（工单 06）", () => {
     expect(details.textContent).toContain("来源说明");
     expect(details.textContent).toContain("采用 2 篇论文");
     expect(details.textContent).toContain("工具进度");
+    expect(details.textContent).not.toContain("已参考 1 条");
     expect(details.textContent).toContain("质量检查");
     expect(details.textContent).toContain("本次上下文说明");
     expect(details.textContent).toContain("仅用于当前任务");

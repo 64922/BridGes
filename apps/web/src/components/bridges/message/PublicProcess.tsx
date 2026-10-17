@@ -67,6 +67,14 @@ const NODE_LABEL: Record<string, string> = {
   "route.present": "整理路线结果",
 };
 
+const CONTEXT_TOOL_MARKER = "你已授权的用户背景信息";
+
+function publicTools(tools: string[]): string[] {
+  // 服务端把上下文披露也写入 thinking.tools（工单 27）；这里由专门的
+  // 上下文说明承载，避免展开后同一披露出现两次。
+  return tools.filter((item) => !item.includes(CONTEXT_TOOL_MARKER));
+}
+
 function ThinkingSpinner() {
   return (
     <span
@@ -161,10 +169,11 @@ export function PublicProcess({
   const detailsId = `public-process-details-${generatedId.replace(/:/g, "")}`;
   const streaming = message.status === "streaming";
   const thinking = message.thinking;
+  const tools = publicTools(thinking?.tools ?? []);
   const hasThinkingDetails =
     (thinking?.steps.length ?? 0) > 0 ||
     (thinking?.evidence.length ?? 0) > 0 ||
-    (thinking?.tools.length ?? 0) > 0 ||
+    tools.length > 0 ||
     (thinking?.quality.length ?? 0) > 0;
 
   return (
@@ -241,7 +250,7 @@ export function PublicProcess({
             <>
               <ProcessList title="公开步骤" items={thinking.steps} numbered />
               <ProcessList title="来源说明" items={thinking.evidence} />
-              <ProcessList title="工具进度" items={thinking.tools} />
+              <ProcessList title="工具进度" items={tools} />
               <ProcessList title="质量检查" items={thinking.quality} />
             </>
           )}
