@@ -4,7 +4,7 @@
 
 **Blocked by:** None — 可立即开始
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 > 已于 2026-10-17 经用户确认发布。仅在本票所有阻塞项完成验收后开始；无阻塞票可立即领取。设计与原型已批准，无需重新决定视觉方向。
 
@@ -20,13 +20,13 @@
 
 ## 验收标准
 
-- [ ] 同一首轮重复提交或网络重发不产生第二个会话、用户消息或运行。
-- [ ] 刷新进行中的会话后，已接收正文和后续事件正确衔接，不重复追加已提交结果。
-- [ ] 终态交接到权威历史时不闪空白、不重复答案、不丢失停止或错误状态。
-- [ ] 切换会话或账户时释放旧订阅，迟到事件不能写入新会话；取消本地订阅不等同于擅自停止后台运行。
-- [ ] 现有学习诊断重试、记录纠正和续学操作仍到达原服务，不能在整理时删除。
-- [ ] 本票涉及的拆分结果及页面组合文件均不超过 500 行；按真实职责拆分，不引入通用事件平台或兼容转发层。
-- [ ] API、数据库和用户可见行为保持不变；无新旧状态双写。
+- [x] 同一首轮重复提交或网络重发不产生第二个会话、用户消息或运行。
+- [x] 刷新进行中的会话后，已接收正文和后续事件正确衔接，不重复追加已提交结果。
+- [x] 终态交接到权威历史时不闪空白、不重复答案、不丢失停止或错误状态。
+- [x] 切换会话或账户时释放旧订阅，迟到事件不能写入新会话；取消本地订阅不等同于擅自停止后台运行。
+- [x] 现有学习诊断重试、记录纠正和续学操作仍到达原服务，不能在整理时删除。
+- [x] 本票涉及的拆分结果及页面组合文件均不超过 500 行；按真实职责拆分，不引入通用事件平台或兼容转发层。
+- [x] API、数据库和用户可见行为保持不变；无新旧状态双写。
 
 ## 验证方式
 
@@ -54,3 +54,21 @@
 
 - 2026-10-17：依据已验收原型、设计原则及当前代码只读核对形成草案；未开始业务开发。
 - 2026-10-17：用户确认「发布」，按已批准拆分转为 ready-for-agent；未开始业务开发。
+- 2026-10-17：拆分完成，状态转 ready-for-human。实现：
+  - `use-conversation-run.ts`（491 行）成为运行状态唯一所有者：发送、重试、停止、恢复、事件订阅、幂等键与终态收敛；`use-conversation-history.ts` 唯一读取权威历史并用请求号防迟到响应；`chat-run.ts` 只做协议事件到运行投影；`chat-run-view.tsx` 只合成线程视图；`chat-run-subscription.ts` 只负责游标续读与断线重连；页面（253 行）只组合布局、轮询与锚点；学习操作移入 `use-conversation-study.ts`，服务调用未变。
+  - 首轮幂等：订阅失败后保留 `firstTurnRetryRef`，重发仍调用 `/chat/first-turn` 并复用同一键；普通发送/重试失败保留键、成功后清除；切换会话重置全部命令键。
+  - 订阅释放：切换会话或卸载只 abort 本地读取并递增 epoch，不调用停止接口；后台运行继续，回来从权威历史 `active_run.cursor` 续读；迟到终态投影经 `setConversation` 收敛。
+  - 停止与终态竞态：停止接口返回后重新读取最新运行，仅当仍是同一消息且 streaming 才写 done；迟到 done/error 不会被旧快照覆盖，已到达正文不回退。
+  - 失败态期间同时保留本轮用户气泡与部分正文（避免问题在历史刷新前短暂消失）；历史接管后的展示与旧实现一致。无 API、数据库或 schema 变化，无双写或兼容层。
+- 2026-10-17：验证（Conda agent 环境，worktree `01-conversation-lifecycle`，基点 main `4100e87e`）：
+  - `npm run typecheck` 通过；`npm run test:unit` 41 文件 / 334 用例通过；`npm run lint` 通过（仅既有 3 条 warning：search `<img>`、ImageTaskCard `<img>`、Composer exhaustive-deps）。
+  - `npm run build` 通过（23 页）；Windows 下工作树 node_modules 为 junction，standalone 复制阶段出现 EPERM symlink 警告，命令退出码 0，属环境链接限制，非代码失败。
+  - 新增 E2E（临时 Playwright 配置，API 8101 / web 3101 / SMTP 8125 / HTTP 8126 / IMAP 8144；配置未提交）：`issue01-conversation-lifecycle` 4 项（双击发送、刷新中途恢复、切换后迟到事件、终态交接）全部通过；`issue06-stream-replay-consistency` 3 项（受保护片段、刷新重连、停止）全部通过；`issue03-atomic-first-turn` 的首轮原子发送、双击/同键重放、刷新新会话 3 项通过。
+  - 后端相关回归：`pytest tests/chat/test_issue03_atomic_first_turn.py tests/chat/test_v2_02_resumable_runs.py -q` 为 25 passed / 1 failed；失败项 `test_ordinary_text_persists_without_auto_selecting_legacy_modules` 在未改动的 main 同样失败（「帮我规划职业方向」已按退役能力返回 ordinary，测试仍期待 clarify），属既有基线。`pip check` 通过。`mypy src` 仍报 141 个既有错误（23 个后端文件，均不在本票 diff 内）。
+  - 既有 E2E 基线：issue03 返回/前进、首轮失败、串行 100 次因首页标题已被 RotatingQuote 取代而失败；issue05「作答前无提示」因 fixture 缺 source_available 失败；均为 main 既有失败，本票未新增失败。
+- 2026-10-17：交接：
+  - 唯一状态所有者：`useConversationRun`；历史只从 `useConversationHistory` 进入；视图合成由 `composeConversationMessages` 完成；页面不持有运行状态。
+  - 订阅释放时机：`conversationId` 变化、组件卸载或新命令替换旧命令时 abort 本地订阅并递增 epoch；不会发送 stop，后台运行由服务端执行器继续。
+  - 重试语义：普通发送/重试同载荷失败复用幂等键，成功后清除；首轮订阅失败保留 `firstTurnRetryRef`，重发继续走首轮幂等；停止只在服务端停止返回且仍 streaming 时落 done，终态事件优先。
+  - 已验证回归路径：双击发送、刷新中途恢复、切换会话并返回、终态交接、断流重连、停止；学习诊断重试、记录纠正和续学原调用保留。
+  - 遗留限制：后端 mypy 基线与上述既有 E2E 失败未在本票修复；生产构建的 standalone symlink 警告源于 Windows junction。无 schema 或 API 变更，无需数据迁移；回退方式为 revert 本票提交。
