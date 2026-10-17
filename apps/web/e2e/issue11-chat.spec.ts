@@ -235,7 +235,7 @@ function installMockChatApi(page: Page) {
 async function registerAndEnterHome(page: Page): Promise<void> {
   const credentials = uniqueCredentials("issue11");
   await signUp(page, credentials.username, credentials.qqEmail, "Passw0rd123!");
-  await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "今天，想弄懂什么？" })).toBeVisible();
 }
 
 test.describe("Issue 11 — 持久化流式聊天", () => {

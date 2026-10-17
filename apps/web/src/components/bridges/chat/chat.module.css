@@ -1,6 +1,6 @@
 /* 聊天布局（Issue 11/12/13）：单一居中消息列 + 底部输入区；最近对话已并入
-   全局侧栏 AppSidebar（Issue 12），聊天页不再有第二列；新聊天空白态为
-   居中限宽列：问候 + 轮换学习名言 + 输入区 + 建议卡（Issue 13）。 */
+   全局侧栏 AppSidebar（Issue 12），聊天页不再有第二列。新聊天专属的静态
+   欢迎、建议与空白态样式见 NewChatHome.module.css（ADR-0044）。 */
 
 .chatShell {
   display: flex;
@@ -40,71 +40,11 @@
 .threadInner {
   width: 100%;
   min-width: 0;
-  max-width: 46rem;
+  max-width: var(--chat-column-width);
   margin-inline: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-}
-
-/* ---- 空白态（新对话，Issue 13） ---- */
-
-.blankState {
-  flex: 1;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
-  justify-items: center;
-  min-width: 0;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: var(--space-8) var(--space-6);
-}
-
-.blankStateInner {
-  grid-row: 2;
-  width: 100%;
-  min-width: 0;
-  max-width: 46rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--space-5);
-}
-
-.greetingCompact {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-  text-align: center;
-}
-
-.greetingTitle {
-  font-family: var(--font-serif);
-  font-size: var(--text-3xl);
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.blankStateNote {
-  grid-row: 3;
-  align-self: end;
-  width: 100%;
-  max-width: 46rem;
-  margin: auto 0 0;
-  text-align: center;
-  font-size: var(--text-xs);
-  color: var(--color-text-tertiary);
-}
-
-/* 新聊天模式只在首轮前可选，固定在主内容右上角。 */
-.newChatMode {
-  position: absolute;
-  top: var(--space-4);
-  right: var(--space-4);
-  z-index: 1;
-  max-width: calc(100% - 2 * var(--space-4));
 }
 
 /* ---- 输入区 ---- */
@@ -119,22 +59,14 @@
 .composerInner {
   width: 100%;
   min-width: 0;
-  max-width: 46rem;
+  max-width: var(--chat-column-width);
   margin-inline: auto;
 }
 
-/* 新聊天首页的模式选择行；已有会话只显示下方只读文本。 */
-.modeRow {
+.composerModeSelect {
   display: flex;
-  justify-content: center;
-  margin-bottom: var(--space-3);
-}
-
-.modeLabel {
-  margin: 0 0 var(--space-3);
-  color: var(--color-text-tertiary);
-  font-size: var(--text-sm);
-  text-align: center;
+  align-items: center;
+  min-width: 0;
 }
 
 /* 尝试历史与状态行由消息呈现组件内联样式承载，不在此重复定义。 */

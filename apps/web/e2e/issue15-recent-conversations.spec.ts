@@ -172,7 +172,7 @@ test.describe("Issue 15 — 最近对话与会话生命周期", () => {
     await deleteDialog.getByRole("button", { name: "确认删除" }).click();
     await page.waitForURL("/");
     await expect(page.getByTestId("app-sidebar").getByRole("link", { name: /自然科学问题/ })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "今天，想弄懂什么？" })).toBeVisible();
   });
 
   test("账户切换后立即清空旧账户列表并加载目标账户列表", async ({ page }) => {

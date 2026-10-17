@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/design-system/Icon";
 import { CHAT_MODULES, type ChatModuleSelectionId } from "@/lib/chat-modules";
+import type { ChatMode } from "./ModeToggle";
 import type { CapabilityAvailability } from "./chat/capability-availability";
 import { ComposerAttachments } from "./chat/composer/ComposerAttachments";
 import { ComposerToolbar } from "./chat/composer/ComposerToolbar";
@@ -38,7 +39,14 @@ interface ComposerProps {
   moduleId?: ChatModuleSelectionId | null;
   /** 模块选择变化（选中菜单项传模块 ID，移除 chip 传 null）。 */
   onModuleChange?: (moduleId: ChatModuleSelectionId | null) => void;
-  mode?: "companion" | "study";
+  mode?: ChatMode;
+  /**
+   * 首轮前可选的模式入口（仅新对话传入）。传入时模式选择显示在输入区内；
+   * 未传入（已有会话）时不在输入区提供切换。
+   */
+  onModeChange?: (mode: ChatMode) => void;
+  /** 首轮创建中禁用模式切换，避免请求身份与界面选择不一致。 */
+  modeDisabled?: boolean;
 }
 
 /**
@@ -59,6 +67,8 @@ export function Composer({
   moduleId = null,
   onModuleChange,
   mode = "companion",
+  onModeChange,
+  modeDisabled = false,
 }: ComposerProps) {
   const attachments = useComposerAttachments();
   const [submitting, setSubmitting] = useState(false);
@@ -240,6 +250,8 @@ export function Composer({
         fileInputRef={attachments.fileInputRef}
         onFileInputChange={attachments.onFileInputChange}
         onModuleSelect={onModuleChange}
+        onModeSelect={onModeChange}
+        modeDisabled={modeDisabled}
         onSend={() => void send()}
         onStop={onStop}
       />

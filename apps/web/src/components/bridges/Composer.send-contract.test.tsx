@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Composer } from "./Composer";
@@ -198,6 +198,60 @@ describe("Composer 发送合同", () => {
     });
 
     await waitFor(() => expect(screen.getByText("账户草稿.png")).toBeTruthy());
+  });
+
+  it("首轮前模式入口位于输入区内，选择时回调新模式", () => {
+    const onModeChange = vi.fn();
+    render(
+      <Composer
+        onSend={vi.fn()}
+        variant="new-chat"
+        mode="companion"
+        onModeChange={onModeChange}
+      />
+    );
+
+    const composer = screen.getByTestId("composer");
+    const modeToggle = screen.getByTestId("mode-toggle");
+    expect(composer.contains(modeToggle)).toBe(true);
+    fireEvent.click(within(modeToggle).getByRole("button", { name: "学习模式" }));
+    expect(onModeChange).toHaveBeenCalledWith("study");
+  });
+
+  it("首轮创建中禁用模式切换，已有会话不提供模式入口", () => {
+    const { rerender } = render(
+      <Composer
+        onSend={vi.fn()}
+        variant="new-chat"
+        mode="companion"
+        onModeChange={vi.fn()}
+        modeDisabled
+      />
+    );
+    for (const button of within(screen.getByTestId("mode-toggle")).getAllByRole("button")) {
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+    }
+
+    rerender(<Composer onSend={vi.fn()} mode="study" />);
+    expect(screen.queryByTestId("mode-toggle")).toBeNull();
+  });
+
+  it("建议预填与已有草稿以换行分隔，不粘连成一句", async () => {
+    const { rerender } = render(<Composer onSend={vi.fn()} prefill={null} />);
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "原有草稿" } });
+
+    rerender(
+      <Composer
+        onSend={vi.fn()}
+        prefill={{ text: "帮我找几篇入门论文", nonce: 1 }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("帮我找几篇入门论文\n原有草稿");
+      expect(document.activeElement).toBe(textarea);
+    });
   });
 
   it("切到学习模式时清除无效的日常模块选择", () => {

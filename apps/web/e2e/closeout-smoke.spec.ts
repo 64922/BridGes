@@ -65,7 +65,7 @@ test("真实链路：注册-建会话-上传-发送-切换会话-轮询状态", 
     .getByRole("link", { name: "新聊天", exact: true })
     .click();
   // 等待新聊天首页完全就绪（避免过渡期旧页面 composer 与输入动作竞态）
-  await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "今天，想弄懂什么？" })).toBeVisible();
   const composerHome = page.getByTestId("composer");
   await composerHome.getByLabel("输入消息").fill("第二个对话");
   await composerHome.getByRole("button", { name: "发送消息" }).click();

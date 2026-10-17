@@ -183,7 +183,9 @@ async function registerAndEnterHome(page: Page): Promise<void> {
   const credentials = uniqueCredentials("issue21");
   await signUp(page, credentials.username, credentials.qqEmail, "Passw0rd123!");
   await expect(page.getByTestId("new-chat-home")).toBeVisible();
-  await expect(page.locator("h1.sc-visually-hidden")).toHaveText("新聊天");
+  await expect(page.getByTestId("chat-header").getByRole("heading", { level: 1 })).toHaveText(
+    "新对话"
+  );
 }
 
 function getBlankStateNote(page: Page) {
@@ -193,11 +195,12 @@ function getBlankStateNote(page: Page) {
 }
 
 test.describe("Issue 21 — 精简新聊天首页", () => {
-  test("登录落点与侧栏新聊天是同一最小空白态", async ({ page }) => {
+  test("登录落点与侧栏新聊天是同一静态欢迎空白态", async ({ page }) => {
     await registerAndEnterHome(page);
     const composer = page.getByTestId("composer");
 
-    await expect(page.getByTestId("empty-quote")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "今天，想弄懂什么？" })).toBeVisible();
+    await expect(page.getByText("从一个好奇开始", { exact: true })).toBeVisible();
     await expect(composer.getByRole("button", { name: "开始听写" })).toBeVisible();
     await expect(composer.getByRole("button", { name: "发送消息" })).toBeVisible();
     await expect(page.getByTestId("suggestion-cards")).toHaveCount(0);
@@ -206,105 +209,66 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
     await expect(page.getByText("长期科学学习与表达伙伴")).toHaveCount(0);
     await expect(page.getByText("有什么可以帮你的？")).toHaveCount(0);
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.locator('input[type="file"]')).toHaveCount(0);
+    await expect(page.locator('input[type="file"]')).toHaveCount(1);
 
-    const mode = page.getByTestId("mode-toggle");
+    const mode = composer.getByTestId("mode-toggle");
     await expect(mode.getByRole("button", { name: "日常陪伴" })).toHaveAttribute("aria-pressed", "true");
     await expect(mode.getByRole("button", { name: "学习模式" })).toHaveAttribute("aria-pressed", "false");
 
     await page.getByTestId("app-sidebar").getByRole("link", { name: "新聊天", exact: true }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByTestId("new-chat-home")).toBeVisible();
-    await expect(page.getByTestId("empty-quote")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "今天，想弄懂什么？" })).toBeVisible();
   });
 
-  test("轮换名言保留，减少动态效果时静止在第一条", async ({ page }) => {
+  test("静态欢迎与输入区共用限宽阅读列，不再轮换名言", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await registerAndEnterHome(page);
-    const quote = page.getByTestId("empty-quote");
+    const heading = page.getByRole("heading", { name: "今天，想弄懂什么？" });
     const note = getBlankStateNote(page);
-    await expect(quote).toHaveAttribute("data-quote-count", "5");
-    await expect(quote).toContainText("——");
-    await expect(quote).toHaveCSS("font-size", "24px");
+    await expect(page.getByTestId("empty-quote")).toHaveCount(0);
+    await expect(heading).toBeVisible();
     await expect(note).toBeVisible();
-    const quoteBox = await quote.boundingBox();
-    const composerBox = await page.getByTestId("composer").boundingBox();
-    expect(quoteBox!.y + quoteBox!.height).toBeLessThanOrEqual(composerBox!.y);
 
-    const centeredGroup = await page.getByTestId("new-chat-home").evaluate((blankState) => {
-      const quote = blankState.querySelector('[data-testid="empty-quote"]');
-      const composer = blankState.querySelector('[data-testid="composer"]');
-      if (!quote || !composer) throw new Error("首页居中块缺少格言或输入框");
-      const blankStateBox = blankState.getBoundingClientRect();
-      const quoteBox = quote.getBoundingClientRect();
-      const composerBox = composer.getBoundingClientRect();
-      const style = getComputedStyle(blankState);
-      const contentTop = blankStateBox.top + Number.parseFloat(style.paddingTop);
-      const contentBottom = blankStateBox.bottom - Number.parseFloat(style.paddingBottom);
-      return {
-        groupCenter: (quoteBox.top + composerBox.bottom) / 2,
-        contentCenter: (contentTop + contentBottom) / 2,
-      };
-    });
-    expect(Math.abs(centeredGroup.groupCenter - centeredGroup.contentCenter)).toBeLessThanOrEqual(12);
+    const headingBox = await heading.boundingBox();
+    const composerBox = await page.getByTestId("composer").boundingBox();
+    const noteBox = await note.boundingBox();
+    expect(headingBox!.y + headingBox!.height).toBeLessThanOrEqual(composerBox!.y);
+    expect(noteBox!.y).toBeGreaterThanOrEqual(composerBox!.y + composerBox!.height);
 
     const horizontalLayout = await page.getByTestId("composer").evaluate((composer) => {
       const blankState = composer.closest('[data-testid="new-chat-home"]');
       if (!blankState) throw new Error("输入框未位于新聊天空白态中");
-      const blankStateBox = blankState.getBoundingClientRect();
+      const heading = blankState.querySelector("h2");
+      if (!heading) throw new Error("首页缺少静态欢迎标题");
       const composerBox = composer.getBoundingClientRect();
-      const style = getComputedStyle(blankState);
-      const contentLeft = blankStateBox.left + Number.parseFloat(style.paddingLeft);
-      const contentRight = blankStateBox.right - Number.parseFloat(style.paddingRight);
+      const headingBox = heading.getBoundingClientRect();
       return {
         composerCenter: (composerBox.left + composerBox.right) / 2,
-        contentCenter: (contentLeft + contentRight) / 2,
+        headingCenter: (headingBox.left + headingBox.right) / 2,
+        composerWidth: composerBox.width,
       };
     });
-    expect(Math.abs(horizontalLayout.composerCenter - horizontalLayout.contentCenter)).toBeLessThanOrEqual(12);
-
-    const layout = await note.evaluate((element) => {
-      const blankState = element.closest('[data-testid="new-chat-home"]');
-      if (!blankState) throw new Error("免责声明未位于新聊天空白态中");
-      const noteBox = element.getBoundingClientRect();
-      const blankStateBox = blankState.getBoundingClientRect();
-      const blankStateStyle = getComputedStyle(blankState);
-      return {
-        noteBottom: noteBox.bottom,
-        blankStateBottom: blankStateBox.bottom,
-        paddingBottom: Number.parseFloat(blankStateStyle.paddingBottom),
-        parentTestId: element.parentElement?.getAttribute("data-testid"),
-      };
-    });
-    expect(layout.parentTestId).toBe("new-chat-home");
-    expect(layout.blankStateBottom - layout.noteBottom).toBeCloseTo(layout.paddingBottom, 0);
-
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.reload();
-    await expect(page.getByTestId("empty-quote")).toHaveAttribute("data-quote-index", "0");
+    expect(
+      Math.abs(horizontalLayout.composerCenter - horizontalLayout.headingCenter)
+    ).toBeLessThanOrEqual(1.5);
+    expect(horizontalLayout.composerWidth).toBeLessThanOrEqual(48 * 16 + 1);
   });
 
-  test("短视口下免责声明不与输入框重叠", async ({ page }) => {
+  test("短视口下免责声明不与输入框重叠，内容可滚动到底", async ({ page }) => {
     await registerAndEnterHome(page);
-    await page.setViewportSize({ width: 1280, height: 600 });
+    await page.setViewportSize({ width: 1280, height: 520 });
 
     const note = getBlankStateNote(page);
-    const quote = page.getByTestId("empty-quote");
     const composer = page.getByTestId("composer");
     const noteBox = await note.boundingBox();
-    const quoteBox = await quote.boundingBox();
     const composerBox = await composer.boundingBox();
 
     expect(noteBox).not.toBeNull();
-    expect(quoteBox).not.toBeNull();
     expect(composerBox).not.toBeNull();
-    expect(noteBox!.y).toBeGreaterThanOrEqual(quoteBox!.y + quoteBox!.height);
     expect(noteBox!.y).toBeGreaterThanOrEqual(composerBox!.y + composerBox!.height);
 
     const blankState = page.getByTestId("new-chat-home");
-    await blankState.locator(":scope > div").evaluate((element) => {
-      element.style.minHeight = "1200px";
-    });
     expect(
       await blankState.evaluate((element) => element.scrollHeight > element.clientHeight)
     ).toBe(true);
@@ -318,7 +282,7 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
     await registerAndEnterHome(page);
     const mock = await installMockChatApi(page);
     const mode = page.getByTestId("mode-toggle");
-    await expect(mode.getByRole("button", { name: "学习模式" })).toBeDisabled();
+    await expect(mode.getByRole("button", { name: "学习模式" })).toBeEnabled();
     await page.getByLabel("输入消息").fill("找几篇 Transformer 论文");
     await page.getByRole("button", { name: "发送消息" }).click();
     await page.waitForURL(/\/chat\/mock-1/);
@@ -377,22 +341,14 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
     await registerAndEnterHome(page);
     const mock = await installMockChatApi(page, { failOnce: true });
     const input = page.getByLabel("输入消息");
-    const note = getBlankStateNote(page);
-    const noteBeforeSend = await note.boundingBox();
-    expect(noteBeforeSend).not.toBeNull();
     await input.fill("需要保留的文本");
     await page.getByRole("button", { name: "发送消息" }).click();
     await expect(page.getByTestId("new-chat-home").getByRole("alert")).toContainText("对话存储暂不可用");
     await expect(input).toHaveValue("需要保留的文本");
     await expect(input).toBeFocused();
-    const noteAfterError = await note.boundingBox();
-    expect(noteAfterError).not.toBeNull();
-    expect(noteAfterError!.y + noteAfterError!.height).toBeCloseTo(
-      noteBeforeSend!.y + noteBeforeSend!.height,
-      0
-    );
+    await expect(page.getByText("草稿与附件已保留，可直接点击「发送」重试。")).toBeVisible();
     await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "日常陪伴" })).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })).toBeDisabled();
+    await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })).toBeEnabled();
     await expect(page).toHaveURL(/\/$/);
     await input.press("Enter");
     await page.waitForURL(/\/chat\/mock-1/);
@@ -420,18 +376,19 @@ test.describe("Issue 21 — 精简新聊天首页", () => {
     await installMockChatApi(page, { delayMs: 700 });
     await page.getByLabel("输入消息").fill("你好");
     await page.getByRole("button", { name: "发送消息" }).click();
-    await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "正在发送" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "停止生成" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "发送消息" })).toHaveCount(0);
     await expect(page.getByTestId("mode-toggle").getByRole("button").nth(0)).toBeDisabled();
     await expect(page.getByTestId("mode-toggle").getByRole("button").nth(1)).toBeDisabled();
     await page.waitForURL(/\/chat\/mock-1/);
   });
 
-  test("键盘发送与换行正常，学习模式保持关闭且桌面视口无水平溢出", async ({ page }) => {
+  test("键盘发送与换行正常，两种模式可选且桌面视口无水平溢出", async ({ page }) => {
     await registerAndEnterHome(page);
     const mock = await installMockChatApi(page);
     const study = page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" });
-    await expect(study).toBeDisabled();
+    await expect(study).toBeEnabled();
     await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "日常陪伴" })).toHaveAttribute("aria-pressed", "true");
 
     const input = page.getByLabel("输入消息");

@@ -8,6 +8,7 @@ import {
   CHAT_ATTACHMENT_ACCEPT,
 } from "@/lib/chat-attachments";
 import { CHAT_MODULES, type ChatModuleSelectionId } from "@/lib/chat-modules";
+import { ModeToggle, type ChatMode } from "../../ModeToggle";
 import type { CapabilityAvailability } from "../capability-availability";
 import { Menu, type MenuItem } from "../../Menu";
 import styles from "../chat.module.css";
@@ -23,7 +24,7 @@ function formatDictationTime(seconds: number): string {
 type DictationState = ReturnType<typeof useDictation>;
 
 interface ComposerToolbarProps {
-  mode: "companion" | "study";
+  mode: ChatMode;
   variant: "conversation" | "new-chat";
   conversationId?: string;
   asr: CapabilityAvailability;
@@ -34,6 +35,8 @@ interface ComposerToolbarProps {
   fileInputRef: RefObject<HTMLInputElement>;
   onFileInputChange: () => void;
   onModuleSelect?: (moduleId: ChatModuleSelectionId) => void;
+  onModeSelect?: (mode: ChatMode) => void;
+  modeDisabled?: boolean;
   onSend: () => void;
   onStop?: () => void;
 }
@@ -56,6 +59,8 @@ export function ComposerToolbar({
   fileInputRef,
   onFileInputChange,
   onModuleSelect,
+  onModeSelect,
+  modeDisabled = false,
   onSend,
   onStop,
 }: ComposerToolbarProps) {
@@ -81,7 +86,24 @@ export function ComposerToolbar({
   ];
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: "var(--space-1)",
+      }}
+    >
+      {onModeSelect && (
+        <div className={styles.composerModeSelect}>
+          <ModeToggle
+            compact
+            value={mode}
+            onChange={onModeSelect}
+            disabled={modeDisabled}
+          />
+        </div>
+      )}
       <span style={{ flex: 1 }} />
 
       {variant === "new-chat" && !conversationId && (
@@ -250,7 +272,7 @@ export function ComposerToolbar({
       >
         <Icon name="dictation" size={20} aria-hidden />
       </button>
-      {generating ? (
+      {generating && onStop ? (
         <Button variant="secondary" size="sm" onClick={onStop} aria-label="停止生成">
           <Icon name="close" size={16} aria-hidden />停止
         </Button>
@@ -259,11 +281,18 @@ export function ComposerToolbar({
           variant="primary"
           size="sm"
           onClick={onSend}
-          disabled={!canSend}
-          aria-label="发送消息"
-          title={canSend ? "发送" : "输入内容或添加附件后才能发送"}
+          disabled={!canSend || generating}
+          aria-label={generating ? "正在发送" : "发送消息"}
+          title={
+            generating
+              ? "正在创建会话"
+              : canSend
+                ? "发送"
+                : "输入内容或添加附件后才能发送"
+          }
         >
-          <Icon name="send" size={16} aria-hidden />发送
+          <Icon name="send" size={16} aria-hidden />
+          {generating ? "正在发送" : "发送"}
         </Button>
       )}
     </div>

@@ -53,7 +53,11 @@ export function useComposerText({ prefill, onSubmit }: UseComposerTextOptions) {
 
   const applyPrefill = useCallback(
     (value: string) => {
-      setText((current) => (current.startsWith(value) ? current : `${value}${current}`));
+      setText((current) => {
+        if (!current) return value;
+        if (current.startsWith(value)) return current;
+        return `${value}\n${current}`;
+      });
       requestAnimationFrame(() => {
         const element = textareaRef.current;
         if (!element) return;

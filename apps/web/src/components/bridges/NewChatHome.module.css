@@ -1,0 +1,109 @@
+/* 新聊天空白态（ADR-0044）：静态欢迎、输入区与轻量建议共用限宽列。 */
+
+.blankState {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--space-8) var(--space-6);
+}
+
+.blankStateInner {
+  width: 100%;
+  min-width: 0;
+  max-width: var(--chat-column-width);
+  margin-block: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.welcomeMark {
+  display: flex;
+  justify-content: center;
+}
+
+.welcomeEyebrow {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  letter-spacing: 0.2em;
+}
+
+.welcomeTitle {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-serif);
+  font-size: var(--text-3xl);
+  font-weight: 600;
+  text-align: center;
+}
+
+.welcomeSub {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-relaxed);
+  text-align: center;
+}
+
+.newChatComposer {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sendRecoveryHint {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+.starterPrompts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.starterPrompts button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--target-size);
+  padding: var(--space-1) 0;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.starterPrompts button:hover:not(:disabled) {
+  border-bottom-color: var(--color-border-strong);
+  color: var(--color-text-primary);
+}
+
+.starterPrompts button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.blankStateNote {
+  margin: 0;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}

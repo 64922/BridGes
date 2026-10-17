@@ -68,7 +68,7 @@ test.describe("Issue 20 — 收敛侧栏与退役独立页面", () => {
     ]) {
       await page.goto(path);
       await expect(page).toHaveURL(/\/$/);
-      await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "今天，想弄懂什么？" })).toBeVisible();
     }
   });
 });

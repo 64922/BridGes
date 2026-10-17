@@ -2,9 +2,14 @@
 
 export type ChatMode = "companion" | "study";
 
+export const CHAT_MODE_LABELS: Record<ChatMode, string> = {
+  companion: "日常陪伴",
+  study: "学习模式",
+};
+
 const MODES: { key: ChatMode; label: string }[] = [
-  { key: "companion", label: "日常陪伴" },
-  { key: "study", label: "学习模式" },
+  { key: "companion", label: CHAT_MODE_LABELS.companion },
+  { key: "study", label: CHAT_MODE_LABELS.study },
 ];
 
 interface ModeToggleProps {
@@ -13,6 +18,8 @@ interface ModeToggleProps {
   locked?: boolean;
   disabled?: boolean;
   studyUnavailable?: boolean;
+  /** 输入区工具栏内的紧凑形态：仅收紧水平内边距，点按目标仍为 44px。 */
+  compact?: boolean;
 }
 
 /**
@@ -26,8 +33,10 @@ export function ModeToggle({
   locked = false,
   disabled = false,
   studyUnavailable = false,
+  compact = false,
 }: ModeToggleProps) {
   const selectedLabel = MODES.find((mode) => mode.key === value)?.label ?? value;
+  const itemPadding = compact ? "0.125rem 0.5rem" : "0.25rem 0.75rem";
   return (
     <div
       role="group"
@@ -51,7 +60,7 @@ export function ModeToggle({
             minHeight: "var(--target-size)",
             display: "inline-flex",
             alignItems: "center",
-            padding: "0.25rem 0.75rem",
+            padding: itemPadding,
             color: "var(--color-text-secondary)",
             fontSize: "var(--text-sm)",
             fontWeight: 600,
@@ -73,7 +82,7 @@ export function ModeToggle({
               onClick={() => onChange?.(mode.key)}
               style={{
                 minHeight: "var(--target-size)",
-                padding: "0.25rem 0.75rem",
+                padding: itemPadding,
                 border: "none",
                 borderRadius: "var(--radius-sm)",
                 fontSize: "var(--text-sm)",

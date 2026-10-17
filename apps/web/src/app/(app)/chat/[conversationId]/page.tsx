@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { StateBlock } from "@/components/bridges/StateBlock";
+import { ChatHeader } from "@/components/bridges/chat/ChatHeader";
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { Composer } from "@/components/bridges/Composer";
@@ -186,7 +187,10 @@ export default function ChatConversationPage() {
           data-testid="main-content"
           className={styles.chatMain}
         >
-          <h1 className="sc-visually-hidden">{conversation?.title || "新对话"}</h1>
+          <ChatHeader
+            title={conversation?.title || "新对话"}
+            mode={conversation?.mode}
+          />
           {loadState === "loading" ? (
             <StateBlock
               kind="loading"
@@ -240,9 +244,6 @@ export default function ChatConversationPage() {
               {sendError && <ChatSendErrorBanner message={sendError} />}
               <div className={styles.composerWrap}>
                 <div className={styles.composerInner}>
-                  <p className={styles.modeLabel} data-testid="conversation-mode">
-                    {conversation?.mode === "study" ? "学习模式" : "日常陪伴"}
-                  </p>
                   <Composer
                     onSend={(text, attachmentIds) =>
                       sendMessage(text, attachmentIds, moduleId)

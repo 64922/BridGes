@@ -28,10 +28,22 @@ async function skipIfChatStorageDisabled(page: Page) {
 }
 
 async function createConversation(page: Page, title: string | null): Promise<string> {
-  const created = await page.request.post("/api/chat/conversations", { data: { title } });
-  expect(created.ok()).toBeTruthy();
+  const created = await page.request.post("/api/chat/first-turn", {
+    data: {
+      content: title ?? "无标题会话",
+      idempotency_key: `e2e-issue12-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    },
+  });
+  expect(created.ok(), await created.text()).toBeTruthy();
   const body = await created.json();
-  return body.conversation_id as string;
+  const conversationId = body.conversation.conversation_id as string;
+  if (title) {
+    const renamed = await page.request.patch(`/api/chat/conversations/${conversationId}`, {
+      data: { title },
+    });
+    expect(renamed.ok(), await renamed.text()).toBeTruthy();
+  }
+  return conversationId;
 }
 
 test.describe("Issue 12 — 固定顺序侧栏", () => {
@@ -87,7 +99,7 @@ test.describe("Issue 12 — 固定顺序侧栏", () => {
 
     await page.getByTestId("app-sidebar").getByRole("link", { name: "BridGes — 新聊天" }).click();
     await page.waitForURL("/");
-    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "今天，想弄懂什么？" })).toBeVisible();
 
     // 最近对话仍为空：不出现任何会话条目或重复空会话
     const homeSidebar = page.getByTestId("app-sidebar");
@@ -194,22 +206,19 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
       }
     }
 
-    // Issue 25：用户画像已是完整治理页面（非空占位），九类分区面板内的空态
-    // 提供「该类别还没有记录」与真实导航的返回新聊天链接。
+    // 用户画像已是完整的原子信息页：空账户如实显示空态与「添加一条信息」，
+    // 不再提供旧的类别分区或占位文案。
     await page.getByTestId("app-sidebar").getByRole("link", { name: "用户画像" }).click();
     await page.waitForURL("/account/profile");
-    await expect(page.getByRole("heading", { name: "数字分身画像" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "你的信息" })).toBeVisible();
     await expect(page.locator("body")).not.toContainText("将在这里呈现");
-    // 画像九类分区中未填写的类别各有一个真实空态（多空态共存合法）。
-    await expect(
-      page.getByTestId("state-empty").filter({ hasText: "该类别还没有记录" }).first()
-    ).toBeVisible();
-    await expect(page.getByRole("link", { name: "返回新聊天" })).toBeVisible();
+    await expect(page.getByTestId("atomic-empty")).toContainText("这里还没有长期信息");
+    await expect(page.getByRole("button", { name: "添加一条信息" })).toBeVisible();
 
-    // 返回新聊天是真实导航（画像中心顶部为链接形式）
-    await page.getByRole("link", { name: "返回新聊天" }).click();
+    // 侧栏「新聊天」返回静态欢迎首页。
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "新聊天", exact: true }).click();
     await page.waitForURL("/");
-    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "今天，想弄懂什么？" })).toBeVisible();
     await expect(sidebar).toBeVisible();
   });
 

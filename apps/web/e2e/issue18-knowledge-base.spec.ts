@@ -213,7 +213,7 @@ test.describe("Issue 18 — 全局知识库", () => {
 
     await empty.getByRole("button", { name: "返回新聊天" }).click();
     await page.waitForURL("/");
-    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "今天，想弄懂什么？" })).toBeVisible();
   });
 
   test("上传材料后行进入处理状态，轮询直到就绪", async ({ page }) => {

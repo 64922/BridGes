@@ -150,7 +150,7 @@ test("浏览器返回/前进：不重复创建会话或消息", async ({ page })
 
   // 返回首页：空白态且输入区为空（sessionStorage 不再承担待发送消息）
   await page.goBack();
-  await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "今天，想弄懂什么？" })).toBeVisible();
   await expect(page.getByTestId("composer").getByLabel("输入消息")).toHaveValue("");
 
   // 前进回会话页：同一会话同一消息，不产生第二条
@@ -183,7 +183,7 @@ test("首轮失败：留在可编辑首页、输入保留、无不可见空草�
   await composer.getByRole("button", { name: "发送消息" }).click();
 
   // 停留在首页（未跳转）、错误横幅明确、输入保留
-  await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "今天，想弄懂什么？" })).toBeVisible();
   await expect(page.getByText(/模拟发送失败/)).toBeVisible();
   await expect(composer.getByLabel("输入消息")).toHaveValue("这条消息不应丢失");
 
@@ -314,7 +314,7 @@ test("串行 100 次首轮场景：无空白、无重复、最近列表无遗漏
       .getByTestId("app-sidebar")
       .getByRole("link", { name: "新聊天", exact: true })
       .click();
-    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "今天，想弄懂什么？" })).toBeVisible();
   }
   expect(createdIds.size).toBe(100);
 
