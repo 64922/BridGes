@@ -103,14 +103,21 @@
 - `AssistantActions`：复制、反馈与条件重试；人味化写路径和朗读入口不重新出现。
 - `AttemptHistory`：只读展示同轮先前失败/停止尝试，不覆盖最新尝试。
 
+### 审查与修复
+
+- Standards 轴：发现 `MessageList` 仍重导出新类型，形成旧入口兼容层；已删除 `message/types.ts` 与全部重导出，消费端直接引用 `@/lib/chat-message-view`。同时把视图模型从组件目录移入 `lib`，消除 `lib/chat-thread` 反向依赖组件目录。
+- Spec 轴：发现流式正文误继承历史宽松行高、空正文带附件时丢失间距，已修复并增加回归断言；发现缺少信息去向清单与交接记录，本节补齐。
+- 其余判断项（投影卡参数较多、`DeliveryStatus` 仅转发、错误提示与正文同文件）属于本票明确要求的职责边界或为避免扩大改动而保留，未按“代码外形相似”提前抽象。
+
 ### 验证命令与结果
 
 - `npm run typecheck`：通过。
-- `npm run test:unit`：38 个测试文件、327 项通过。
-- `npm run lint`：通过；仅保留 3 条既有警告（2 条 `<img>`、1 条 `Composer` Hook 依赖）。
+- `npm run test:unit`：合入 main 的 issue-03 后 40 个测试文件、340 项通过。
+- `npm run lint`：通过；仅保留 2 条既有 `<img>` 警告。
 - `npm run build`：Next.js 编译、类型检查和 23 个静态页面生成通过；worktree 使用 Junction 的 `node_modules`，standalone trace 复制出现既有 `EPERM symlink` 警告。合并到 main 后在真实依赖目录复跑。
 - Playwright（`BRIDGES_PYTHON` 指向 conda `agent` Python）：`issue06-stream-replay-consistency`、`issue38-trusted-progress`、`issue08-article-result-projection`、`issue30-dictation-reading` 的相关 18 项全部通过，覆盖流式/重放、停止、终态历史、部分交付、旧投影、正文复制和朗读入口退役。
 - 重构前后对照：临时 parity 测试覆盖普通、学习、论文、贴吧、职业、GitHub、学习资料、通勤、模块建议、检索引用、人味化历史结果、生涯规划历史结果、图片/视频历史任务、历史尝试、流式、停止、部分失败、空正文和旧字段缺省；重构前记录基线，重构后同组通过，临时文件已删除。
+- 集成：执行期间 main 已合入 issue-03（`76e0c8d9`）；本分支合入 `main@58882a15` 无冲突，并在合并后重跑 typecheck、单测、lint、build 与上述 18 项浏览器测试。
 - `python -m pip check`：通过。
 - `python -m mypy src`：分支 `141 errors in 23 files`；在 `main` 同命令得到相同 `141 errors`，属既有失败，未由本票引入。
 - `python -m pytest -q`：两侧均在收集阶段因 4 个 career_plan 测试导入不存在的 `CareerBackgroundLoader` 中断（`main` 同为 4 个 collection errors、6255 tests collected）；未将未执行完的套件标为通过。
