@@ -1,7 +1,26 @@
+import { isValidElement } from "react";
 import { describe, expect, it } from "vitest";
 
 import { buildThreadMessages } from "./chat-thread";
-import type { ChatMessageProjection, TurnResultProjection } from "@/lib/api";
+import {
+  careerPlan,
+  commuteRoute,
+  githubProjects,
+  learningResources,
+  paperSearch,
+  tiebaResearch,
+} from "./chat-modules.test-support";
+import type {
+  ArxivSearchProjection,
+  ChatAttachmentProjection,
+  ChatMessageProjection,
+  ContextNoteProjection,
+  ImageTaskProjection,
+  ModuleSuggestionProjection,
+  RetrievalRoundProjection,
+  TurnResultProjection,
+  VideoTaskProjection,
+} from "@/lib/api";
 
 const NOW = "2026-10-05T08:00:00Z";
 
@@ -118,5 +137,157 @@ describe("buildThreadMessages（工单 38）", () => {
     expect(items[0].previousAttempts).toEqual([
       { attemptNumber: 1, status: "error", errorMessage: "旧失败" },
     ]);
+  });
+
+  it("完整服务端投影跨层保留正文、来源、模块与媒体字段", () => {
+    const paper = paperSearch();
+    const tieba = tiebaResearch();
+    const career = careerPlan();
+    const resources = learningResources();
+    const commute = commuteRoute();
+    const github = githubProjects();
+    const contextNote: ContextNoteProjection = {
+      state: "ready",
+      profile_enabled: true,
+      mode: "companion",
+      used_at: NOW,
+      profile_item_count: 1,
+      material_categories: [],
+      note: "本轮使用了 1 条已授权背景信息。",
+    };
+    const retrieval: RetrievalRoundProjection = {
+      round_id: "r-1",
+      message_id: "a-full",
+      conversation_id: "c-1",
+      use_knowledge_base: true,
+      sufficiency: "sufficient",
+      layers: [],
+      citations: [],
+      note: null,
+      created_at: NOW,
+    };
+    const arxiv: ArxivSearchProjection = {
+      status: "success",
+      trigger_reason: "需要论文",
+      query_summary: "transformer",
+      papers: [],
+      searched_at: null,
+      error_code: null,
+      error_message: null,
+      upstream_status: null,
+      can_retry: false,
+      can_cancel: false,
+      cache_hit: false,
+      stale: false,
+      retry_after_seconds: null,
+      attempt_count: 0,
+    };
+    const suggestion: ModuleSuggestionProjection = {
+      module_id: "paper",
+      label: "使用论文搜索",
+      reason: "你看起来在找论文。",
+      text: "帮我找论文",
+      needs_disambiguation: false,
+    };
+    const image: ImageTaskProjection = {
+      task_id: "img-1",
+      attempt_number: 1,
+      kind: "generate",
+      prompt: "画一只猫",
+      status: "failed",
+      retryable: false,
+      deleted: false,
+      synthetic: true,
+      created_at: NOW,
+      updated_at: NOW,
+    };
+    const video: VideoTaskProjection = {
+      task_id: "video-1",
+      prompt: "一段海浪视频",
+      synthetic_media: true,
+      status: "failed",
+      retryable: false,
+      deleted: false,
+      created_at: NOW,
+      updated_at: NOW,
+    };
+    const attachment: ChatAttachmentProjection = {
+      object_id: "obj-file",
+      original_filename: "统计讲义.pdf",
+      media_type: "application/pdf",
+      content_length: 2048,
+      content_hash: "hash",
+      conversation_id: "c-1",
+      message_id: "u-1",
+      status: "bound",
+      ordinal: 1,
+      ingestion_status: "ready",
+      ingestion_error: null,
+      adopted_from_conversation_id: "",
+      adopted_from_object_id: "",
+      created_at: NOW,
+      updated_at: NOW,
+    };
+
+    const items = buildThreadMessages([
+      message({
+        message_id: "u-1",
+        role: "user",
+        content: "请结合资料回答",
+        module_id: "paper",
+        skill: { task_id: "skill-1" },
+        attachments: [attachment],
+      }),
+      message({
+        message_id: "a-full",
+        content: "完整回答",
+        context_note: contextNote,
+        paper_search: paper,
+        tieba_research: tieba,
+        career_plan: career,
+        learning_resources: resources,
+        commute_route: commute,
+        github_projects: github,
+        retrieval,
+        arxiv_search: arxiv,
+        module_suggestion: suggestion,
+        image,
+        video,
+      }),
+    ]);
+
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      id: "u-1",
+      role: "user",
+      plainText: "请结合资料回答",
+      moduleId: "paper",
+      skill: { task_id: "skill-1" },
+      attachments: [attachment],
+    });
+    expect(items[1]).toMatchObject({
+      id: "a-full",
+      role: "assistant",
+      plainText: "完整回答",
+      contextNote,
+      paperSearch: paper,
+      tiebaResearch: tieba,
+      careerPlan: career,
+      learningResources: resources,
+      commuteRoute: commute,
+      githubProjects: github,
+      retrieval,
+      arxivSearch: arxiv,
+      moduleSuggestion: suggestion,
+      image,
+      video,
+    });
+    const body = items[1].body;
+    expect(isValidElement(body)).toBe(true);
+    if (isValidElement(body)) {
+      expect(
+        (body.props as { style?: { lineHeight?: string } }).style?.lineHeight
+      ).toBe("var(--line-height-relaxed)");
+    }
   });
 });
