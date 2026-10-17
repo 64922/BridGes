@@ -91,6 +91,7 @@ npx playwright test e2e/issue11-chat.spec.ts --grep "重试创建新的助手尝
 ```
 
 - 工单 06 正式 SSE 覆盖：历史默认收起与键盘展开、真实流式单行进度与展开保持、停止/失败/历史无披露终态。
+- 合并 main（含工单 08 引用面板）后复验：`typecheck` 通过；`test:unit` 47 files / 383 tests 通过；生产构建通过；`issue06 + issue08-citation-viewer + issue27` 共 9 个 E2E 通过。
 - `e2e/release-gate.spec.ts` 的入口断言已同步为 `public-process`，但该旅程依赖真实模型与公开检索，本次未运行，不能计为通过。
 
 **证据**
