@@ -106,3 +106,5 @@ schema 变更前确认本项目实际生成/迁移入口，执行对应命令；
 2026-10-15：用户确认 L06、L08 已完成；结合外部票交付记录更新 14 的依赖说明，并补充 A–I 批次及并行合流规则。画像工单的范围、验收标准和依赖关系不变，外部依赖现已满足；本次未启动实施。
 
 依据用户指定的 [to-tickets 技能](C:/Users/33755/.agents/skills/to-tickets/SKILL.md) 完成本地发布；无需再次确认拆分。工单发布不代表开发、数据库迁移或部署已执行。
+
+2026-10-17：画像工单 19 已交付旧路径退出审计、`profile-cutover` 维护命令、隔离切换/回滚/重升级演练与[验证记录](validation/19-cutover-retirement-and-recovery/verification-record.md)。本次未操作真实用户实例，也未执行生产部署；工单 18 未达标项仍由 [20 号工单](issues/20-real-loop-follow-ups.md) 跟踪。

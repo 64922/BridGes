@@ -926,6 +926,9 @@ def scheduler(
 # Issue 40：注册 ``BridGes evaluate`` 子命令（可复现 A/B 科学评测）。
 from bridges.cli.evaluate import evaluate_app  # noqa: E402
 
+# 画像工单 19：注册 ``BridGes profile-cutover`` 审计与恢复子命令。
+from bridges.cli.profile_cutover import profile_cutover_app  # noqa: E402
+
 # 画像工单 16：注册 ``BridGes profile-history`` 维护子命令。
 from bridges.cli.profile_history import profile_history_app  # noqa: E402
 
@@ -936,6 +939,7 @@ app.add_typer(evaluate_app)
 app.add_typer(profile_replay_app)
 app.add_typer(profile_history_app)
 app.add_typer(profile_rebuild_app)
+app.add_typer(profile_cutover_app)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,84 @@
+"""画像工单 19：切换恢复时的旧抽取队列边界。
+
+以切换前备份为界，备份中已经存在且仍活动的抽取运行/任务属于旧代队列，
+恢复后不得继续执行；切换后新增的活动行则必须保留。外部旧队列消息若仍被
+领取，会因任务行不存在而直接完成，不再写入新恢复库。
+"""
+
+from __future__ import annotations
+
+import sqlite3
+
+_ACTIVE_STATES = ("pending", "running")
+
+
+def active_extraction_ids(
+    connection: sqlite3.Connection,
+    account_id: str,
+) -> tuple[set[str], set[str]]:
+    """返回账户下仍在活动的抽取运行与任务标识。"""
+
+    placeholders = ", ".join("?" for _ in _ACTIVE_STATES)
+    run_rows = connection.execute(
+        f"SELECT extraction_id FROM profile_extraction_runs "
+        f"WHERE account_id = ? AND status IN ({placeholders})",
+        (account_id, *_ACTIVE_STATES),
+    ).fetchall()
+    task_rows = connection.execute(
+        f"SELECT task_id FROM profile_extraction_tasks "
+        f"WHERE account_id = ? AND status IN ({placeholders})",
+        (account_id, *_ACTIVE_STATES),
+    ).fetchall()
+    return (
+        {str(row[0]) for row in run_rows},
+        {str(row[0]) for row in task_rows},
+    )
+
+
+def all_extraction_ids(
+    connection: sqlite3.Connection,
+    account_id: str,
+) -> tuple[set[str], set[str]]:
+    """返回账户下备份快照中存在的抽取运行与任务标识。"""
+
+    run_rows = connection.execute(
+        "SELECT extraction_id FROM profile_extraction_runs WHERE account_id = ?",
+        (account_id,),
+    ).fetchall()
+    task_rows = connection.execute(
+        "SELECT task_id FROM profile_extraction_tasks WHERE account_id = ?",
+        (account_id,),
+    ).fetchall()
+    return {str(row[0]) for row in run_rows}, {str(row[0]) for row in task_rows}
+
+
+def drop_stale_extraction_rows(
+    target: sqlite3.Connection,
+    backup: sqlite3.Connection,
+    account_id: str,
+) -> None:
+    """删除备份中已存在且仍活动的抽取运行/任务。
+
+    切换后的当前库以备份为底，因此只看“当前库独有”无法识别旧任务；必须
+    以切换快照为界。切换后新增的活动运行/任务不在备份中，保持不变。
+    """
+
+    backup_runs, backup_tasks = all_extraction_ids(backup, account_id)
+    target_runs, target_tasks = active_extraction_ids(target, account_id)
+    for extraction_id in sorted(target_runs & backup_runs):
+        target.execute(
+            "DELETE FROM profile_extraction_runs WHERE account_id = ? AND extraction_id = ?",
+            (account_id, extraction_id),
+        )
+    for task_id in sorted(target_tasks & backup_tasks):
+        target.execute(
+            "DELETE FROM profile_extraction_tasks WHERE account_id = ? AND task_id = ?",
+            (account_id, task_id),
+        )
+
+
+__all__ = [
+    "active_extraction_ids",
+    "all_extraction_ids",
+    "drop_stale_extraction_rows",
+]
