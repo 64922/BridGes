@@ -1,0 +1,289 @@
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import type {
+  CareerPlanningProjection,
+  ContextNoteProjection,
+  HumanizerResultProjection,
+  ImageTaskProjection,
+  RetrievalRoundProjection,
+  TurnResultProjection,
+  VideoTaskProjection,
+} from "@/lib/api";
+import {
+  careerPlan,
+  commuteRoute,
+  githubProjects,
+  learningResources,
+  paperSearch,
+  tiebaResearch,
+} from "@/lib/chat-modules.test-support";
+
+import { MessageList } from "./MessageList";
+import type { ChatMessageView } from "./message/types";
+
+const NOW = "2026-10-17T08:00:00Z";
+
+vi.mock("@/lib/clipboard", () => ({
+  copyTextToClipboard: vi.fn(async () => true),
+}));
+
+afterEach(cleanup);
+
+const contextNote: ContextNoteProjection = {
+  state: "ready",
+  profile_enabled: true,
+  mode: "companion",
+  used_at: NOW,
+  profile_item_count: 1,
+  material_categories: [],
+  note: "本轮使用了 1 条已授权背景信息。",
+};
+
+const retrieval: RetrievalRoundProjection = {
+  round_id: "r-1",
+  message_id: "assistant-1",
+  conversation_id: "conversation-1",
+  use_knowledge_base: true,
+  sufficiency: "sufficient",
+  layers: [],
+  citations: [
+    {
+      citation_id: "cite-1",
+      source_layer: "knowledge_base",
+      object_id: "obj-1",
+      filename: "讲义.pdf",
+      media_type: "application/pdf",
+      page_number: null,
+      section_title: null,
+      snippet: "引用片段",
+      rank: 1,
+    },
+  ],
+  note: null,
+  created_at: NOW,
+};
+
+const humanizer: HumanizerResultProjection = {
+  task_id: "task-1",
+  skill_id: "bridges-humanizer",
+  skill_version: "1.0.0",
+  path: "rewrite",
+  genre: null,
+  contract: {
+    path: "rewrite",
+    source_text: "原文",
+    allow_assumptions: false,
+    allow_first_person: false,
+  },
+  status: "done",
+  repair_attempts: 0,
+  writing_call_count: 1,
+  process_state: "done",
+  output: {
+    final_text: "历史人味化正文。",
+    edits: [],
+    fact_check: [],
+    open_questions: [],
+    quality_status: "ok",
+  },
+  article: {
+    projection_version: "1",
+    audit_version: "1",
+    delivery_status: "delivered",
+    material_state: "sufficient",
+    final_text: "历史人味化正文。",
+    fidelity: {
+      passed: true,
+      blocking_count: 0,
+      needs_confirmation_count: 0,
+      items: [],
+    },
+    style_review: {
+      finding_count: 0,
+      warning_count: 0,
+      suggestion_count: 0,
+      items: [],
+    },
+    revision: null,
+    evidence: [],
+    confirmations: [],
+  },
+};
+
+const careerPlanning: CareerPlanningProjection = {
+  plan_id: "plan-1",
+  intent: "历史生涯规划",
+  route_contract: null,
+  status: "error",
+  profile_enabled: false,
+  profile_used: false,
+  verified_at: NOW,
+  output: null,
+  clarification: null,
+  evidence_sources: [],
+  review: null,
+  process_state: "error",
+  process_steps: [],
+  error_code: "career_planning_failed",
+  error_message: "历史规划未完成。",
+  run_id: null,
+  run_lock_refs: [],
+  created_at: NOW,
+};
+
+const imageTask: ImageTaskProjection = {
+  task_id: "img-1",
+  attempt_number: 1,
+  kind: "generate",
+  prompt: "画一只猫",
+  status: "failed",
+  error_code: "image_failed",
+  error_message: "图片生成失败。",
+  retryable: false,
+  deleted: false,
+  synthetic: true,
+  created_at: NOW,
+  updated_at: NOW,
+};
+
+const videoTask: VideoTaskProjection = {
+  task_id: "video-1",
+  prompt: "一段海浪视频",
+  synthetic_media: true,
+  status: "failed",
+  error_code: "video_failed",
+  error_message: "视频生成失败。",
+  retryable: false,
+  deleted: false,
+  created_at: NOW,
+  updated_at: NOW,
+};
+
+const cancelledResult: TurnResultProjection = {
+  version: "turn-result-v1",
+  outcome: "cancelled",
+  outcome_label: "本轮已停止，不会自动继续。",
+  trust: null,
+  trust_label: null,
+  capability_list: [],
+  actual_module_id: null,
+  requested_module_id: null,
+  route_source: "ordinary_chat",
+  delivered: [],
+  blocked: [],
+  gaps: [],
+  recovery: null,
+  wait_reason: null,
+  task_id: null,
+  task_version: null,
+};
+
+function assistant(overrides: Partial<ChatMessageView> = {}): ChatMessageView {
+  return {
+    id: "assistant-1",
+    role: "assistant",
+    plainText: "回答正文",
+    ...overrides,
+  };
+}
+
+describe("消息呈现边界（工单 02）", () => {
+  it("上下文、学习、论文、贴吧、通勤、检索与模块建议仍在同一条助手消息内", () => {
+    render(
+      <MessageList
+        conversationId="conversation-1"
+        messages={[
+          assistant({
+            contextNote,
+            paperSearch: paperSearch(),
+            tiebaResearch: tiebaResearch(),
+            learningResources: learningResources(),
+            commuteRoute: commuteRoute(),
+            careerPlan: careerPlan(),
+            githubProjects: githubProjects(),
+            moduleSuggestion: {
+              module_id: "paper",
+              label: "使用论文搜索",
+              reason: "你看起来在找论文。",
+              text: "帮我找论文",
+              needs_disambiguation: false,
+            },
+            retrieval,
+          }),
+          assistant({ id: "assistant-2" }),
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId("context-note-card")).toBeTruthy();
+    expect(screen.getByTestId("paper-search-card-success")).toBeTruthy();
+    expect(screen.getByTestId("tieba-research-card-success")).toBeTruthy();
+    expect(screen.getByTestId("resources-card-success")).toBeTruthy();
+    expect(screen.getByTestId("commute-route-card-success")).toBeTruthy();
+    expect(screen.getByTestId("career-plan-card-success")).toBeTruthy();
+    expect(screen.getByTestId("github-projects-card-success")).toBeTruthy();
+    expect(screen.getByTestId("module-suggestion")).toBeTruthy();
+    expect(screen.getByTestId("retrieval-citations-card")).toBeTruthy();
+    expect(screen.getByText("回答正文")).toBeTruthy();
+  });
+
+  it("历史尝试、停止正文、空正文与操作行保持原行为", () => {
+    render(
+      <MessageList
+        messages={[
+          assistant({
+            id: "assistant-stopped",
+            plainText: "已生成的部分正文",
+            status: "stopped",
+            turnResult: cancelledResult,
+            previousAttempts: [
+              { attemptNumber: 1, status: "error", errorMessage: "旧失败" },
+            ],
+          }),
+          assistant({ id: "assistant-empty", plainText: "" }),
+        ]}
+      />
+    );
+
+    expect(screen.getByText("此问题的前 1 次尝试")).toBeTruthy();
+    expect(screen.getByText(/第 1 次尝试（失败）：旧失败/)).toBeTruthy();
+    expect(screen.getByText("已生成的部分正文")).toBeTruthy();
+    expect(screen.getByTestId("turn-result")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getAllByRole("toolbar", { name: "消息操作" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /朗读/ })).toBeNull();
+  });
+
+  it("复制与已有反馈行为继续可用", async () => {
+    render(<MessageList messages={[assistant()]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "复制" }));
+    expect(await screen.findByText("已复制")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "回答有帮助" }));
+    expect(screen.getByText("已在当前页面标记为有帮助")).toBeTruthy();
+  });
+
+  it("退役能力的历史结果仍可读，但不新增启动入口", () => {
+    render(
+      <MessageList
+        conversationId="conversation-1"
+        messages={[
+          assistant({
+            humanizer,
+            careerPlanning,
+            image: imageTask,
+            video: videoTask,
+          }),
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId("humanizer-result-card")).toBeTruthy();
+    expect(screen.getByTestId("career-result-card")).toBeTruthy();
+    expect(screen.getByText(/图片生成已退役/)).toBeTruthy();
+    expect(screen.getByText(/视频生成已退役/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "重试" })).toBeNull();
+  });
+});

@@ -2,12 +2,12 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { TurnResultProjection } from "@/lib/api";
-import { MessageList, type ChatMessage } from "./MessageList";
+import { MessageList, type ChatMessageView } from "./MessageList";
 
 afterEach(cleanup);
 
 describe("工单38部分交付正文", () => {
-  function message(outcome: "partial" | "failed"): ChatMessage {
+  function message(outcome: "partial" | "failed"): ChatMessageView {
     const result: TurnResultProjection = {
       version: "turn-result-v1", outcome,
       outcome_label: outcome === "partial" ? "本轮先交付有效部分，其余未完成。" : "本轮未完成。",
@@ -18,7 +18,6 @@ describe("工单38部分交付正文", () => {
     return {
       id: "assistant-38", role: "assistant", status: "error",
       plainText: "回答正确。反馈已提交。",
-      content: <p>回答正确。反馈已提交。</p>,
       errorText: "本节学习总结未完成，请重试总结。", turnResult: result,
     };
   }

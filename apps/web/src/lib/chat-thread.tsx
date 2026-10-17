@@ -1,7 +1,5 @@
-import type {
-  ChatMessage,
-  ChatThinking,
-} from "@/components/bridges/MessageList";
+import type { ChatMessage, ChatThinking } from "@/lib/chat-message";
+import type { ChatMessageView } from "@/components/bridges/message/types";
 import type { ChatMessageProjection } from "@/lib/api";
 
 /**
@@ -12,8 +10,8 @@ import type { ChatMessageProjection } from "@/lib/api";
  * 摘要（步骤/证据/工具/质量），耗时换算自真实生命周期 duration_ms。
  * 会话模式由首轮创建后固定，历史模式事件不进入当前消息流。
  */
-export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMessage[] {
-  const items: ChatMessage[] = [];
+export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMessageView[] {
+  const items: ChatMessageView[] = [];
 
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
@@ -28,7 +26,6 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
         attachments: message.attachments ?? null,
         // V2 Issue 11：本轮显式选择的模块（逐条持久化，重开不随新选择改变）
         moduleId: message.module_id ?? null,
-        content: <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>{message.content}</p>,
       });
       continue;
     }
@@ -46,11 +43,6 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
       id: latest.message_id,
       role: "assistant",
       plainText: latest.content,
-      content: (
-        <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word", lineHeight: "var(--line-height-relaxed)" }}>
-          {latest.content}
-        </p>
-      ),
       thinking: latest.thinking ? projectionThinking(latest) : undefined,
       // Issue 20：本轮分层检索轮次（含引用）；无检索作用域时为 null
       retrieval: latest.retrieval ?? null,

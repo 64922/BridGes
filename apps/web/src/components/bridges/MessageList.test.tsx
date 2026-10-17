@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MessageList, type ChatMessage } from "./MessageList";
+import { MessageList, type ChatMessageView } from "./MessageList";
 import type {
   ChatAttachmentProjection,
   LearningResourcesProjection,
@@ -56,22 +56,20 @@ const resourcesProjection: LearningResourcesProjection = {
   retryable: false,
 };
 
-function userMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
+function userMessage(overrides: Partial<ChatMessageView> = {}): ChatMessageView {
   return {
     id: "user-1",
     role: "user",
     plainText: "帮我找 Transformer 的论文",
-    content: <p>帮我找 Transformer 的论文</p>,
     ...overrides,
   };
 }
 
-function assistantMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
+function assistantMessage(overrides: Partial<ChatMessageView> = {}): ChatMessageView {
   return {
     id: "assistant-1",
     role: "assistant",
     plainText: "回答",
-    content: <p>回答</p>,
     ...overrides,
   };
 }
@@ -86,7 +84,7 @@ it("贴吧结构化卡片只展示一次结果，正文仍保留用于复制", (
   };
   render(<MessageList conversationId="conversation-1" messages={[assistantMessage({
     status: "done", tiebaResearch: tieba,
-    plainText: "完整导出正文", content: <p>完整导出正文</p>,
+    plainText: "完整导出正文",
   })]} />);
   expect(screen.getAllByTestId("tieba-research-card-empty")).toHaveLength(1);
   expect(screen.queryByText("完整导出正文")).toBeNull();

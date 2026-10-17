@@ -8,10 +8,8 @@ import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBann
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { Composer } from "@/components/bridges/Composer";
 import { StudyProgress } from "@/components/bridges/chat/StudyProgress";
-import {
-  type ChatMessage as ChatMessageLike,
-  type ChatThinking,
-} from "@/components/bridges/MessageList";
+import type { ChatMessageView } from "@/components/bridges/message/types";
+import type { ChatThinking } from "@/lib/chat-message";
 import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
@@ -963,7 +961,7 @@ export default function ChatConversationPage() {
   );
   if (activeRun) {
     const isError = activeRun.status === "error";
-    const assistantItem: ChatMessageLike = {
+    const assistantItem: ChatMessageView = {
       id: activeRun.messageId,
       role: "assistant",
       plainText: activeRun.content,
@@ -978,12 +976,6 @@ export default function ChatConversationPage() {
       careerProcess: activeRun.careerProcess,
       image: activeRun.imageProcess?.task ?? undefined,
       video: activeRun.videoProcess?.task ?? undefined,
-      content: (
-        <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
-          {activeRun.content}
-          {!isError && <span className={styles.streamCursor} aria-hidden="true" />}
-        </p>
-      ),
       status: isError ? "error" : "streaming",
       errorText: isError ? activeRun.errorText : undefined,
     };
@@ -996,9 +988,6 @@ export default function ChatConversationPage() {
         role: "user",
         plainText: pendingUser.text,
         attachments: pendingUser.attachments ?? [],
-        content: (
-          <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>{pendingUser.text}</p>
-        ),
       });
       threadMessages.push(assistantItem);
     } else if (activeRun.kind === "retry" || activeRun.kind === "resume") {

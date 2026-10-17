@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { Composer } from "@/components/bridges/Composer";
-import { MessageList, type ChatMessage } from "@/components/bridges/MessageList";
+import { MessageList, type ChatMessageView } from "@/components/bridges/MessageList";
 import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { StateBlock } from "@/components/bridges/StateBlock";
@@ -172,12 +172,11 @@ const LONG_PARAGRAPH =
   "只需要选好广义坐标，写出动能减势能的拉格朗日量，剩下的交给欧拉-拉格朗日方程。对于被限制在曲面、摆线或连杆上的系统，" +
   "牛顿力学里繁琐的约束力分析在这里被坐标选择一次性吸收掉了，这也是为什么分析力学在处理复杂约束系统时远比矢量力学顺手。";
 
-const DEMO_MESSAGES: ChatMessage[] = [
+const DEMO_MESSAGES: ChatMessageView[] = [
   {
     id: "m1",
     role: "user",
     plainText: "拉格朗日方程的物理意义是什么？能结合一个带代码和公式的例子讲吗？",
-    content: <p>拉格朗日方程的物理意义是什么？能结合一个带代码和公式的例子讲吗？</p>,
   },
   {
     id: "m2",
@@ -194,7 +193,7 @@ const DEMO_MESSAGES: ChatMessage[] = [
       tools: [],
       quality: ["回答已完整生成并保存"],
     },
-    content: (
+    body: (
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", minWidth: 0 }}>
         <p style={{ overflowWrap: "break-word" }}>{LONG_PARAGRAPH}</p>
         <Formula>∂L/∂q − d/dt (∂L/∂q̇) = 0</Formula>
@@ -260,7 +259,6 @@ const DEMO_MESSAGES: ChatMessage[] = [
     id: "m3",
     role: "user",
     plainText: "如果摆线有摩擦呢？",
-    content: <p>如果摆线有摩擦呢？</p>,
   },
   {
     id: "m4",
@@ -269,7 +267,6 @@ const DEMO_MESSAGES: ChatMessage[] = [
     status: "error",
     errorText:
       "回答生成失败：与推理服务的连接在等待响应时超时（已等待 30 秒）。这是一个模拟的超长错误信息，用于验证错误提示在窄列中能够完整折行而不遮挡下方的重试等操作按钮。请检查网络后点击「重试」。",
-    content: null,
   },
 ];
 
@@ -309,7 +306,7 @@ export function ChatTemplate() {
 
   // 新聊天（无 conversation 参数）落在空白态；打开对话先加载再进入正常内容。
   const [state, setState] = useTemplateState(conversationId ? "loading" : "empty");
-  const [messages, setMessages] = useState<ChatMessage[]>(conversationId ? DEMO_MESSAGES : []);
+  const [messages, setMessages] = useState<ChatMessageView[]>(conversationId ? DEMO_MESSAGES : []);
   const [generating, setGenerating] = useState(false);
   const timerRef = useRef<number | null>(null);
 
@@ -361,19 +358,18 @@ export function ChatTemplate() {
   // 本地开发模板不消费附件，attachmentIds 恒为空数组）。
   const handleSend = (text: string, attachmentIds: string[] = []) => {
     void attachmentIds;
-    const userMessage: ChatMessage = {
+    const userMessage: ChatMessageView = {
       id: `u-${Date.now()}`,
       role: "user",
       plainText: text,
-      content: <p style={{ overflowWrap: "break-word" }}>{text}</p>,
     };
     const replyId = `a-${Date.now()}`;
-    const reply: ChatMessage = {
+    const reply: ChatMessageView = {
       id: replyId,
       role: "assistant",
       plainText: "",
       status: "streaming",
-      content: null,
+      body: null,
     };
     setMessages((list) => [...list, userMessage, reply]);
     setState("normal");
@@ -386,7 +382,7 @@ export function ChatTemplate() {
                 ...item,
                 status: "done" as const,
                 plainText: `已收到你的问题「${text}」。这是${MODE_LABEL[mode]}下由本地开发模板生成的确定性回答，用于验证流式消息交互。`,
-                content: (
+                body: (
                   <p style={{ overflowWrap: "break-word" }}>
                     已收到你的问题「{text}」。这是{MODE_LABEL[mode]}下由本地开发模板生成的确定性回答，用于验证流式消息交互。
                   </p>
@@ -411,7 +407,7 @@ export function ChatTemplate() {
               ...item,
               status: "done" as const,
               plainText: "已停止生成。",
-              content: <p style={{ color: "var(--color-text-tertiary)" }}>已停止生成。</p>,
+              body: <p style={{ color: "var(--color-text-tertiary)" }}>已停止生成。</p>,
             }
           : item,
       ),
@@ -429,7 +425,7 @@ export function ChatTemplate() {
               ...item,
               status: "done" as const,
               plainText: "已在本地重新生成模板回答。",
-              content: <p>已在本地重新生成模板回答。</p>,
+              body: <p>已在本地重新生成模板回答。</p>,
             }
           : item,
       ),
