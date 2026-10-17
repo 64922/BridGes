@@ -1,0 +1,191 @@
+{
+  "backup": {
+    "backup_digest": "36a86212a7d7d64ddb6dffa9d7b3334ccb197d5a867233ab7dae9e30ab42e3ce",
+    "backup_id": "profile-replay-backup-3f7fc2f3edcd0ebff4e3c6fbeda80685",
+    "path": "D:\\BridGes\\.worktrees\\19-cutover-retirement-and-recovery\\.tmp\\issue19-cutover-20261017T060922Z-c1eb9e\\backups\\cutover.db",
+    "restore_probe_passed": true,
+    "schema_version": 89,
+    "size_bytes": 1753088,
+    "source_digest": "939d226889838a372288343c9e99d9fd1277be2fceda5d440d5ef5d472bb1c93"
+  },
+  "checks": [
+    {
+      "check_id": "retry_after_tombstone_stays_deleted",
+      "detail": "墓碑后的待处理任务被耗尽，未写入新条目",
+      "passed": true
+    },
+    {
+      "check_id": "open_fact_written_to_atomic_only",
+      "detail": "开放事实写入原子条目，四维记录计数未增加",
+      "passed": true
+    },
+    {
+      "check_id": "recovery_passed",
+      "detail": "恢复库核对全部通过",
+      "passed": true
+    },
+    {
+      "check_id": "reupgrade_audit_passed",
+      "detail": "恢复库重升级审计通过",
+      "passed": true
+    },
+    {
+      "check_id": "post_cutover_changes_survive",
+      "detail": "新增事实、人工修订与备份独有事实都在恢复库中",
+      "passed": true
+    },
+    {
+      "check_id": "deletion_barrier_survives",
+      "detail": "删除条目的墓碑状态和空正文都保留",
+      "passed": true
+    },
+    {
+      "check_id": "controls_survive",
+      "detail": "切换后的画像使用控制保留",
+      "passed": true
+    },
+    {
+      "check_id": "legacy_records_are_not_rewritten",
+      "detail": "四维存量记录只读保留，没有新增写入",
+      "passed": true
+    },
+    {
+      "check_id": "old_extraction_queue_not_resumed",
+      "detail": "切换前活动运行/任务已移除，切换后新增运行/任务保留",
+      "passed": true
+    },
+    {
+      "check_id": "profile_queue_claims_rebuilt",
+      "detail": "画像队列领取行只保留切换后活动任务",
+      "passed": true
+    }
+  ],
+  "command": "python scripts/run_issue19_cutover_drill.py --strict",
+  "environment": {
+    "conda_env": "agent",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.15"
+  },
+  "generated_at": "2026-10-17T06:09:25+00:00",
+  "git_commit": "d0845b813b3a58a87cc9833bacf89591be1d137f",
+  "passed": true,
+  "recovery": {
+    "account_id": "account-issue19-cutover",
+    "backup_digest": "36a86212a7d7d64ddb6dffa9d7b3334ccb197d5a867233ab7dae9e30ab42e3ce",
+    "backup_id": "profile-replay-backup-3f7fc2f3edcd0ebff4e3c6fbeda80685",
+    "checks": [
+      {
+        "check_id": "current_items_preserved",
+        "detail": "缺失 0 条，内容不一致 0 条",
+        "passed": true
+      },
+      {
+        "check_id": "backup_only_items_retained",
+        "detail": "备份独有条目缺失 0 条",
+        "passed": true
+      },
+      {
+        "check_id": "controls_match_current",
+        "detail": "当前账户的画像使用控制已覆盖备份状态",
+        "passed": true
+      },
+      {
+        "check_id": "privacy_blocks_match_current",
+        "detail": "当前账户的停止记录屏障已覆盖备份状态",
+        "passed": true
+      },
+      {
+        "check_id": "tombstones_preserved",
+        "detail": "当前墓碑 1 条，目标中包含 1 条",
+        "passed": true
+      },
+      {
+        "check_id": "migration_ledger_preserved",
+        "detail": "当前迁移批次 1 个，目标中包含 1 个",
+        "passed": true
+      },
+      {
+        "check_id": "extraction_state_matches_current",
+        "detail": "旧活动行残留 0 条，当前活动行缺失 0 条",
+        "passed": true
+      },
+      {
+        "check_id": "profile_queue_claims_rebuilt",
+        "detail": "目标领取行 1 条，预期 1 条",
+        "passed": true
+      },
+      {
+        "check_id": "derived_views_invalidated",
+        "detail": "概览、事项上下文与召回索引已清空，等待当前代码重建",
+        "passed": true
+      }
+    ],
+    "counts": {
+      "backup_only_items_retained": 1,
+      "changed_items_replaced": 2,
+      "derived_rows_after_recovery": 0,
+      "items_added_since_backup": 1,
+      "missing_current_extraction_rows": 0,
+      "profile_queue_claims": 1,
+      "stale_extraction_rows_remaining": 0,
+      "target_items": 4
+    },
+    "passed": true,
+    "recovery_version": "profile-cutover-recovery-v1",
+    "schema_version": 89,
+    "source_digest": "939d226889838a372288343c9e99d9fd1277be2fceda5d440d5ef5d472bb1c93"
+  },
+  "retry_probe": {
+    "atomic_open_fact_count": 1,
+    "deleted_task_statuses": [
+      "exhausted"
+    ],
+    "legacy_record_count_after": 1,
+    "legacy_record_count_before": 1
+  },
+  "reupgrade_audit": {
+    "account_id": "account-issue19-cutover",
+    "audit_version": "profile-cutover-audit-v1",
+    "checks": [
+      {
+        "check_id": "sqlite_integrity",
+        "detail": "PRAGMA integrity_check=ok",
+        "passed": true
+      },
+      {
+        "check_id": "schema_current",
+        "detail": "schema=89",
+        "passed": true
+      },
+      {
+        "check_id": "account_present",
+        "detail": "账户存在",
+        "passed": true
+      },
+      {
+        "check_id": "withdrawn_items_have_no_body",
+        "detail": "墓碑中保留正文的条目数：0",
+        "passed": true
+      },
+      {
+        "check_id": "atomic_identity_complete",
+        "detail": "缺少身份键的条目数：0",
+        "passed": true
+      }
+    ],
+    "counts": {
+      "atomic_active_items": 3,
+      "atomic_items": 4,
+      "atomic_tombstones": 1,
+      "items_without_identity": 0,
+      "legacy_active_records": 1,
+      "legacy_records": 1,
+      "migration_runs": 1,
+      "pending_retry_tasks": 1,
+      "withdrawn_with_body": 0
+    },
+    "passed": true,
+    "schema_version": 89
+  },
+  "run_dir": ".tmp\\issue19-cutover-20261017T060922Z-c1eb9e"
+}
