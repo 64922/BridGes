@@ -32,6 +32,8 @@ from bridges.profiles.cutover_extraction import (
     active_extraction_ids,
     all_extraction_ids,
     drop_stale_extraction_rows,
+    profile_claim_task_keys,
+    replace_profile_task_claims,
 )
 from bridges.profiles.replay import (
     ProfileReplayError,
@@ -39,6 +41,7 @@ from bridges.profiles.replay import (
     _check_integrity,
     _load_verified_backup,
     _readonly_connection,
+    inspect_database,
 )
 from bridges.storage.database import BridgesDatabase
 
@@ -177,6 +180,7 @@ def _verify_recovery(
     backup_only_items: set[str],
     added_since_backup: set[str],
     changed_since_backup: set[str],
+    expected_claim_task_ids: set[str],
 ) -> tuple[tuple[CutoverCheck, ...], dict[str, int]]:
     columns = _columns(target, "profile_items")
     current_items = _row_map(
@@ -221,6 +225,7 @@ def _verify_recovery(
     missing_extraction = (post_cutover_active_runs - target_active_runs) | (
         post_cutover_active_tasks - target_active_tasks
     )
+    target_claims = profile_claim_task_keys(target)
 
     derived_counts = {
         table: int(
@@ -270,6 +275,11 @@ def _verify_recovery(
             f"旧活动行残留 {len(stale_extraction)} 条，当前活动行缺失 {len(missing_extraction)} 条",
         ),
         _check(
+            "profile_queue_claims_rebuilt",
+            target_claims == expected_claim_task_ids,
+            f"目标领取行 {len(target_claims)} 条，预期 {len(expected_claim_task_ids)} 条",
+        ),
+        _check(
             "derived_views_invalidated",
             all(count == 0 for count in derived_counts.values()),
             "概览、事项上下文与召回索引已清空，等待当前代码重建",
@@ -282,6 +292,7 @@ def _verify_recovery(
         "target_items": len(target_items),
         "stale_extraction_rows_remaining": len(stale_extraction),
         "missing_current_extraction_rows": len(missing_extraction),
+        "profile_queue_claims": len(target_claims),
         "derived_rows_after_recovery": sum(derived_counts.values()),
     }
     return checks, counts
@@ -308,6 +319,12 @@ def _validate_paths(
         raise ProfileReplayError("target_conflict", "恢复目标不能是当前库或备份文件本身。")
     if not target.parent.exists():
         raise ProfileReplayError("target_parent_missing", "恢复目标目录不存在；请先显式创建。")
+    identity = inspect_database(current)
+    if identity.writer_state != "inactive":
+        raise ProfileReplayError(
+            "writer_active",
+            "无法确认当前库已停止写入；请先停止 API、worker 与 scheduler。",
+        )
     return verified, current, target
 
 
@@ -359,8 +376,22 @@ def _run_recovery(
                 )
             )
 
-        shutil.copy2(verified.path, target)
-        created_target = True
+        expected_claim_task_ids: set[str] = set()
+        for account_id in sorted(current_accounts):
+            _, backup_tasks = all_extraction_ids(backup_connection, account_id)
+            _, current_active_tasks = active_extraction_ids(current_connection, account_id)
+            expected_claim_task_ids |= current_active_tasks - backup_tasks
+
+        try:
+            with verified.path.open("rb") as source, target.open("xb") as destination:
+                created_target = True
+                shutil.copyfileobj(source, destination)
+        except FileExistsError as exc:
+            raise ProfileReplayError(
+                "target_exists",
+                "恢复目标已存在；不会覆盖已有数据库。",
+            ) from exc
+        shutil.copystat(verified.path, target)
         target_database = BridgesDatabase(target)
         target_database.initialize()
         with target_database.transaction():
@@ -371,6 +402,11 @@ def _run_recovery(
                     backup_connection,
                     account_id,
                 )
+            replace_profile_task_claims(
+                target_database.connection,
+                current_connection,
+                expected_claim_task_ids,
+            )
 
         reports: list[ProfileCutoverRecovery] = []
         for account_id, added, changed, backup_only in pending:
@@ -382,6 +418,7 @@ def _run_recovery(
                 backup_only_items=backup_only,
                 added_since_backup=added,
                 changed_since_backup=changed,
+                expected_claim_task_ids=expected_claim_task_ids,
             )
             reports.append(
                 ProfileCutoverRecovery(

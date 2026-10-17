@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -32,6 +33,16 @@ OTHER_ACCOUNT = "account-bob"
 
 def _authority(database_path: Path):
     return resolve_authoritative_database(settings=_settings(database_path))
+
+
+def _seed_claim(database: BridgesDatabase, claim_id: str, task_key: str) -> None:
+    with database.transaction():
+        database.connection.execute(
+            "INSERT INTO task_claims "
+            "(claim_id, queue_name, task_key, status, created_at, updated_at) "
+            "VALUES (?, 'profile-extraction', ?, 'queued', ?, ?)",
+            (claim_id, task_key, TS, TS),
+        )
 
 
 def _seed_cutover_template(database: BridgesDatabase) -> None:
@@ -82,6 +93,7 @@ def _seed_cutover_template(database: BridgesDatabase) -> None:
             "'hash-backup', 'pending', ?, ?)",
             (ACCOUNT, TS, TS),
         )
+    _seed_claim(database, "claim-backup-pending", "task-backup-pending")
 
 
 def _mutate_after_cutover(database: BridgesDatabase) -> None:
@@ -158,6 +170,7 @@ def _mutate_after_cutover(database: BridgesDatabase) -> None:
             "'hash-current', 'pending', ?, ?)",
             (ACCOUNT, TS, TS),
         )
+    _seed_claim(database, "claim-current-pending", "task-current-pending")
 
 
 def _backup_and_current(tmp_path: Path):
@@ -252,6 +265,14 @@ def test_recovery_preserves_post_cutover_state_and_reupgrades(tmp_path: Path) ->
         "WHERE account_id = ? AND task_id = 'task-current-pending'",
         (ACCOUNT,),
     ).fetchone()
+    claims = {
+        str(row["task_key"])
+        for row in target.connection.execute(
+            "SELECT task_key FROM task_claims WHERE queue_name = 'profile-extraction'"
+        ).fetchall()
+    }
+    assert claims == {"task-current-pending"}
+    assert report.counts["profile_queue_claims"] == 1
     assert report.counts["stale_extraction_rows_remaining"] == 0
     for table in (
         "profile_overview",
@@ -294,6 +315,26 @@ def test_recovery_refuses_existing_target(tmp_path: Path) -> None:
         )
     assert getattr(exc.value, "code", "") == "target_exists"
     assert target.read_text(encoding="utf-8") == "do not overwrite"
+
+
+def test_recovery_rejects_active_writer(tmp_path: Path) -> None:
+    backup, current_path = _backup_and_current(tmp_path)
+    (current_path.parent / ".bridges.lock").write_text(
+        f"pid={os.getpid()}",
+        encoding="ascii",
+    )
+    target = tmp_path / "recovered" / "bridges.db"
+    target.parent.mkdir()
+
+    with pytest.raises(ProfileReplayError) as exc:
+        recover_all_cutover_state(
+            backup=backup,
+            current_path=current_path,
+            target_path=target,
+        )
+
+    assert exc.value.code == "writer_active"
+    assert not target.exists()
 
 
 def test_recover_all_reports_every_account(tmp_path: Path) -> None:

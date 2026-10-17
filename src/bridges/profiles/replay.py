@@ -279,6 +279,44 @@ def _check_integrity(connection: sqlite3.Connection) -> None:
         )
 
 
+def _windows_process_state(pid: int) -> str:
+    """Windows 下用 WinAPI 探测进程，避免 ``os.kill(pid, 0)`` 发送 CTRL_C_EVENT。"""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    process_query_limited_information = 0x1000
+    error_access_denied = 5
+    error_invalid_parameter = 87
+    still_active = 259
+
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetExitCodeProcess.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+    if not handle:
+        error = ctypes.get_last_error()
+        if error == error_access_denied:
+            return "active"
+        if error == error_invalid_parameter:
+            return "inactive"
+        return "unknown"
+    try:
+        exit_code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return "unknown"
+        return "active" if exit_code.value == still_active else "inactive"
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def _probe_writer_state(data_dir: Path) -> str:
     """只探测已有锁，不创建或写入锁文件。"""
 
@@ -299,6 +337,8 @@ def _probe_writer_state(data_dir: Path) -> str:
         return "unknown"
     if pid <= 0:
         return "inactive"
+    if os.name == "nt":
+        return _windows_process_state(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

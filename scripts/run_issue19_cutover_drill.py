@@ -100,6 +100,16 @@ def _seed_extraction_task(
         )
 
 
+def _seed_claim(database: Any, claim_id: str, task_key: str) -> None:
+    with database.transaction():
+        database.connection.execute(
+            "INSERT INTO task_claims "
+            "(claim_id, queue_name, task_key, status, created_at, updated_at) "
+            "VALUES (?, 'profile-extraction', ?, 'queued', ?, ?)",
+            (claim_id, task_key, TS, TS),
+        )
+
+
 def _seed_template(database_path: Path) -> None:
     from bridges.storage.database import BridgesDatabase
 
@@ -160,6 +170,7 @@ def _seed_template(database_path: Path) -> None:
         version="old-v1",
         status="pending",
     )
+    _seed_claim(database, "claim-old-pending", "task-old-pending")
     database.close()
 
 
@@ -241,6 +252,7 @@ def _mutate_after_cutover(current_path: Path) -> None:
         version="new-v1",
         status="pending",
     )
+    _seed_claim(database, "claim-new-pending", "task-new-pending")
     database.close()
 
 
@@ -371,6 +383,12 @@ def main(argv: list[str] | None = None) -> int:
             (ACCOUNT, ACCOUNT),
         ).fetchone()[0]
     )
+    claims = {
+        str(row["task_key"])
+        for row in database.connection.execute(
+            "SELECT task_key FROM task_claims WHERE queue_name = 'profile-extraction'"
+        ).fetchall()
+    }
     database.close()
     _check(
         checks,
@@ -403,6 +421,12 @@ def main(argv: list[str] | None = None) -> int:
         "old_extraction_queue_not_resumed",
         old_rows == 0 and new_rows == 2,
         "切换前活动运行/任务已移除，切换后新增运行/任务保留",
+    )
+    _check(
+        checks,
+        "profile_queue_claims_rebuilt",
+        claims == {"task-new-pending"},
+        "画像队列领取行只保留切换后活动任务",
     )
 
     payload = {

@@ -96,6 +96,7 @@ def run_retry_probe(target_path: Path, checks: list[dict[str, Any]]) -> dict[str
         extractor=RuleBasedAutomaticProfileExtractor(),
         atomic_profile_service=atomic,
         message_reader=reader,
+        queue_name="profile-retry-probe",
     )
     before = int(
         database.connection.execute(

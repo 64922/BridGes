@@ -11,6 +11,13 @@ import sqlite3
 
 _ACTIVE_STATES = ("pending", "running")
 
+#: 画像域队列名；``task_claims`` 是系统级表，不含 account_id。
+PROFILE_QUEUE_NAMES = (
+    "profile-extraction",
+    "profile-replay-v2",
+    "profile-history-rebuild",
+)
+
 
 def active_extraction_ids(
     connection: sqlite3.Connection,
@@ -77,8 +84,60 @@ def drop_stale_extraction_rows(
         )
 
 
+def profile_claim_task_keys(connection: sqlite3.Connection) -> set[str]:
+    """返回画像域队列中仍保留的领取任务键。"""
+
+    placeholders = ", ".join("?" for _ in PROFILE_QUEUE_NAMES)
+    rows = connection.execute(
+        f"SELECT task_key FROM task_claims WHERE queue_name IN ({placeholders})",
+        PROFILE_QUEUE_NAMES,
+    ).fetchall()
+    return {str(row[0]) for row in rows}
+
+
+def replace_profile_task_claims(
+    target: sqlite3.Connection,
+    current: sqlite3.Connection,
+    expected_task_ids: set[str],
+) -> None:
+    """用切换后仍活动的画像任务重建画像队列领取行。
+
+    旧队列的领取/租约行不能随备份带入恢复库；当前库中属于切换前任务的
+    领取行也已由 :func:`drop_stale_extraction_rows` 对应的任务边界排除。
+    """
+
+    placeholders = ", ".join("?" for _ in PROFILE_QUEUE_NAMES)
+    target.execute(
+        f"DELETE FROM task_claims WHERE queue_name IN ({placeholders})",
+        PROFILE_QUEUE_NAMES,
+    )
+    if not expected_task_ids:
+        return
+    columns = tuple(
+        str(row[1]) for row in target.execute("PRAGMA table_info(task_claims)").fetchall()
+    )
+    quote = ", ".join(f'"{column}"' for column in columns)
+    rows = current.execute(
+        f"SELECT {quote} FROM task_claims WHERE queue_name IN ({placeholders})",
+        PROFILE_QUEUE_NAMES,
+    ).fetchall()
+    selected = [
+        tuple(row) for row in rows if str(row[columns.index("task_key")]) in expected_task_ids
+    ]
+    if not selected:
+        return
+    row_placeholders = ", ".join("?" for _ in columns)
+    target.executemany(
+        f"INSERT OR REPLACE INTO task_claims ({quote}) VALUES ({row_placeholders})",
+        selected,
+    )
+
+
 __all__ = [
+    "PROFILE_QUEUE_NAMES",
     "active_extraction_ids",
     "all_extraction_ids",
     "drop_stale_extraction_rows",
+    "profile_claim_task_keys",
+    "replace_profile_task_claims",
 ]
