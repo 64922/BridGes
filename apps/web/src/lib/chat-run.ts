@@ -20,7 +20,7 @@ import {
 
 export type ActiveRunKind = "send" | "retry" | "resume";
 
-export type ActiveRunStatus = "streaming" | "error" | "done";
+export type ActiveRunStatus = "streaming" | "error" | "done" | "stopped";
 
 export interface PendingUserMessage {
   id: string;
@@ -57,6 +57,25 @@ export function activeRunFromAssistant(
   kind: ActiveRunKind,
   thinkingSeconds: number | null = null
 ): ActiveRun {
+  // 恢复/重试时只使用服务端已持久化的真实阶段与节点；没有任何事件前
+  // 保持通用状态，不合成一个“排队中”阶段。
+  const persistedStage = assistant.active_run?.stage
+    ? {
+        kind: "stage" as const,
+        message_id: assistant.message_id,
+        stage: assistant.active_run.stage,
+        status: "active" as const,
+      }
+    : null;
+  const persistedNode =
+    !persistedStage && assistant.active_run?.current_node
+      ? {
+          kind: "node" as const,
+          message_id: assistant.message_id,
+          node: assistant.active_run.current_node,
+          status: "started" as const,
+        }
+      : null;
   return {
     messageId: assistant.message_id,
     content: assistant.content ?? "",
@@ -75,11 +94,8 @@ export function activeRunFromAssistant(
     arxivSearch: assistant.arxiv_search ?? null,
     teaching: assistant.teaching ?? null,
     turnResult: assistant.turn_result ?? null,
-    stage:
-      assistant.status === "streaming"
-        ? { kind: "stage", message_id: assistant.message_id, stage: "queued", status: "active" }
-        : null,
-    node: null,
+    stage: persistedStage,
+    node: persistedNode,
     humanizerProcess: null,
     careerProcess: null,
     imageProcess: null,
@@ -108,7 +124,7 @@ export function activeRunFromStarted(
     webSearch: started.web_search ?? null,
     arxivSearch: started.arxiv_search ?? null,
     teaching: started.teaching ?? null,
-    stage: { kind: "stage", message_id: started.message_id, stage: "queued", status: "active" },
+    stage: null,
     node: null,
     humanizerProcess: null,
     careerProcess: null,

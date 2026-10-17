@@ -16,6 +16,7 @@ const contextNoteHeading = "本次上下文说明（已授权用户背景使用�
 
 function stateTone(state: string): string {
   if (state === "ready") return "var(--color-status-success)";
+  if (state === "pending") return "var(--color-accent-primary)";
   if (state === "empty" || state === "off" || state === "none") {
     return "var(--color-text-secondary)";
   }

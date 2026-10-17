@@ -294,8 +294,10 @@ test("真实流式：单行真实进度、展开选择保持、终态与历史�
     "false"
   );
   await expect(process.getByTestId("public-process-details")).toHaveCount(0);
+  // 订阅可能晚于已落库的节点/阶段事件，此时必须使用诚实的通用状态；
+  // 实际节点/阶段映射由 chat-run 与 PublicProcess 单测覆盖。
   await expect(process.getByTestId("public-process-label")).toHaveText(
-    /排队等待中|校验回合|编译上下文|生成回答|检索本地资料|搜索公开来源|核验引用与质量|整理收尾/
+    /^(校验回合|编译上下文|选择模块|生成回答|生成回答中|检索本地资料|搜索公开来源|核验引用与质量|修复与重试|整理收尾|正在生成回答)…$/
   );
 
   const composerInput = page.getByTestId("composer").getByLabel("输入消息");
@@ -342,11 +344,8 @@ test("真实流式：单行真实进度、展开选择保持、终态与历史�
     /已使用授权用户背景信息|未匹配到相关授权用户背景信息|本轮未使用授权用户背景信息|暂时无法整理授权用户背景信息|本轮没有上下文披露/,
     { timeout: 15_000 }
   );
-  const contextText =
-    (await process.getByTestId("context-note-details").textContent()) ?? "";
-  expect(contextText).not.toContain("加载中");
-  expect(contextText).toMatch(
-    /已使用授权用户背景信息|未匹配到相关授权用户背景信息|本轮未使用授权用户背景信息|暂时无法整理授权用户背景信息|本轮没有上下文披露/
+  await expect(process.getByTestId("context-note-details")).not.toContainText(
+    "加载中"
   );
 
   // 历史回放重新默认收起，且仍只有一处公开过程入口。

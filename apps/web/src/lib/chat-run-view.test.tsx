@@ -123,4 +123,16 @@ describe("会话线程合成", () => {
     expect(assistant.status).toBeUndefined();
     expect(assistant.body).toBeUndefined();
   });
+
+  it("用户停止后到历史接管前显示停止状态，不误报完成", () => {
+    const base = [userMessage("u-1", "问题")];
+    const messages = composeConversationMessages(
+      base,
+      run({ status: "stopped", content: "已生成的部分正文" }),
+      pending
+    );
+    const assistant = messages[messages.length - 1];
+    expect(assistant.status).toBe("stopped");
+    expect(assistant.plainText).toBe("已生成的部分正文");
+  });
 });

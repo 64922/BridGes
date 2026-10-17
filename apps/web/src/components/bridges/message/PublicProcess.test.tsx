@@ -186,6 +186,9 @@ describe("单行公开过程（工单 06）", () => {
     expect(screen.getByTestId("public-process-details").textContent).toContain(
       "回答完成后可查看本轮上下文说明"
     );
+    expect(
+      screen.getByText("回答完成后可查看本轮上下文说明").style.color
+    ).toBe("var(--color-accent-primary)");
 
     rerender(<PublicProcess message={assistant({ contextNote: null })} />);
     expect(screen.getByTestId("public-process-details").textContent).toContain(

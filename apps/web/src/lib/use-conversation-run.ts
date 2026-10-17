@@ -128,8 +128,22 @@ export function useConversationRun({
       if (isChatStreamEventOf(event, "done")) {
         if (!current || current.messageId !== event.data.message_id) return;
         if (current.status !== "streaming") return;
-        commitRun({ ...current, status: "done" });
-        setAnnouncement("回答已生成");
+        const terminalStatus = event.data.message?.status;
+        commitRun({
+          ...current,
+          status:
+            terminalStatus === "stopped"
+              ? "stopped"
+              : terminalStatus === "error"
+                ? "error"
+                : "done",
+          errorText: terminalStatus === "error"
+            ? (event.data.message?.error_message ?? current.errorText)
+            : current.errorText,
+        });
+        setAnnouncement(
+          terminalStatus === "stopped" ? "已停止生成" : "回答已生成"
+        );
         void load(true);
         return;
       }
@@ -393,7 +407,7 @@ export function useConversationRun({
       return;
     }
     abortRef.current?.abort();
-    commitRun({ ...latest, status: "done" });
+    commitRun({ ...latest, status: "stopped" });
     setAnnouncement("已停止生成");
     void load(true);
   }, [commitRun, conversationId, isCurrent, load]);

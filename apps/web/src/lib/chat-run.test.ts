@@ -83,13 +83,14 @@ function event(data: ChatStreamEvent["data"]): ChatStreamEvent {
 }
 
 describe("chat run 投影与事件归并", () => {
-  it("创建响应已有部分正文时保留内容，终态投影不再显示排队阶段", () => {
+  it("创建响应已有部分正文时保留内容，未收到事件前不合成阶段", () => {
     const partial = activeRunFromAssistant(
       message({ content: "已接收的部分正文" }),
       "send"
     );
     expect(partial.content).toBe("已接收的部分正文");
-    expect(partial.stage?.stage).toBe("queued");
+    expect(partial.stage).toBeNull();
+    expect(partial.node).toBeNull();
 
     const replay = activeRunFromAssistant(
       message({ status: "done", content: "完整回答" }),
@@ -97,6 +98,50 @@ describe("chat run 投影与事件归并", () => {
     );
     expect(replay.content).toBe("完整回答");
     expect(replay.stage).toBeNull();
+  });
+
+  it("恢复时使用服务端已持久化的真实阶段或节点", () => {
+    const withStage = activeRunFromAssistant(
+      message({
+        active_run: {
+          run_id: "run-1",
+          status: "running",
+          stage: "public_search",
+          cursor: 4,
+          attempt_count: 1,
+          created_at: NOW,
+          updated_at: NOW,
+          graph_version: "daily-v2",
+          current_node: "invoke_subgraph_or_chat",
+          wait_reason: null,
+          model_lock_id: null,
+        },
+      }),
+      "resume"
+    );
+    expect(withStage.stage?.stage).toBe("public_search");
+    expect(withStage.node).toBeNull();
+
+    const withNode = activeRunFromAssistant(
+      message({
+        active_run: {
+          run_id: "run-1",
+          status: "running",
+          stage: null,
+          cursor: 4,
+          attempt_count: 1,
+          created_at: NOW,
+          updated_at: NOW,
+          graph_version: "daily-v2",
+          current_node: "compile_context",
+          wait_reason: null,
+          model_lock_id: null,
+        },
+      }),
+      "resume"
+    );
+    expect(withNode.stage).toBeNull();
+    expect(withNode.node?.node).toBe("compile_context");
   });
 
   it("delta 只追加到匹配的消息，终态后不再推进正文", () => {

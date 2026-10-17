@@ -116,6 +116,17 @@ function ProcessList({
   numbered?: boolean;
 }) {
   if (items.length === 0) return null;
+  const listStyle = {
+    margin: 0,
+    paddingLeft: "var(--space-5)",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "var(--space-1)",
+    color: "var(--color-text-secondary)",
+  };
+  const entries = items.map((item, index) => (
+    <li key={`${item}-${index}`}>{item}</li>
+  ));
   return (
     <div>
       <p
@@ -130,37 +141,9 @@ function ProcessList({
         {title}
       </p>
       {numbered ? (
-        <ol
-          style={{
-            margin: 0,
-            paddingLeft: "var(--space-5)",
-            listStyle: "decimal",
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--space-1)",
-            color: "var(--color-text-secondary)",
-          }}
-        >
-          {items.map((item, index) => (
-            <li key={`${item}-${index}`}>{item}</li>
-          ))}
-        </ol>
+        <ol style={{ ...listStyle, listStyle: "decimal" }}>{entries}</ol>
       ) : (
-        <ul
-          style={{
-            margin: 0,
-            paddingLeft: "var(--space-5)",
-            listStyle: "disc",
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--space-1)",
-            color: "var(--color-text-secondary)",
-          }}
-        >
-          {items.map((item, index) => (
-            <li key={`${item}-${index}`}>{item}</li>
-          ))}
-        </ul>
+        <ul style={{ ...listStyle, listStyle: "disc" }}>{entries}</ul>
       )}
     </div>
   );
@@ -249,7 +232,9 @@ export function PublicProcess({
         >
           {!hasThinkingDetails && (
             <p style={{ margin: 0, color: "var(--color-text-tertiary)" }}>
-              本轮没有更多可公开的步骤或来源。
+              {streaming
+                ? "目前还没有可公开的步骤或来源。"
+                : "本轮没有更多可公开的步骤或来源。"}
             </p>
           )}
           {thinking && (
