@@ -91,6 +91,14 @@ _NEGATED_REPLACEMENT_RE = re.compile(
 _REPLACEMENT_ONLY_RE = re.compile(
     r"(?:改(?:为|成)|换成|纠正为|更正为|调整成)\s*(?P<replacement>[^，,。；;！!？?\s]{1,30})"
 )
+#: affirm-then-negate：``正确值，不是 旧值``（工单 20 / paired corrected）。
+_AFFIRM_THEN_NEGATE_RE = re.compile(
+    r"(?P<replacement>[^，,。；;！!？?\n]{2,80})[，,]\s*不(?:再)?是\s*"
+    r"(?P<negated>[^，,。；;！!？?\n]{1,30})"
+)
+_QUANTIFIER_GE_RE = re.compile(
+    r"(?<=[一二三四五六七八九十百千万两\d])个(?=[小时分秒天周月年次])"
+)
 _GRADE_TOKEN_RE = re.compile(r"大[一二三四五六]|研[一二三]|高[一二三四]|初[一二三四]|博[一二三四]")
 #: 分句符（用于取用户替换原话所在的独立分句）。
 _CLAUSE_SPLIT_RE = re.compile(r"[。！!？?；;，,\n]+")
@@ -281,9 +289,20 @@ def _extract_replacement(text: str) -> tuple[str | None, str | None]:
     if match is not None:
         negated = (match.group("negated") or "").strip("，,。；;：: 、")
         replacement = (match.group("replacement") or "").strip("，,。；;：: 、")
+        if replacement:
+            return negated or None, replacement
+        affirm = _AFFIRM_THEN_NEGATE_RE.search(text)
+        if affirm is not None:
+            return (
+                (affirm.group("negated") or "").strip("，,。；;：: 、") or None,
+                (affirm.group("replacement") or "").strip("，,。；;：: 、") or None,
+            )
+        return negated or None, None
+    affirm = _AFFIRM_THEN_NEGATE_RE.search(text)
+    if affirm is not None:
         return (
-            negated or None,
-            replacement or None,
+            (affirm.group("negated") or "").strip("，,。；;：: 、") or None,
+            (affirm.group("replacement") or "").strip("，,。；;：: 、") or None,
         )
     match = _REPLACEMENT_ONLY_RE.search(text)
     if match is not None:
@@ -353,13 +372,19 @@ def _locate_target(
     return best[1] if best is not None else None
 
 
+def _loose_feedback_text(value: str) -> str:
+    normalized = re.sub(r"\s+", "", value.casefold())
+    return _QUANTIFIER_GE_RE.sub("", normalized)
+
+
 def _match_length(item_text: str, value: str | None) -> int:
     """条目正文包含被否定值的匹配长度（二分词表按整串包含判定）。"""
 
     if not value or len(value) < 2:
         return 0
-    if value.casefold() in item_text.casefold():
-        return len(value)
+    normalized_value = _loose_feedback_text(value)
+    if normalized_value in _loose_feedback_text(item_text):
+        return len(normalized_value)
     return 0
 
 

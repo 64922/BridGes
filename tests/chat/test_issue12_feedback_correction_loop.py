@@ -23,7 +23,7 @@ from bridges.ai.capability_registry import CapabilityRegistry
 from bridges.chat.repository import ConversationRepository
 from bridges.chat.service import ChatService
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
-from bridges.contracts.chat import ChatMessageStatus
+from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus
 from bridges.contracts.feedback_correction import (
     FeedbackCorrectionKind,
     FeedbackMemoryStatus,
@@ -216,6 +216,36 @@ def test_identity_correction_rewrites_answer_and_memory(env: _Env) -> None:
     follow_up = env.payload_text()
     assert "我是本科生" in follow_up
     assert "我是研究生" not in follow_up
+
+
+def test_same_session_correction_locates_item_written_this_session(
+    env: _Env,
+) -> None:
+    env.ask("我是研究生，在读硕士生。")
+    history = env.chat._repo.list_messages(  # noqa: SLF001
+        ACCOUNT, env.conversation_id
+    )
+    first_user = next(
+        message for message in history if message.role == ChatMessageRole.USER
+    )
+    env.atomic.remember(
+        ACCOUNT,
+        "硕士研究生",
+        source_message_id=first_user.message_id,
+    )
+
+    corrected = env.ask("你记错了，我不是研究生，我是本科生。")
+
+    metadata = env.config(corrected.message_id)["feedback_correction"]
+    assert metadata["kind"] == FeedbackCorrectionKind.FACT_CORRECTION.value
+    assert metadata["memory_status"] == FeedbackMemoryStatus.WRITTEN.value
+    texts = {item.text for item in env.atomic.list_items(ACCOUNT)}
+    assert texts == {"我是本科生"}
+
+    env.ask("我现在的学历是什么？")
+    follow_up = env.payload_text()
+    assert "我是本科生" in follow_up
+    assert "硕士研究生" not in follow_up
 
 
 def test_state_change_keeps_history_and_updates_current_state(env: _Env) -> None:

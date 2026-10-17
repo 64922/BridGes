@@ -83,6 +83,24 @@ class _ServiceProfilesMixin:
         run = self._repo.get_run_by_message(account_id, previous.message_id)
         config = dict(run.config or {}) if run is not None else {}
         adopted = self._stored_feedback_targets(config)
+        session_message_ids = {
+            message.message_id
+            for message in messages
+            if message.role == ChatMessageRole.USER
+        }
+        if session_message_ids:
+            known_item_ids = {item.profile_item_id for item in adopted}
+            adopted.extend(
+                AdoptedFeedbackTarget(
+                    profile_item_id=item.profile_item_id,
+                    version=item.version,
+                    text=item.text,
+                    relation=item.fact_relation.value,
+                )
+                for item in self._atomic_profiles.list_items(account_id)
+                if item.profile_item_id not in known_item_ids
+                and session_message_ids.intersection(item.source_message_ids)
+            )
         route = route_feedback(
             content,
             previous_answer=previous.content,

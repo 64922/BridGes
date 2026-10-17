@@ -61,6 +61,28 @@ def test_fact_correction_grade_value_keeps_user_wording() -> None:
     assert route.new_fact_text == "大三"
 
 
+def test_affirm_then_negate_locates_old_value_and_keeps_correct_value() -> None:
+    adopted = (
+        AdoptedFeedbackTarget(
+            profile_item_id="item-study-time",
+            version=2,
+            text="我每天晚上有三个小时可以学习",
+            relation="statement",
+        ),
+    )
+    route = route_feedback(
+        "你记错了，我每晚只有半小时学习线性代数，不是三小时。",
+        previous_answer="上一轮回答",
+        adopted_items=adopted,
+    )
+
+    assert route is not None
+    assert route.kind is FeedbackCorrectionKind.FACT_CORRECTION
+    assert route.target_item_id == "item-study-time"
+    assert route.new_fact_text == "我每晚只有半小时学习线性代数"
+    assert route.has_replacement
+
+
 def test_state_change_without_prior_adoption_keeps_whole_request() -> None:
     route = _route("现在升大四了。")
     assert route is not None

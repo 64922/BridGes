@@ -4,9 +4,9 @@
 
 **Blocked by:** 无（各条目独立修复；项 2、3 建议在 12 的现有纠正路径上一起做）
 
-**Status:** needs-triage
+**Status:** ready-for-human
 
-**追踪状态：** 2026-10-17 由工单 18 评测回传自动生成，等待分诊。
+**追踪状态：** 2026-10-17 由工单 18 评测回传自动生成；修复与真实复查已完成，等待人工复核合并。
 
 **对应合同：** D06、D07、D09、D11、D12；T04、T06、T08、T12、T16、T19（见 [PRD](../PRD.md)）。
 
@@ -49,3 +49,25 @@
 ## Comments
 
 2026-10-17：由工单 18 真实闭环评测（证据 `validation/18-real-model-loop-evaluation/evidence/loop-eval-real-20261017T030759Z.json`，117/137 判定通过，11/48 场景未全通过，硬边界 0 失败）回传创建。
+
+2026-10-17 修复记录：
+
+- 偏好/沟通偏好早于身份解析返回 `STATEMENT`，不再 supersede 专业/年级；
+  活动身份归一（跑步/慢跑），并只对活动习惯句生效；一次性拒绝在信号
+  分类与 `commit_fact` 双守卫；affirm-then-negate 同时支持
+  `parse_explicit_change` 与反馈路由；生命周期信号按 span 移除后继续抽取
+  剩余分句；反馈目标追加本会话写入条目；`output_budget_exceeded` 可重试
+  并保留真实错误码。
+- 回归：`tests/profiles/test_issue20_real_loop_follow_ups.py`（10 项）、
+  `test_issue12_feedback_router.py`、`test_issue16_atomic_fact_identity.py`、
+  `tests/chat/test_issue12_feedback_correction_loop.py`。目标回归 131
+  passed，`tests/profiles` 825 passed。
+- 真实复查：`evidence/loop-eval-real-20261017T074038Z.json`（20 条记录，
+  45/50 检查通过，paired 16/16、dedup 3/3、T06/T06-negation/T08/
+  T08-holdout/T04-holdout/T12-holdout pass）。paired-time-budget-corrected
+  4/4，旧值已 superseded，回答与复发只采用「半小时」。
+- 仍未全通过：T12 `fact:期末考试` 是驱动在暂停轮前判定（最终
+  `items_after` 已有该条目）；T04 追问轮记录为 `streaming` 且 adopted 为空；
+  T16 纠正已写入但复发未采用；T07 最后一轮生成
+  `web_search_citation_invalid` 未调度抽取；T07-holdout 模型抽取为空。
+  详细归因见 18 验证记录第 10 节；未修改工单 18 判定口径。

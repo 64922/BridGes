@@ -127,6 +127,14 @@ _SENSITIVE = re.compile(
 #: 改进工单 04：短期情绪与临时状态不构成长期事实（「今天好累」）。
 #: 分类为 NO_SIGNAL 但保留独立原因码，供抽取与审计区分「无可记事实」的
 #: 具体理由；显式敏感词（焦虑/抑郁等）仍按 FORBIDDEN 处理，更严格。
+#: 一次性拒绝具体提案（「我不用这个刷题计划」）：不是长期自我事实，也不
+#: 进入自动抽取队列；不能扩大成「我不吃辣」这类稳定自我描述（工单 20）。
+ONE_OFF_REFUSAL = re.compile(
+    r"(?:不用|不要|不需要|不想用|不想再|拒绝|不采用|不采纳)"
+    r"(?:这个|那个|这种|这项|这份|这套|你的|您的)"
+    r"[^。！？!?；;\n]{0,20}"
+    r"(?:计划|方案|安排|建议|方法|刷题|练习|课程|任务|题库|清单)"
+)
 _TRANSIENT_STATE = re.compile(
     r"(?:今天|现在|刚刚|刚才|这会儿|最近|这两天)[^。！？!?；;]{0,10}?"
     r"(?:好累|累死|累了|有点累|好烦|烦躁|郁闷|难受|难过|心情|开心|"
@@ -467,6 +475,8 @@ class ProfileSignalClassifier:
             return "hypothetical_or_role_play"
         if _THIRD_PARTY.search(text):
             return "third_party_statement"
+        if ONE_OFF_REFUSAL.search(text):
+            return "one_off_refusal"
         if _NEGATION.search(text) and not (
             _PREFERENCE_NEGATION.search(text)
             or _CORRECTION_NEGATED_REPLACEMENT.search(text)
@@ -577,6 +587,7 @@ class ProfileSignalClassifier:
 __all__ = [
     "PROFILE_SIGNAL_CLASSIFIER_VERSION",
     "HARD_FORBIDDEN_REASONS",
+    "ONE_OFF_REFUSAL",
     "ProfileSignalCategory",
     "ProfileSignalClassification",
     "ProfileCorrectionIntent",

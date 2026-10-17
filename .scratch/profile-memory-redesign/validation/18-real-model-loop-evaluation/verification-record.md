@@ -247,3 +247,51 @@ p90 5,000 ms、max 10,000 ms。提取任务终态 70 成功、3 耗尽；观测�
   [20 号工单](../../issues/20-real-loop-follow-ups.md)，并保留复现证据。
 - 本记录不把未达标项记为通过，也不以替身结果替代真实结论；工单 18 的
   评测与交付完成，产品缺陷修复由 20 号工单继续。
+
+## 10. 工单 20 修复后复查（2026-10-17T07:40:38Z）
+
+在 `codex/issue-20-real-loop-follow-ups` 分支复跑受影响场景（真实模型、
+真实后台任务、同一代理；边界与 01 旅程对照未重跑）：
+
+    python scripts/run_issue18_profile_loop_evaluation.py --mode real \
+        --scenarios T04,T06,T07,T08,T12,T16 --skip-boundaries \
+        --skip-baseline-journeys --proxy http://127.0.0.1:7890 \
+        --output .scratch/profile-memory-redesign/validation/18-real-model-loop-evaluation/evidence
+
+证据：`evidence/loop-eval-real-20261017T074038Z.json` / `.md` 与
+`evidence/run-lock-real-20261017T074038Z.json`（20 条记录，通用场景 6、
+变体 14；paired 两个任务 8 臂全部重跑）。检查统计 45/50 通过；
+硬边界 0 失败（本轮未跑边界套件）。
+
+| 回传项 | 本轮结果 | 说明 |
+| --- | --- | --- |
+| T04 偏好不覆盖身份 | `preference:captured` 通过；T04-holdout pass | 身份条目仍活动，偏好写入独立条目 |
+| T06-negation 一次性拒绝 | T06 与 T06-negation 全 pass | 拒绝未进入长期画像 |
+| T08-holdout 活动合并 | T08 与 T08-holdout 全 pass | 跑步/慢跑合并，`dedup` 3/3 |
+| paired-time-budget-corrected | 4/4 pass；paired 合计 16/16 | 旧错误值 superseded，回答与复发只用半小时 |
+| T16 同会话纠正 | revision 2/2、setup 1/1 通过；T16 4/5 | 纠正定位与旧条目撤回已修复 |
+| T12 生命周期同句事实 | T12-holdout pass；T12 4/5 | 暂停生效，`items_after` 已有「我要准备期末考试」 |
+| T07/T19 基础设施可诊断 | T07-negation pass；T07 3/5、T07-holdout 0/1 | 预算/生成错误不再静默，见下 |
+
+未全通过项与归因（不修改工单 18 判定口径）：
+
+- **T12 `fact:期末考试`**：驱动在暂停轮之前调用事实判定；最终
+  `items_after` 已含「我要准备期末考试」（`item-lBKJoyCkOar45-a6HjbMGQ`）。
+  属于评测驱动判定时点早于被判定轮次，不是产品未写入。
+- **T04 `follow-up:include`**：追问轮记录为 `assistant_status=streaming`、
+  回答为空、adopted 为空；身份条目在 `items_after` 中存在。属于评测会话
+  未等待生成完成。
+- **T16 `recurrence:correct-fact-adopted`**：纠正条目已写入且旧值不活动，
+  但复发追问 adopted 为空；属于检索采用/相关性，不是纠正写入回退。
+- **T07 `fact:准备考研`/`fact:求职`**：最后一轮生成
+  `web_search_citation_invalid` 失败，未调度抽取（与工单 20 第 7 项一致，
+  本轮未改变生成失败语义）。
+- **T07-holdout `fact:校外租住`**：抽取运行 `succeeded_empty`，模型未产出
+  候选；属于模型抽取质量波动，已单列。
+
+本轮代码验证：`tests/profiles` 825 passed；目标回归
+`tests/profiles/test_issue20_real_loop_follow_ups.py` 等 131 passed；
+`tests/chat/test_issue12_feedback_correction_loop.py` 13 passed；
+目标模块 `mypy` 0 error；`ruff check` 仅既有 E501/F401/I001。
+全量测试仍受 main 既有失败影响（career/resources/MCP/插件等退役与
+环境差异），未计入本票结论。

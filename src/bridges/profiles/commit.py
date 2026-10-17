@@ -119,6 +119,10 @@ class ProfileFactSubmission:
     evidence_fragments: tuple[ProfileEvidenceFragment, ...] = ()
     #: 工单 10：指定材料的来源据（已核验对象/绑定/版本/定位/片段）。
     material_sources: tuple[AtomicProfileMaterialSource, ...] = ()
+    #: 候选所在的抽取文本（通常为完整来源消息；生命周期信号场景为剩余
+    #: 分句）：用于识别「正确值在前、否定在后」等跨分句更正语义；事实
+    #: 身份仍只从 ``text`` 解析（工单 20）。
+    source_text: str | None = None
 
 
 class SourceWithdrawalStatus(Enum):

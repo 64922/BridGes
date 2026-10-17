@@ -1,0 +1,55 @@
+{
+  "kind": "profile-loop-evaluation-run-lock",
+  "eval_version": "profile-loop-eval-v1",
+  "eval_assets_sha256": "d35ae60b4aacdbd75b88b0d72e62c8ba102b78178f491fb56710bada2d5ee3ac",
+  "scenarios": [
+    "T04",
+    "T06",
+    "T07",
+    "T08",
+    "T12",
+    "T16"
+  ],
+  "response_mode": "real",
+  "git_commit": "ebd6cc2b73f4524a357d556c0088b50ca92aca3f",
+  "git_dirty": true,
+  "pipeline_snapshot_sha256": "8063ea477a96b1701aad23f2204f917dce286cf9dcb28352d936e6aa0d35a1c1",
+  "evaluation_sha256": "be5c38e38587c7a70ccf603233969dc54a00b3c40a16fba97b39b4c0c4646dcb",
+  "python_version": "3.11.15",
+  "model_config": {
+    "model_id": "qwen3.7-plus-2026-05-26",
+    "capabilities": {
+      "text": true,
+      "image": true,
+      "tool_calling": true,
+      "structured_output": true
+    },
+    "context_window": 1000000,
+    "max_input_tokens": 999000,
+    "metadata_version": "bailian-model-list-v1",
+    "validated_at": null,
+    "revision": 0,
+    "source": "factory"
+  },
+  "contract_versions": {
+    "automatic_extractor": "profile-auto-v2",
+    "signal_classifier": "profile-signal-v3",
+    "prompt": "profile-extraction-prompt-v6",
+    "recipe": "profile-extraction-recipe-v1",
+    "context": "profile-extraction-context-v1",
+    "quality_policy": "profile-extraction-quality-v1",
+    "atomic_migration": "profile-atomic-v1"
+  },
+  "budget_constants": {
+    "turn_timeout_seconds": 600.0,
+    "profile_extraction_max_retries": 3,
+    "profile_extraction_max_neighbors": 4
+  },
+  "credentials": {
+    "qwen_configured": true,
+    "qwen_source": "credential_store",
+    "tavily_configured": true,
+    "tavily_source": "credential_store"
+  },
+  "started_at": "2026-10-17T07:46:20+00:00"
+}

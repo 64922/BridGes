@@ -153,7 +153,7 @@ from bridges.profiles.sensitive import (
     parse_usage_purpose,
     usage_purpose_matches,
 )
-from bridges.profiles.signals import CORRECTION_MARKER
+from bridges.profiles.signals import CORRECTION_MARKER, ONE_OFF_REFUSAL
 from bridges.profiles.transactions import joined_transaction
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
@@ -320,6 +320,35 @@ _INTEREST_RE = re.compile(
     r"(?:对(?P<a>[^，。；;！!？?]+?)\s*(?:很|比较|特别)?感兴趣"
     r"|(?:很|比较|特别|现在|目前)?(?:更)?(?:喜欢|爱|偏好)\s*(?P<b>[^，。；;！!？?]+))"
 )
+#: 沟通偏好：未来标记 + 表达方式标记。偏好指令不是身份事实，不能因为
+#: 句中出现「专业」就进入专业单值槽（工单 20 / T04）。
+_LONG_TERM_PREFERENCE_RE = re.compile(
+    r"(?:以后|今后|从今以后|从今往后|往后|每次)[^。；;！!？?\n]{0,40}?"
+    r"(?:先(?:给|说|讲|列|写)(?:我)?(?:结论|答案|重点|要点|例子|表格|清单)"
+    r"|结论先行|先看(?:例子|结论)"
+    r"|(?:回答|解释|讲|说|回复|交流|沟通|表达|措辞|语气)"
+    r"[^。；;！!？?\n]{0,12}"
+    r"(?:简短|简洁|精炼|精简|详细|具体|通俗|简单易懂|幽默|严肃|直接)"
+    r"|(?:简短|简洁|精炼|精简)(?:一点|些)?"
+    r"|用(?:中文|英文|表格|列点|分点|清单)"
+    r"|叫我|称呼我"
+    r"|别(?:再)?(?:问|追问)|不要(?:再)?(?:问|追问|安慰|建议))"
+)
+#: 同一活动身份的不同说法（跑步/慢跑/晨跑…）归一到同一对象，避免同一
+#: 活动被拆成多条（工单 20 / T08-holdout）。
+_ACTIVITY_TOKEN_RE = re.compile(
+    r"(?:跑步|慢跑|晨跑|夜跑|长跑|跑跑步)(?!时|的时候|伤|疼|机|鞋|服|裤|表|App|app)"
+)
+#: 活动习惯句：需要频次/态度标记，避免「跑步伤膝盖」「跑步时听音乐」等
+#: 偶发提及被当成长期兴趣。
+_ACTIVITY_STATEMENT_RE = re.compile(
+    r"(?:我|本人)?(?:基本|经常|常常|常|每天|每周[一二三四五六日天\d]*次?"
+    r"|平时|通常|一般|坚持|喜欢|爱|习惯|会去|去)"
+    r"[^。；;！!？?\n]{0,12}?"
+    r"(?:跑步|慢跑|晨跑|夜跑|长跑|跑跑步)"
+    r"(?!时|的时候|伤|疼|机|鞋|服|裤|表|App|app)"
+)
+_ACTIVITY_CANONICAL_OBJECT = "跑步"
 _GOAL_RE = re.compile(
     r"(?:我的|我这阶段的|我目前的)?(?:阶段)?"
     r"(?:目标(?:是|为)?|计划(?:是|为)?|打算|规划|备考|准备)\s*"
@@ -327,13 +356,23 @@ _GOAL_RE = re.compile(
 )
 #: 明确收回：``不考研了`` 中的对象 ``考研``。只用于「明确变更」路径。
 _NEGATED_OBJECT_RE = re.compile(
-    r"(?:不再|不打算|不想|不|放弃|取消)"
+    r"(?:不再|不打算|不想|不|放弃|取消)\s*(?:是)?\s*"
     r"(?P<obj>[^，。；;！!？?\s]{2,20}?)(?:了|，|。|；|;|$)"
 )
 #: 明确转向后的新值：``转为准备就业`` 中的 ``准备就业``。
 _REPLACEMENT_TAIL_RE = re.compile(
     r"(?:改(?:为|成|做)?|转(?:为|向)?|换(?:成|为)?|准备|打算)\s*"
     r"(?P<obj>[^，。；;！!？?]+)$"
+)
+#: affirm-then-negate：``正确值，不是 旧值``。正确值在前、否定值在后，
+#: 不能只从否定的尾部推断替代值（工单 20 / paired corrected）。
+_AFFIRM_THEN_NEGATE_RE = re.compile(
+    r"(?P<replacement>[^，,。；;！!？?\n]{2,80})[，,]\s*不(?:再)?是\s*"
+    r"(?P<negated>[^，,。；;！!？?\n]{1,30})"
+)
+#: 数量表达归一化的宽松匹配：``三个小时`` 与 ``三小时`` 视为同一段。
+_QUANTIFIER_GE_RE = re.compile(
+    r"(?<=[一二三四五六七八九十百千万两\d])个(?=[小时分秒天周月年次])"
 )
 #: 状态/时间变化的标记（画像工单 06）：旧值是真实历史而非错误记录。
 #: 「现在/目前」只有在带「了」的变化句里才算标记（「我现在大二」是普通
@@ -364,6 +403,33 @@ def _classify_revision_kind(*texts: str | None) -> AtomicProfileRevisionKind | N
     return None
 
 
+def _canonical_activity_object(value: str) -> str:
+    """把裸活动名归一为同一身份；带修饰的整句保持原样。"""
+
+    normalized = normalize_text(value).strip("。！!？?，,；; ")
+    if _ACTIVITY_TOKEN_RE.fullmatch(normalized):
+        return _ACTIVITY_CANONICAL_OBJECT
+    return value
+
+
+def _loose_explicit_text(value: str) -> str:
+    """明确变更对账的宽松文本：去空白并把「三个小时」归一为「三小时」。"""
+
+    normalized = re.sub(r"\s+", "", normalize_text(value).casefold())
+    normalized = normalized.replace("学习", "学")
+    return _QUANTIFIER_GE_RE.sub("", normalized).strip("。！!？?，,；;")
+
+
+def _candidate_matches_replacement(text: str, replacement: str) -> bool:
+    """候选是否就是 affirm-then-negate 中「正确值」所在的表述。"""
+
+    candidate = _loose_explicit_text(text)
+    target = _loose_explicit_text(replacement)
+    if not candidate or not target:
+        return False
+    return candidate == target or candidate in target or target in candidate
+
+
 def parse_fact_identity(
     text: str,
     *,
@@ -388,6 +454,15 @@ def parse_fact_identity(
     if negated and replacement is None:
         # 纯否认不构成新的正事实（"我不考研了"）：按整句陈述保存，让明确
         # 收回走 forget/明确变更路径，绝不把被否认的值当成新的事实。
+        return AtomicProfileFactIdentity(
+            subject=subject,
+            relation=AtomicProfileFactRelation.STATEMENT,
+            object=normalized,
+            scope=scope,
+        )
+    if _LONG_TERM_PREFERENCE_RE.search(normalized):
+        # 偏好/表达方式即使提到「专业」也不是身份事实；整句按陈述保存，
+        # 不进入专业/年级单值槽（工单 20 / T04）。
         return AtomicProfileFactIdentity(
             subject=subject,
             relation=AtomicProfileFactRelation.STATEMENT,
@@ -441,7 +516,7 @@ def parse_fact_identity(
             return AtomicProfileFactIdentity(
                 subject=subject,
                 relation=AtomicProfileFactRelation.INTEREST,
-                object=normalize_text(value),
+                object=_canonical_activity_object(normalize_text(value)),
                 scope=scope,
             )
     goal = _GOAL_RE.search(normalized)
@@ -450,6 +525,13 @@ def parse_fact_identity(
             subject=subject,
             relation=AtomicProfileFactRelation.GOAL,
             object=normalize_text(goal.group("obj")),
+            scope=scope,
+        )
+    if _ACTIVITY_STATEMENT_RE.search(normalized):
+        return AtomicProfileFactIdentity(
+            subject=subject,
+            relation=AtomicProfileFactRelation.INTEREST,
+            object=_ACTIVITY_CANONICAL_OBJECT,
             scope=scope,
         )
     if dimension is FourDimension.ACADEMIC_STATUS:
@@ -504,16 +586,22 @@ def parse_explicit_change(text: str) -> tuple[list[str], str | None]:
     抽取仍由证据与边界检查决定写不写。
     """
 
+    normalized = normalize_text(text)
     negated = [
         normalize_text(match.group("obj"))
-        for match in _NEGATED_OBJECT_RE.finditer(normalize_text(text))
+        for match in _NEGATED_OBJECT_RE.finditer(normalized)
         if normalize_text(match.group("obj"))
     ]
-    replacement = _REPLACEMENT_TAIL_RE.search(normalize_text(text))
+    replacement = _REPLACEMENT_TAIL_RE.search(normalized)
     new_value = (
         normalize_text(replacement.group("obj")) if replacement is not None else None
     )
-    return list(dict.fromkeys(negated)), new_value
+    affirm = _AFFIRM_THEN_NEGATE_RE.search(normalized)
+    if affirm is not None:
+        negated.append(normalize_text(affirm.group("negated")))
+        if new_value is None:
+            new_value = normalize_text(affirm.group("replacement"))
+    return list(dict.fromkeys(value for value in negated if value)), new_value
 
 
 def parse_memory_directive(content: str) -> MemoryDirective | None:
@@ -845,13 +933,15 @@ def _is_negated_signal(normalized: str, start: int) -> bool:
     return _SIGNAL_NEGATION_RE.search(prefix) is not None
 
 
-def parse_goal_lifecycle_signal(text: str) -> GoalLifecycleSignal | None:
-    """解析明确的暂停/完成/恢复信号；普通陈述或否定变更不在这里处理。"""
+def _goal_lifecycle_signal_match(
+    text: str,
+) -> tuple[GoalLifecycleSignal, int, int] | None:
+    """返回最早的生命周期信号及其在原规范化文本中的半开区间。"""
 
     normalized = normalize_text(text)
     if not normalized:
         return None
-    candidates: list[tuple[int, GoalLifecycleSignal]] = []
+    candidates: list[tuple[int, int, GoalLifecycleSignal]] = []
 
     for pattern in _PAUSE_SIGNAL_PATTERNS:
         match = pattern.search(normalized)
@@ -860,7 +950,11 @@ def parse_goal_lifecycle_signal(text: str) -> GoalLifecycleSignal | None:
         target = _clean_lifecycle_target(match.group("target"))
         if target:
             candidates.append(
-                (match.start(), GoalLifecycleSignal(GoalLifecycleKind.PAUSE, target))
+                (
+                    match.start(),
+                    match.end(),
+                    GoalLifecycleSignal(GoalLifecycleKind.PAUSE, target),
+                )
             )
 
     complete = _COMPLETE_SIGNAL_RE.search(normalized)
@@ -873,6 +967,7 @@ def parse_goal_lifecycle_signal(text: str) -> GoalLifecycleSignal | None:
             candidates.append(
                 (
                     complete.start(),
+                    complete.end(),
                     GoalLifecycleSignal(
                         GoalLifecycleKind.COMPLETE,
                         target,
@@ -887,6 +982,7 @@ def parse_goal_lifecycle_signal(text: str) -> GoalLifecycleSignal | None:
         candidates.append(
             (
                 resume.start(),
+                resume.end(),
                 GoalLifecycleSignal(
                     GoalLifecycleKind.RESUME,
                     target,
@@ -897,7 +993,42 @@ def parse_goal_lifecycle_signal(text: str) -> GoalLifecycleSignal | None:
 
     if not candidates:
         return None
-    return min(candidates, key=lambda entry: entry[0])[1]
+    start, end, signal = min(candidates, key=lambda entry: entry[0])
+    return signal, start, end
+
+
+def parse_goal_lifecycle_signal(text: str) -> GoalLifecycleSignal | None:
+    """解析明确的暂停/完成/恢复信号；普通陈述或否定变更不在这里处理。"""
+
+    match = _goal_lifecycle_signal_match(text)
+    return match[0] if match is not None else None
+
+
+def strip_goal_lifecycle_signal(text: str) -> str | None:
+    """移除最早的生命周期信号，保留同句其余内容；没有信号时返回空。
+
+    暂停/恢复的目标匹配可能把后面的「然后/我要…」一并吞入，因此移除区间
+    后再按常见连接词切一次，尽量留下同一句里的事实（工单 20 / T12）。
+    """
+
+    match = _goal_lifecycle_signal_match(text)
+    if match is None:
+        return None
+    signal, start, end = match
+    normalized = normalize_text(text)
+    removed = normalized[start:end]
+    tail = ""
+    if signal.kind in {GoalLifecycleKind.PAUSE, GoalLifecycleKind.RESUME}:
+        for marker in ("然后", "接着", "(?<!不)再", "我要", "我准备", "我打算"):
+            found = re.search(marker, removed)
+            if found is not None and found.start() > 0:
+                tail = removed[found.end() :]
+                break
+    prefix = normalized[:start]
+    if re.fullmatch(r"[先那就好嗯呃哦。，,；;！!？? \t\n]*", prefix):
+        prefix = ""
+    remainder = f"{prefix}{tail}{normalized[end:]}"
+    return remainder.strip("，,。；;！!？? \t\n")
 
 
 def _now() -> datetime:
@@ -3191,8 +3322,13 @@ class AtomicProfileService:
                 else:
                     if existing.text != normalized:
                         # 用户写入新正文：旧原话不再对应当前事实，不伪称来源。
+                        # 若旧条目已删除/被替代，这次是重新记住同一活动身份的
+                        # 新说法（跑步/慢跑）；旧来源不支持新正文，不能随复活
+                        # 一并带回（工单 18 撤回答辩保持有效）。
                         existing.evidence_quote = None
                         existing.source_quotes = {}
+                        if existing.status != AtomicProfileItemStatus.ACTIVE:
+                            existing.source_message_ids = []
                     existing.text = normalized
                     existing.identity_key = key
                     existing.status = AtomicProfileItemStatus.ACTIVE
@@ -3668,6 +3804,13 @@ class AtomicProfileService:
         text = normalize_text(fact.text)
         if not text or len(text) > _MAX_ITEM_TEXT_LENGTH:
             return None
+        if ONE_OFF_REFUSAL.search(text):
+            # 一次性拒绝具体提案不是长期自我事实；显式「记住」仍走 remember。
+            logger.info(
+                "atomic_profile_one_off_refusal_skipped",
+                extra={"account_id": account_id},
+            )
+            return None
         if classify_memory_sensitivity(text) is not MemorySensitivity.ORDINARY:
             logger.info(
                 "atomic_profile_sensitive_skipped",
@@ -3736,6 +3879,7 @@ class AtomicProfileService:
         revision_kind = _classify_revision_kind(
             text,
             evidence_quote,
+            fact.source_text,
             *(fragment.quote for fragment in evidence_fragments),
         )
         superseded_items: list[AtomicProfileItem] = []
@@ -3787,7 +3931,11 @@ class AtomicProfileService:
                 if revision_kind is not None:
                     superseded_items.extend(
                         self._apply_marked_revision(
-                            account_id, text, merged, revision_kind
+                            account_id,
+                            text,
+                            merged,
+                            revision_kind,
+                            source_text=fact.source_text,
                         )
                     )
                 saved_merged = self._repository.save_item(merged)
@@ -3877,7 +4025,13 @@ class AtomicProfileService:
                     )
             if revision_kind is not None:
                 superseded_items.extend(
-                    self._apply_marked_revision(account_id, text, item, revision_kind)
+                    self._apply_marked_revision(
+                        account_id,
+                        text,
+                        item,
+                        revision_kind,
+                        source_text=fact.source_text,
+                    )
                 )
             saved = self._repository.save_item(item)
         if superseded_items:
@@ -4934,6 +5088,8 @@ class AtomicProfileService:
         text: str,
         item: AtomicProfileItem,
         revision_kind: AtomicProfileRevisionKind,
+        *,
+        source_text: str | None = None,
     ) -> list[AtomicProfileItem]:
         """带标记的明确修订落账：替代相关单值槽旧值（原因如实记录），并
         消除本条目的未解决冲突；被用户明确写入的旧值挡住时保持未解决，
@@ -4941,7 +5097,12 @@ class AtomicProfileService:
         """
 
         superseded, blocked = self._reconcile_explicit_change(
-            account_id, text, item, reason=revision_kind, protect_user_edited=True
+            account_id,
+            text,
+            item,
+            reason=revision_kind,
+            protect_user_edited=True,
+            source_text=source_text,
         )
         item.conflict_state = (
             AtomicProfileConflictState.UNRESOLVED
@@ -4958,6 +5119,7 @@ class AtomicProfileService:
         *,
         reason: AtomicProfileRevisionKind | None = None,
         protect_user_edited: bool = False,
+        source_text: str | None = None,
     ) -> tuple[list[AtomicProfileItem], list[AtomicProfileItem]]:
         """明确变更的对账：单值属性槽换值与「明确收回 + 转向」只替代对应事实。
 
@@ -4985,6 +5147,15 @@ class AtomicProfileService:
                 superseded.append(old.profile_item_id)
                 superseded_items.append(old)
         negated, _replacement = parse_explicit_change(text)
+        source_negated, source_replacement = parse_explicit_change(
+            source_text or ""
+        )
+        allow_loose = bool(negated)
+        if source_replacement is not None and _candidate_matches_replacement(
+            text, source_replacement
+        ):
+            negated = list(dict.fromkeys([*negated, *source_negated]))
+            allow_loose = allow_loose or bool(source_negated)
         if negated:
             # 明确收回（可带转向）：只替代对象完全一致的旧事实。用精确相等而
             # 不是包含匹配——「我不喜欢晨跑时听音乐」收回的是整句，不能把
@@ -5010,6 +5181,50 @@ class AtomicProfileService:
                     self._supersede_item(old, item.profile_item_id, reason=reason)
                     superseded.append(old.profile_item_id)
                     superseded_items.append(old)
+        if (
+            not superseded
+            and allow_loose
+            and reason is AtomicProfileRevisionKind.CORRECTION
+            and negated
+        ):
+            # affirm-then-negate 的否定值通常只出现在完整来源消息里，而且
+            # 旧条目正文可能比否定值更宽（「三个小时」对「三小时」）。只在
+            # 更正语义下做唯一最长包含匹配，避免把无关条目一起退休。
+            loose_values = [
+                _loose_explicit_text(value)
+                for value in negated
+                if len(_loose_explicit_text(value)) >= 2
+            ]
+            candidates: list[tuple[int, AtomicProfileItem]] = []
+            for old in self._repository.list_items(account_id):
+                if old.profile_item_id == item.profile_item_id:
+                    continue
+                old_text = _loose_explicit_text(old.text)
+                matched = max(
+                    (
+                        len(value)
+                        for value in loose_values
+                        if value in old_text
+                    ),
+                    default=0,
+                )
+                if matched:
+                    candidates.append((matched, old))
+            if candidates:
+                best_length = max(length for length, _old in candidates)
+                best = [
+                    old for length, old in candidates if length == best_length
+                ]
+                if len(best) == 1:
+                    old = best[0]
+                    if protect_user_edited and self._is_user_authoritative(old):
+                        blocked_items.append(old)
+                    else:
+                        self._supersede_item(
+                            old, item.profile_item_id, reason=reason
+                        )
+                        superseded.append(old.profile_item_id)
+                        superseded_items.append(old)
         if superseded and item.supersedes_id is None:
             item.supersedes_id = superseded[0]
             self._repository.save_item(item)

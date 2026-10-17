@@ -171,12 +171,20 @@ def test_parallel_goals_coexist() -> None:
     assert _texts(atomic) == {"考研", "通过英语六级"}
 
 
-def test_close_synonyms_are_not_auto_merged() -> None:
+def test_close_synonyms_merge_as_same_activity() -> None:
     _, _, atomic, _ = _services()
-    atomic.remember(ACCOUNT, "我喜欢跑步")
-    atomic.remember(ACCOUNT, "我爱慢跑")
+    atomic.remember(ACCOUNT, "我喜欢跑步", source_message_id="m-run-1")
+    atomic.remember(ACCOUNT, "我基本每周三次慢跑", source_message_id="m-run-2")
+    atomic.remember(ACCOUNT, "我常去慢跑", source_message_id="m-run-3")
 
-    assert _texts(atomic) == {"我喜欢跑步", "我爱慢跑"}
+    items = atomic.list_items(ACCOUNT)
+    assert len(items) == 1
+    assert items[0].fact_object == "跑步"
+    assert set(items[0].source_message_ids) == {
+        "m-run-1",
+        "m-run-2",
+        "m-run-3",
+    }
 
 
 # ---------------------------------------------------------------------------

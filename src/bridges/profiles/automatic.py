@@ -94,6 +94,7 @@ from bridges.profiles.atomic import (
     parse_fact_identity,
     parse_goal_lifecycle_signal,
     parse_memory_directive,
+    strip_goal_lifecycle_signal,
 )
 from bridges.profiles.commit import (
     ProfileCommit,
@@ -253,6 +254,7 @@ _TRANSIENT_PROFILE_ERROR_CODES = frozenset(
         "region_error",
         "rate_limit",
         "transient",
+        "output_budget_exceeded",
         "profile_extraction_transient_failure",
         "profile_extraction_unexpected",
     }
@@ -579,6 +581,16 @@ def _snapshot_for_storage(content: str) -> str:
     """
 
     return redact_credentials(content)
+
+
+def _content_without_lifecycle_signal(content: str) -> str:
+    """去掉生命周期信号本身，保留同句其余可抽取事实（工单 20 / T12）。
+
+    只在确实命中信号时改变文本；普通消息原样返回，避免影响既有来源哈希。
+    """
+
+    remainder = strip_goal_lifecycle_signal(content)
+    return content if remainder is None else remainder
 
 
 @dataclass(frozen=True)
@@ -1151,12 +1163,7 @@ class GatewayAutomaticProfileExtractor:
             )
         if result.status != ModelCallStatus.SUCCESS or result.output is None:
             error_code = result.error_code or "profile_extraction_failed"
-            retryable = error_code in {
-                "network_error",
-                "region_error",
-                "rate_limit",
-                "transient",
-            }
+            retryable = error_code in _TRANSIENT_PROFILE_ERROR_CODES
             raise AutomaticProfileError(
                 error_code,
                 f"{error_code}: {result.error_message or error_code}",
@@ -1297,12 +1304,7 @@ class GatewayAutomaticProfileExtractor:
             )
         if result.status != ModelCallStatus.SUCCESS or result.output is None:
             error_code = result.error_code or "profile_extraction_failed"
-            retryable = error_code in {
-                "network_error",
-                "region_error",
-                "rate_limit",
-                "transient",
-            }
+            retryable = error_code in _TRANSIENT_PROFILE_ERROR_CODES
             raise AutomaticProfileError(
                 error_code,
                 f"{error_code}: {result.error_message or error_code}",
@@ -2710,7 +2712,25 @@ class AutomaticProfileService:
     ) -> tuple[ProfileExtractionRun | None, ProfilePrivacyNotice | None]:
         del conversation_id, run_id
         now = _now()
-        source_hash = _source_hash(account_id, message_id, content)
+        full_hash = _source_hash(account_id, message_id, content)
+        lifecycle_run = self._repository.get_run(
+            account_id, message_id, self.extractor_version, full_hash
+        )
+        extraction_content = content
+        if (
+            lifecycle_run is not None
+            and lifecycle_run.status is ProfileExtractionStatus.SUCCEEDED
+            and lifecycle_run.outcome
+            is ProfileExtractionOutcome.SUCCEEDED_LIFECYCLE_SIGNAL
+        ):
+            # 工单 20 / T12：生命周期信号与同句普通事实共存时，生命周期
+            # 已先行生效；回答完成后的调度只抽取剩余分句。
+            remainder = _content_without_lifecycle_signal(content)
+            if remainder.strip() and remainder != content:
+                extraction_content = remainder
+            else:
+                return lifecycle_run, None
+        source_hash = _source_hash(account_id, message_id, extraction_content)
         existing = self._repository.get_run(
             account_id, message_id, self.extractor_version, source_hash
         )
@@ -2726,12 +2746,14 @@ class AutomaticProfileService:
         }:
             return existing, None
         if self._repository.is_message_tombstoned(account_id, message_id):
+            if lifecycle_run is not None:
+                return lifecycle_run, None
             return (
                 self._blocked_result(
                     account_id=account_id,
                     message_id=message_id,
                     content=content,
-                    source_hash=source_hash,
+                    source_hash=full_hash,
                     now=now,
                     reason="原消息已撤回或被墓碑阻止",
                 ).run,
@@ -2740,23 +2762,29 @@ class AutomaticProfileService:
         if self._repository.is_recording_blocked(
             account_id
         ) or self._repository.is_recording_blocked(account_id, content):
+            if lifecycle_run is not None:
+                return lifecycle_run, None
             return (
                 self._blocked_result(
                     account_id=account_id,
                     message_id=message_id,
                     content=content,
-                    source_hash=source_hash,
+                    source_hash=full_hash,
                     now=now,
                     reason="用户已停止产生新的记录",
                 ).run,
                 None,
             )
-        classification = self._classifier.extraction_classification(content)
+        classification = self._classifier.extraction_classification(
+            extraction_content
+        )
         # 工单 04：关键词规则不再否决自然自述；只有空消息与确定性的硬禁止
         # 消息（整条及所有片段都被引用/假设/第三方/敏感规则否决）不进入
         # 语义提取队列。候选是否写入由证据核验与提交边界决定。
-        if not self._classifier.is_schedulable(content, classification):
-            return None, None
+        if not self._classifier.is_schedulable(
+            extraction_content, classification
+        ):
+            return (lifecycle_run, None) if lifecycle_run is not None else (None, None)
         if atomic_scheduling and self._backlog_exceeded(account_id):
             # 账户级背压：既有任务照常推进，只跳过新消息的普通调度。
             self._record_source_guard(PROFILE_GUARD_SCHEDULING_BACKPRESSURE)
@@ -2766,7 +2794,7 @@ class AutomaticProfileService:
         run = existing or self._new_run(
             account_id=account_id,
             message_id=message_id,
-            content=content,
+            content=extraction_content,
             source_hash=source_hash,
             status=ProfileExtractionStatus.PENDING,
             outcome=ProfileExtractionOutcome.PENDING_RETRY,
@@ -4012,6 +4040,14 @@ class AutomaticProfileService:
                     conversation_id=conversation_id,
                     source_at=source_at,
                 )
+            remainder = _content_without_lifecycle_signal(content)
+            if remainder != content and self._snapshot_hash_matches(
+                _source_hash(task.account_id, task.message_id, remainder),
+                task.source_hash,
+            ):
+                # 工单 20 / T12：该任务按「生命周期之外剩余分句」入队；
+                # 来源快照只保留剩余分句，完整原文仍在消息存储。
+                content = remainder
             signal_classification = self._classifier.extraction_classification(
                 content
             )
@@ -4632,17 +4668,23 @@ class AutomaticProfileService:
         if self._message_reader is None:
             return True
         message = self._message_reader(account_id, message_id)
-        expected_source_hash = _source_hash(
-            account_id, message_id, "" if message is None else str(message.content)
+        if message is None:
+            return False
+        raw_content = str(message.content)
+        expected_source_hash = _source_hash(account_id, message_id, raw_content)
+        if self._snapshot_hash_matches(expected_source_hash, source_hash):
+            return True
+        remainder = _content_without_lifecycle_signal(raw_content)
+        if remainder == raw_content:
+            return False
+        return self._snapshot_hash_matches(
+            _source_hash(account_id, message_id, remainder), source_hash
         )
-        return (
-            message is not None
-            and (
-                expected_source_hash == source_hash
-                or source_hash.startswith(
-                    f"{expected_source_hash}{PROFILE_REPLAY_SOURCE_HASH_PREFIX}"
-                )
-            )
+
+    @staticmethod
+    def _snapshot_hash_matches(expected: str, source_hash: str) -> bool:
+        return expected == source_hash or source_hash.startswith(
+            f"{expected}{PROFILE_REPLAY_SOURCE_HASH_PREFIX}"
         )
 
     def _message_content(self, account_id: str, message_id: str, snapshot: str) -> str:
@@ -4732,6 +4774,7 @@ class AutomaticProfileService:
                         evidence_quote=self._candidate_evidence_quote(item, content, resolved),
                         evidence_message_id=message_id,
                         evidence_fragments=resolved.fragments,
+                        source_text=content,
                     )
                 )
                 continue
@@ -4803,6 +4846,7 @@ class AutomaticProfileService:
                     evidence_quote=self._candidate_evidence_quote(item, content, resolved),
                     evidence_message_id=message_id,
                     evidence_fragments=resolved.fragments,
+                    source_text=content,
                 )
             )
         # 工单 03：开放事实直接写入原子条目（唯一权威路径），四维记录不再
