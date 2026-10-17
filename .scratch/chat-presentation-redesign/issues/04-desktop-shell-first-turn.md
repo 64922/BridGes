@@ -73,11 +73,11 @@
 
 ### 验证结果
 
-- `npm run test:unit`：44 个测试文件、357 项全部通过。
+- `npm run test:unit`：45 个测试文件、363 项全部通过（已 rebase 到含 issue05 的最新 main）。
 - `npm run typecheck`：通过。
 - `npm run lint`：通过；仅保留两条既有 `<img>` 性能警告（搜索页、图片任务卡），非本票引入。
 - `npm run build`：编译成功，23/23 静态页面生成；worktree 中 `node_modules` 为指向主仓库的 junction，standalone 复制阶段出现 `EPERM: operation not permitted, symlink` 警告，未影响编译与路由产物（合并到 main 后复跑确认）。
-- E2E（以 `playwright.closeout.config.ts` 为基座、临时 `testMatch` 包装，真实认证 + 原子首轮 + 本地 API/DB）：`issue04` 6 项、`issue12` 11 项、`issue13` 10 项、`issue14` 2 项，共 **29 项全部通过**（1.3 分钟）。
+- E2E（以 `playwright.closeout.config.ts` 为基座、临时 `testMatch` 包装，真实认证 + 原子首轮 + 本地 API/DB）：`issue04` 6 项、`issue05` 1 项、`issue12` 11 项、`issue13` 10 项、`issue14` 2 项，共 **30 项全部通过**（1.7 分钟）。
 - 补充真实链路验证：`issue11` 4/4 通过（加载失败恢复、停止、重试、键盘发送）；`issue07` 功能测试 16/16 通过（注册/登录、认证过期重定向、Cookie 合同、键盘）。`issue07` 的三张登录/注册视觉快照在当前环境有约 2-3% 的既有像素偏移（本票未改认证页样式），未更新。
 - `issue15` 的置顶/改名/失败恢复步骤通过，但其既有 mock 会话在点击进入详情时被 middleware 重定向登录，删除步骤未跑通；同一删除入口已由 issue04 的真实链路用例覆盖（删除当前学习会话后回到新聊天）。
 - 补充证据脚本（临时）以真实认证 + 503 替身捕获首轮失败态，验证错误横幅、恢复提示、草稿、附件与模式均保留；脚本与临时配置已删除。
