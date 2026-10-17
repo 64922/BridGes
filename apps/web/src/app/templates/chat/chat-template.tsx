@@ -4,7 +4,8 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { Composer } from "@/components/bridges/Composer";
-import { MessageList, type ChatMessageView } from "@/components/bridges/MessageList";
+import { MessageList } from "@/components/bridges/MessageList";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { StateBlock } from "@/components/bridges/StateBlock";

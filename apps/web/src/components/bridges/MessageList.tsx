@@ -4,10 +4,7 @@ import type { ChatModuleId } from "@/lib/api";
 
 import { AssistantMessage } from "./message/AssistantMessage";
 import { UserMessage } from "./message/UserMessage";
-import type { ChatMessageView } from "./message/types";
-
-export type { ChatMessage, ChatPreviousAttempt, ChatThinking } from "@/lib/chat-message";
-export type { ChatMessageView } from "./message/types";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 
 interface MessageListProps {
   messages: ChatMessageView[];

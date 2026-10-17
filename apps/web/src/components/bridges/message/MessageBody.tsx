@@ -1,27 +1,19 @@
 "use client";
 
 import { Icon } from "@/components/design-system/Icon";
-import type { ChatMessageView } from "./types";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 
 import styles from "@/components/bridges/chat/chat.module.css";
 
 function PlainTextBody({
   text,
-  relaxed,
   streaming = false,
 }: {
   text: string;
-  relaxed?: boolean;
   streaming?: boolean;
 }) {
   return (
-    <p
-      style={{
-        whiteSpace: "pre-wrap",
-        overflowWrap: "break-word",
-        lineHeight: relaxed ? "var(--line-height-relaxed)" : undefined,
-      }}
-    >
+    <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
       {text}
       {streaming && <span className={styles.streamCursor} aria-hidden="true" />}
     </p>
@@ -73,11 +65,7 @@ export function AssistantBody({
     message.body !== undefined ? (
       <>{message.body}</>
     ) : (
-      <PlainTextBody
-        text={message.plainText}
-        relaxed
-        streaming={message.status === "streaming"}
-      />
+      <PlainTextBody text={message.plainText} streaming={message.status === "streaming"} />
     );
 
   if (message.status === "error" && message.skill == null) {

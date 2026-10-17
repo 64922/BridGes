@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import type { ChatThinking } from "@/lib/chat-message";
 
-import type { ChatMessageView } from "./types";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 
 const STAGE_LABEL: Record<string, string> = {
   queued: "排队中",

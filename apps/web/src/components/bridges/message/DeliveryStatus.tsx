@@ -2,7 +2,7 @@
 
 import { TurnResultCard } from "@/components/bridges/chat/TurnResultCard";
 
-import type { ChatMessageView } from "./types";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 
 /** 已提交回合的公开结果投影（完成/待输入/部分/阻塞/取消 + 可信状态 + 真实恢复）。 */
 export function DeliveryStatus({

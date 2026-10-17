@@ -1,7 +1,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MessageList, type ChatMessageView } from "./MessageList";
+import type { ChatMessageView } from "@/lib/chat-message-view";
+
+import { MessageList } from "./MessageList";
 import type {
   ChatAttachmentProjection,
   LearningResourcesProjection,

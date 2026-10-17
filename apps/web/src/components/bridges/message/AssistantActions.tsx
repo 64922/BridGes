@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { copyTextToClipboard } from "@/lib/clipboard";
 
-import type { ChatMessageView } from "./types";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 
 const actionButtonStyle: React.CSSProperties = {
   display: "inline-flex",

@@ -9,7 +9,7 @@ import { DeliveryStatus } from "./DeliveryStatus";
 import { AssistantBody } from "./MessageBody";
 import { MediaTaskCards, SourceProjectionCards } from "./ProjectionCards";
 import { GenerationStageLine, ThinkingSummary } from "./PublicProcess";
-import type { ChatMessageView } from "./types";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 
 export function AssistantMessage({
   message,

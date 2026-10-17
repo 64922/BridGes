@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
   CareerPlanningProjection,
+  ChatAttachmentProjection,
   ContextNoteProjection,
   HumanizerResultProjection,
   ImageTaskProjection,
@@ -20,7 +21,7 @@ import {
 } from "@/lib/chat-modules.test-support";
 
 import { MessageList } from "./MessageList";
-import type { ChatMessageView } from "./message/types";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 
 const NOW = "2026-10-17T08:00:00Z";
 
@@ -253,6 +254,52 @@ describe("消息呈现边界（工单 02）", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getAllByRole("toolbar", { name: "消息操作" })).toHaveLength(2);
     expect(screen.queryByRole("button", { name: /朗读/ })).toBeNull();
+  });
+
+  it("流式正文不继承历史消息的宽松行高", () => {
+    render(
+      <MessageList
+        messages={[assistant({ id: "assistant-stream", status: "streaming" })]}
+      />
+    );
+
+    expect(screen.getByText("回答正文").style.lineHeight).toBe("");
+  });
+
+  it("空正文带附件时仍保留附件与正文的间距", () => {
+    const attachment: ChatAttachmentProjection = {
+      object_id: "obj-file",
+      original_filename: "统计讲义.pdf",
+      media_type: "application/pdf",
+      content_length: 2048,
+      content_hash: "hash",
+      conversation_id: "conversation-1",
+      message_id: "user-empty",
+      status: "bound",
+      ordinal: 1,
+      ingestion_status: "ready",
+      ingestion_error: null,
+      adopted_from_conversation_id: "",
+      adopted_from_object_id: "",
+      created_at: NOW,
+      updated_at: NOW,
+    };
+    render(
+      <MessageList
+        messages={[
+          {
+            id: "user-empty",
+            role: "user",
+            plainText: "",
+            attachments: [attachment],
+          },
+        ]}
+      />
+    );
+
+    expect(
+      screen.getByRole("list", { name: "消息中的附件" }).style.marginBottom
+    ).toBe("var(--space-2)");
   });
 
   it("复制与已有反馈行为继续可用", async () => {

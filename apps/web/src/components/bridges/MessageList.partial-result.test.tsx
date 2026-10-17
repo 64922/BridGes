@@ -2,7 +2,9 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { TurnResultProjection } from "@/lib/api";
-import { MessageList, type ChatMessageView } from "./MessageList";
+import type { ChatMessageView } from "@/lib/chat-message-view";
+
+import { MessageList } from "./MessageList";
 
 afterEach(cleanup);
 

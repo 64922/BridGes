@@ -1,3 +1,4 @@
+import { isValidElement } from "react";
 import { describe, expect, it } from "vitest";
 
 import { buildThreadMessages } from "./chat-thread";
@@ -281,6 +282,12 @@ describe("buildThreadMessages（工单 38）", () => {
       image,
       video,
     });
-    expect(items[1].body).toBeUndefined();
+    const body = items[1].body;
+    expect(isValidElement(body)).toBe(true);
+    if (isValidElement(body)) {
+      expect(
+        (body.props as { style?: { lineHeight?: string } }).style?.lineHeight
+      ).toBe("var(--line-height-relaxed)");
+    }
   });
 });

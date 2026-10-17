@@ -8,7 +8,7 @@ import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBann
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { Composer } from "@/components/bridges/Composer";
 import { StudyProgress } from "@/components/bridges/chat/StudyProgress";
-import type { ChatMessageView } from "@/components/bridges/message/types";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 import type { ChatThinking } from "@/lib/chat-message";
 import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";

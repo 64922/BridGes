@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 import { MessageList } from "@/components/bridges/MessageList";
-import type { ChatMessageView } from "@/components/bridges/message/types";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 import type { ChatModuleId } from "@/lib/api";
 
 import styles from "./chat.module.css";

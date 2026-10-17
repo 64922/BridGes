@@ -14,11 +14,9 @@ import type { ChatAttachmentProjection } from "@/lib/api";
 export function MessageAttachments({
   attachments,
   conversationId,
-  hasBody,
 }: {
   attachments: ChatAttachmentProjection[];
   conversationId?: string;
-  hasBody: boolean;
 }) {
   return (
     <div
@@ -29,7 +27,7 @@ export function MessageAttachments({
         flexWrap: "wrap",
         alignItems: "flex-start",
         gap: "var(--space-2)",
-        marginBottom: hasBody ? "var(--space-2)" : 0,
+        marginBottom: "var(--space-2)",
       }}
     >
       {attachments.map((attachment) =>

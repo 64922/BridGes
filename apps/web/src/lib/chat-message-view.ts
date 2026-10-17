@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { ChatMessage } from "@/lib/chat-message";
+import type { ChatMessage } from "./chat-message";
 
 /**
  * 呈现层视图模型：在历史/流式边界组装。

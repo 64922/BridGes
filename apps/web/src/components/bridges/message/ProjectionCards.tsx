@@ -21,7 +21,7 @@ import { VideoTaskCard } from "@/components/bridges/chat/VideoTaskCard";
 import { CAREER_INTENT_KEYWORDS, CAREER_INTENT_PREFIXES } from "@/lib/chat-tools";
 import type { ChatModuleId } from "@/lib/api";
 
-import type { ChatMessageView } from "./types";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 
 function isCareerMessage(message: ChatMessageView): boolean {
   return (

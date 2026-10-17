@@ -5,7 +5,7 @@ import { chatModuleIcon, chatModuleLabel } from "@/lib/chat-modules";
 
 import { MessageAttachments } from "./MessageAttachments";
 import { UserMessageBody } from "./MessageBody";
-import type { ChatMessageView } from "./types";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 
 export function UserMessage({
   message,
@@ -53,11 +53,6 @@ export function UserMessage({
           <MessageAttachments
             attachments={attachments}
             conversationId={conversationId}
-            hasBody={
-              message.body !== undefined
-                ? Boolean(message.body)
-                : Boolean(message.plainText)
-            }
           />
         )}
         <UserMessageBody message={message} />

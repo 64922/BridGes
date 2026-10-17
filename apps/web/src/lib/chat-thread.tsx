@@ -1,5 +1,5 @@
 import type { ChatMessage, ChatThinking } from "@/lib/chat-message";
-import type { ChatMessageView } from "@/components/bridges/message/types";
+import type { ChatMessageView } from "@/lib/chat-message-view";
 import type { ChatMessageProjection } from "@/lib/api";
 
 /**
@@ -43,6 +43,17 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
       id: latest.message_id,
       role: "assistant",
       plainText: latest.content,
+      body: (
+        <p
+          style={{
+            whiteSpace: "pre-wrap",
+            overflowWrap: "break-word",
+            lineHeight: "var(--line-height-relaxed)",
+          }}
+        >
+          {latest.content}
+        </p>
+      ),
       thinking: latest.thinking ? projectionThinking(latest) : undefined,
       // Issue 20：本轮分层检索轮次（含引用）；无检索作用域时为 null
       retrieval: latest.retrieval ?? null,
