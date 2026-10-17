@@ -32,7 +32,9 @@ def _hash_files(paths: list[Path]) -> str:
     digest = hashlib.sha256()
     for path in paths:
         if path.is_file():
-            digest.update(path.read_bytes())
+            # 按 LF 归一化后再摘要：checkout 的 core.autocrlf 会改变字节，
+            # 但不应改变运行锁所固定的代码内容。
+            digest.update(path.read_bytes().replace(b"\r\n", b"\n"))
     return digest.hexdigest()
 
 
