@@ -151,6 +151,33 @@ describe("chat run 投影与事件归并", () => {
     expect(withStage?.node).toBeNull();
   });
 
+  it("终态后迟到的节点与阶段事件不改变公开过程", () => {
+    const done = run({ status: "done" });
+    const lateNode = event({
+      kind: "node",
+      message_id: "a-1",
+      node: "persist_result",
+      status: "started",
+    });
+    const lateStage = event({
+      kind: "stage",
+      message_id: "a-1",
+      stage: "model_generation",
+      status: "active",
+    });
+    expect(applyRunProgress(done, lateNode)).toBe(done);
+    expect(applyRunProgress(done, lateStage)).toBe(done);
+
+    const otherMessage = event({
+      kind: "stage",
+      message_id: "other",
+      stage: "public_search",
+      status: "active",
+    });
+    const streaming = run();
+    expect(applyRunProgress(streaming, otherMessage)).toBe(streaming);
+  });
+
   it("错误事件保留已生成正文与公开投影，并换算真实耗时", () => {
     const current = run({
       content: "停止前正文",

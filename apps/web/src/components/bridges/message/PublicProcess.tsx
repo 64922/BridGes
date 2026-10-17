@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useId, useState } from "react";
 
-import type { ChatThinking } from "@/lib/chat-message";
-
+import { Icon } from "@/components/design-system/Icon";
 import type { ChatMessageView } from "@/lib/chat-message-view";
 
+import { ContextNoteDetails } from "./ContextNoteDetails";
+
 const STAGE_LABEL: Record<string, string> = {
-  queued: "排队中",
+  queued: "排队等待中",
+  local_retrieval: "检索本地资料",
   public_search: "搜索公开来源",
   model_generation: "生成回答中",
   quality_check: "核验引用与质量",
@@ -83,145 +85,189 @@ function ThinkingSpinner() {
 }
 
 /**
- * 可折叠思考摘要：生成中默认展开；完成后折叠为「已思考（用时 X 秒）」。
- * 内容只包含可公开的步骤、采用的证据、工具调用进度与质量检查结论，
- * 不展示原始思维链。耗时来自真实生成生命周期（duration_ms）。
+ * 单行公开进度：只使用已经发生的节点、阶段、耗时与公开摘要，
+ * 不模拟计时、不展示内部推理。生成中和历史回放都默认收起。
  */
-export function ThinkingSummary({
-  thinking,
-  streaming,
+export function publicProcessLabel(message: ChatMessageView): string {
+  if (message.status === "streaming") {
+    if (message.node) {
+      return `${NODE_LABEL[message.node.node] ?? "正在生成回答"}…`;
+    }
+    if (message.stage?.status === "active") {
+      return `${STAGE_LABEL[message.stage.stage] ?? "正在生成回答"}…`;
+    }
+    return "正在生成回答…";
+  }
+  if (message.status === "error") return "本轮生成失败";
+  if (message.status === "stopped") return "本轮已停止";
+  if (message.thinking?.seconds != null) {
+    return `回答已生成 · 用时 ${message.thinking.seconds} 秒`;
+  }
+  return "回答已生成";
+}
+
+function ProcessList({
+  title,
+  items,
+  numbered = false,
 }: {
-  thinking: ChatThinking;
-  streaming: boolean;
+  title: string;
+  items: string[];
+  numbered?: boolean;
 }) {
-  const [open, setOpen] = useState(streaming);
-
-  useEffect(() => {
-    if (!streaming) setOpen(false);
-  }, [streaming]);
-
-  const collapsedLabel =
-    thinking.seconds !== null
-      ? `已思考（用时 ${thinking.seconds} 秒）`
-      : streaming
-        ? "正在思考…"
-        : "已思考";
-
-  const sections: { label: string; items: string[]; numbered: boolean }[] = [];
-  if (thinking.steps.length > 0) {
-    sections.push({ label: "处理步骤", items: thinking.steps, numbered: true });
-  }
-  if (thinking.evidence.length > 0) {
-    sections.push({ label: "采用的证据", items: thinking.evidence, numbered: false });
-  }
-  if (thinking.tools.length > 0) {
-    sections.push({ label: "工具进度", items: thinking.tools, numbered: false });
-  }
-  if (thinking.quality.length > 0) {
-    sections.push({ label: "质量检查", items: thinking.quality, numbered: false });
-  }
-
+  if (items.length === 0) return null;
   return (
-    <details
-      open={open}
-      onToggle={(event) => setOpen((event.target as HTMLDetailsElement).open)}
-      data-testid="thinking-summary"
-      style={{
-        marginBottom: "var(--space-3)",
-        border: "1px solid var(--color-border)",
-        borderRadius: "var(--radius-md)",
-        padding: "var(--space-2) var(--space-3)",
-        backgroundColor: "var(--color-bg-secondary)",
-        transition: "border-color 150ms ease",
-      }}
-    >
-      <summary
-        role="button"
-        aria-expanded={open}
+    <div>
+      <p
         style={{
-          cursor: "pointer",
-          fontSize: "var(--text-sm)",
-          color: streaming ? "var(--color-accent-primary)" : "var(--color-text-secondary)",
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--space-2)",
-          minHeight: "var(--target-size)",
-          padding: "0 var(--space-1)",
+          margin: 0,
+          marginBottom: "var(--space-1)",
+          fontWeight: 600,
+          fontSize: "var(--text-xs)",
+          color: "var(--color-text-tertiary)",
         }}
       >
-        {streaming && <ThinkingSpinner />}
-        {collapsedLabel}
-      </summary>
-      <div
-        style={{
-          marginTop: "var(--space-1)",
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--space-2)",
-          fontSize: "var(--text-sm)",
-          color: "var(--color-text-secondary)",
-        }}
-      >
-        {sections.map((section) => (
-          <div key={section.label}>
-            <p
-              style={{
-                margin: 0,
-                marginBottom: "var(--space-1)",
-                fontWeight: 600,
-                color: "var(--color-text-secondary)",
-              }}
-            >
-              {section.label}
-            </p>
-            {section.numbered ? (
-              <ol
-                style={{
-                  margin: 0,
-                  paddingLeft: "var(--space-5)",
-                  listStyle: "decimal",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "var(--space-1)",
-                }}
-              >
-                {section.items.map((item, index) => (
-                  <li key={`${item}-${index}`}>{item}</li>
-                ))}
-              </ol>
-            ) : (
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: "var(--space-5)",
-                  listStyle: "disc",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "var(--space-1)",
-                }}
-              >
-                {section.items.map((item, index) => (
-                  <li key={`${item}-${index}`}>{item}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ))}
-      </div>
-    </details>
+        {title}
+      </p>
+      {numbered ? (
+        <ol
+          style={{
+            margin: 0,
+            paddingLeft: "var(--space-5)",
+            listStyle: "decimal",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-1)",
+            color: "var(--color-text-secondary)",
+          }}
+        >
+          {items.map((item, index) => (
+            <li key={`${item}-${index}`}>{item}</li>
+          ))}
+        </ol>
+      ) : (
+        <ul
+          style={{
+            margin: 0,
+            paddingLeft: "var(--space-5)",
+            listStyle: "disc",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-1)",
+            color: "var(--color-text-secondary)",
+          }}
+        >
+          {items.map((item, index) => (
+            <li key={`${item}-${index}`}>{item}</li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
-export function GenerationStageLine({ message }: { message: ChatMessageView }) {
-  if (message.status !== "streaming") return null;
-  const label = message.node
-    ? (NODE_LABEL[message.node.node] ?? "正在生成回答")
-    : message.stage
-      ? (STAGE_LABEL[message.stage.stage] ?? "正在生成回答")
-      : "正在生成回答";
+export function PublicProcess({
+  message,
+  conversationId,
+}: {
+  message: ChatMessageView;
+  conversationId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const generatedId = useId();
+  const detailsId = `public-process-details-${generatedId.replace(/:/g, "")}`;
+  const streaming = message.status === "streaming";
+  const thinking = message.thinking;
+  const hasThinkingDetails =
+    (thinking?.steps.length ?? 0) > 0 ||
+    (thinking?.evidence.length ?? 0) > 0 ||
+    (thinking?.tools.length ?? 0) > 0 ||
+    (thinking?.quality.length ?? 0) > 0;
+
   return (
-    <p role="status" style={{ fontSize: "var(--text-sm)", color: "var(--color-text-tertiary)" }}>
-      {label}…
-    </p>
+    <section
+      data-testid="public-process"
+      data-status={message.status ?? "done"}
+      aria-label="本轮公开过程"
+      style={{ marginBottom: "var(--space-3)" }}
+    >
+      <button
+        type="button"
+        data-testid="public-process-toggle"
+        aria-expanded={open}
+        aria-controls={detailsId}
+        onClick={() => setOpen((value) => !value)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+          width: "100%",
+          minHeight: "var(--target-size)",
+          padding: "0 var(--space-1)",
+          border: "none",
+          backgroundColor: "transparent",
+          color:
+            message.status === "streaming"
+              ? "var(--color-accent-primary)"
+              : "var(--color-text-secondary)",
+          font: "inherit",
+          fontSize: "var(--text-sm)",
+          fontWeight: 500,
+          textAlign: "left",
+          cursor: "pointer",
+        }}
+      >
+        {streaming && <ThinkingSpinner />}
+        <span data-testid="public-process-label">{publicProcessLabel(message)}</span>
+        <span
+          aria-hidden="true"
+          style={{
+            marginLeft: "auto",
+            display: "inline-flex",
+            transform: open ? "rotate(180deg)" : "none",
+            color: "var(--color-text-tertiary)",
+          }}
+        >
+          <Icon name="chevronDown" size={16} />
+        </span>
+      </button>
+
+      {open && (
+        <div
+          id={detailsId}
+          data-testid="public-process-details"
+          style={{
+            marginTop: "var(--space-2)",
+            paddingTop: "var(--space-2)",
+            borderTop: "1px solid var(--color-border)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-3)",
+            fontSize: "var(--text-sm)",
+            color: "var(--color-text-secondary)",
+          }}
+        >
+          {!hasThinkingDetails && (
+            <p style={{ margin: 0, color: "var(--color-text-tertiary)" }}>
+              本轮没有更多可公开的步骤或来源。
+            </p>
+          )}
+          {thinking && (
+            <>
+              <ProcessList title="公开步骤" items={thinking.steps} numbered />
+              <ProcessList title="来源说明" items={thinking.evidence} />
+              <ProcessList title="工具进度" items={thinking.tools} />
+              <ProcessList title="质量检查" items={thinking.quality} />
+            </>
+          )}
+          <ContextNoteDetails
+            note={message.contextNote}
+            streaming={streaming}
+            conversationId={conversationId}
+            messageId={message.id}
+          />
+        </div>
+      )}
+    </section>
   );
 }

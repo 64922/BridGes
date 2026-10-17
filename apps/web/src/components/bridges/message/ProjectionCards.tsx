@@ -2,7 +2,6 @@
 
 import { CareerPlanningProcessCard } from "@/components/bridges/CareerPlanningProcessCard";
 import { CareerPlanningResultCard } from "@/components/bridges/CareerPlanningResultCard";
-import { ContextNoteCard } from "@/components/bridges/ContextNoteCard";
 import { HumanizerProcessCard } from "@/components/bridges/HumanizerProcessCard";
 import { HumanizerResultCard } from "@/components/bridges/HumanizerResultCard";
 import { RetrievalCard } from "@/components/bridges/RetrievalCard";
@@ -56,18 +55,6 @@ export function SourceProjectionCards({
 
   return (
     <>
-      {/* 本次上下文说明（画像切片/材料类别/用途披露）。
-          生成中显示 loading 态；终态且无披露（历史消息/画像服务未挂载）
-          不渲染卡片，避免永久 loading。 */}
-      {(message.contextNote != null || streaming) && (
-        <ContextNoteCard
-          note={message.contextNote ?? null}
-          streaming={streaming}
-          conversationId={conversationId}
-          messageId={message.id}
-        />
-      )}
-
       {message.teaching && (
         <TeachingCard
           teaching={message.teaching}

@@ -72,15 +72,20 @@ test("上下文说明明确披露已授权用户背景，不提供画像手动�
   });
   await page.goto("/chat/" + conversationId);
 
-  await expect(page.getByTestId("context-note-card")).toContainText("本次上下文说明");
-  await expect(page.getByTestId("context-note-card")).toContainText("你已授权的用户背景信息");
-  await expect(page.getByTestId("context-note-card")).toHaveAttribute(
+  await expect(page.getByTestId("public-process")).toContainText("回答已生成");
+  await expect(page.getByTestId("public-process-details")).toHaveCount(0);
+  await expect(page.getByTestId("thinking-summary")).toHaveCount(0);
+  await expect(page.getByTestId("context-note-card")).toHaveCount(0);
+  await page.getByTestId("public-process-toggle").click();
+  const context = page.getByTestId("context-note-details");
+  await expect(context).toContainText("本次上下文说明");
+  await expect(context).toContainText("你已授权的用户背景信息");
+  await expect(context).toHaveAttribute(
     "aria-label",
     "本次上下文说明（已授权用户背景使用情况）",
   );
-  await page.getByTestId("context-note-card").locator('[role="button"]').click();
-  await expect(page.getByTestId("context-note-card")).toContainText("仅用于当前任务");
-  await expect(page.getByTestId("context-note-card")).toContainText("知识库材料");
+  await expect(context).toContainText("仅用于当前任务");
+  await expect(context).toContainText("知识库材料");
   await expect(page.getByTestId("web-search-card-error")).toContainText("本轮未联网核实");
   await expect(page.getByTestId("profile-usage")).toHaveCount(0);
   await expect(page.getByTestId("composer").getByRole("button", { name: /更多功能/ })).toHaveCount(0);
