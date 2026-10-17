@@ -85,7 +85,7 @@
 | `npm run typecheck` | 通过 |
 | `npm run test:unit` | 39 files / 333 tests passed |
 | `npm run lint` | 0 error；2 条既有 `no-img-element` warning（`search-page-client`、`ImageTaskCard`） |
-| `npm run build` | 编译成功并生成 23 个静态页面；worktree 因 node_modules junction 在 standalone trace 复制时报 EPERM symlink 警告（环境性，合并后在 main 复核） |
+| `npm run build` | 合并后在 main 复核：编译成功并生成 23 个静态页面，无 standalone trace 警告（worktree 的 EPERM symlink 仅由 node_modules junction 引起）；main 上 `typecheck`、`lint`、`test:unit` 同步复跑通过 |
 | `npx playwright test e2e/issue13-new-chat-composer.spec.ts e2e/issue30-dictation-reading.spec.ts` | 13 passed / 5 failed；同一命令在 main 基线上同为 13 passed / 5 failed，失败集合完全相同（见下） |
 
 新增测试：`Composer.send-contract.test.tsx`（Enter/Shift+Enter、中文输入法、空输入、双击、失败重发、同文本换附件、迟到草稿恢复、模式清除）与 `Composer.dictation.test.tsx`（不可用/首轮前禁用、开始/停止/回填不自动发送、网络失败原样重试、取消不提交）；既有 `Composer.test.tsx` 迁移到共享 fixture，继续覆盖附件、解析状态、模块与听写能力入口。本票为行为整理，无视觉改动，未新增截图；浏览器证据为上述 e2e 列表。
