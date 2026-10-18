@@ -151,6 +151,12 @@ export function useConversationRun({
       if (isChatStreamEventOf(event, "error")) {
         if (!current || current.messageId !== event.data.message_id) return;
         if (current.status !== "streaming") return;
+        if (event.data.error.code === "stopped") {
+          commitRun({ ...current, status: "stopped" });
+          setAnnouncement("已停止生成");
+          void load(true);
+          return;
+        }
         commitRun(activeRunFromError(current, event.data, kind));
         setAnnouncement(`生成失败：${event.data.error.message}`);
         void load(true);
