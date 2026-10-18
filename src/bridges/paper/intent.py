@@ -356,6 +356,7 @@ def _concepts(value: Any, allowed_phrases: Sequence[str]) -> list[PaperResearchC
         seen.add(key)
         output.append(
             PaperResearchConcept(
+                concept_id=f"c{len(output) + 1}",
                 concept=concept,
                 source_phrase=source_phrase,
                 kind=kind,
