@@ -55,6 +55,18 @@ export function AssistantMessage({
           }}
         >
           BridGes
+          {message.attemptNumber != null && message.attemptNumber > 1 && (
+            <span
+              data-testid="assistant-attempt-number"
+              style={{
+                marginLeft: "var(--space-2)",
+                fontWeight: 400,
+                color: "var(--color-text-tertiary)",
+              }}
+            >
+              第 {message.attemptNumber} 次尝试
+            </span>
+          )}
         </p>
 
         {message.previousAttempts && message.previousAttempts.length > 0 && (

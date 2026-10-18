@@ -233,12 +233,10 @@ test("历史回放默认收起，键盘展开后只显示本轮公开过程与�
     "回答已生成 · 用时 2 秒"
   );
   await expect(page.getByText("此问题的前 1 次尝试")).toBeVisible();
-  await expect(page.getByTestId("turn-result")).toContainText(
+  await expect(page.getByTestId("delivery-status")).toContainText(
     "本轮先交付有效部分"
   );
-  await expect(page.getByTestId("turn-result-blocked")).toContainText(
-    "接口失败"
-  );
+  await expect(page.getByTestId("delivery-blocked")).toContainText("接口失败");
 
   const toggle = process.getByTestId("public-process-toggle");
   await toggle.focus();

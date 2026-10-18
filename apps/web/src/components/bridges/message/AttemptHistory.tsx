@@ -9,6 +9,7 @@ export function AttemptHistory({
 }) {
   return (
     <details
+      data-testid="attempt-history"
       style={{
         marginBottom: "var(--space-3)",
         border: "1px solid var(--color-border)",

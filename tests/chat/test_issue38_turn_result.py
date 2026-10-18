@@ -194,6 +194,7 @@ def test_derive_unrecoverable_failures_are_blocked() -> None:
     )
     assert result.outcome is TurnOutcome.BLOCKED
     assert result.delivered == []
+    assert result.recovery is None
     assert [block.detail for block in result.blocked] == [
         render_state_copy("chat.result.blocked_detail")
     ]
@@ -252,6 +253,29 @@ def test_derive_error_recovery_uses_real_cooldown_only() -> None:
     # 没有真实时刻不编造等待时间。
     no_time = recovery_for_error("web_search_rate_limit")
     assert no_time is not None and no_time.available_after is None
+
+
+def test_derive_non_retryable_error_has_no_recovery_action() -> None:
+    result = derive_turn_result(
+        status=ChatMessageStatus.ERROR,
+        error_code="client_error_400",
+    )
+    assert result.outcome is TurnOutcome.FAILED
+    assert result.recovery is None
+
+
+def test_derive_partial_keeps_recovery_explanation_but_disables_click() -> None:
+    cooldown = _moment() + timedelta(minutes=30)
+    result = derive_turn_result(
+        status=ChatMessageStatus.ERROR,
+        error_code="web_search_rate_limit",
+        web_search={"cooldown_until": cooldown.isoformat()},
+        projections={"paper_search": {"status": "success"}},
+    )
+    assert result.outcome is TurnOutcome.PARTIAL
+    assert result.recovery is not None
+    assert result.recovery.retryable is False
+    assert result.recovery.available_after == cooldown
 
 
 def test_derive_stopped_is_cancelled_without_recovery() -> None:

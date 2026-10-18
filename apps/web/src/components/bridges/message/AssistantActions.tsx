@@ -6,6 +6,7 @@ import { Icon, type IconName } from "@/components/design-system/Icon";
 import { copyTextToClipboard } from "@/lib/clipboard";
 
 import type { ChatMessageView } from "@/lib/chat-message-view";
+import { hasRealRetryCommand } from "./DeliveryStatus";
 
 const actionButtonStyle: React.CSSProperties = {
   display: "inline-flex",
@@ -69,6 +70,23 @@ export function AssistantActions({
     window.setTimeout(() => setCopyStatus("idle"), 2000);
   };
 
+  // 已完成回答提供“重新生成”。失败/停止的恢复按钮由就近交付说明按真实
+  // 可重试性呈现，避免工具栏与说明同时给出两个不同承诺。仅旧模板消息
+  // （没有回合结果投影）保留既有重试入口。
+  const streaming = message.status === "streaming";
+  const stopped = message.status === "stopped";
+  const legacyFailure = message.status === "error" && message.turnResult == null;
+  const outcome = message.turnResult?.outcome;
+  const retryableDone =
+    !streaming &&
+    message.status !== "error" &&
+    !stopped &&
+    (outcome == null || outcome === "complete" || outcome === "partial");
+  const showRetry =
+    onRetry != null &&
+    (retryableDone || legacyFailure) &&
+    hasRealRetryCommand(message, message.turnResult ?? null);
+
   return (
     <div
       role="toolbar"
@@ -99,16 +117,13 @@ export function AssistantActions({
           {copyStatus === "success" ? "已复制" : "复制失败，请检查浏览器权限"}
         </span>
       )}
-      {/* 人味化写路径退役，历史人味化消息不再提供重试。 */}
-      {message.humanizer == null &&
-        message.humanizerProcess == null &&
-        message.skill == null && (
-          <MessageAction
-            icon="retry"
-            label="重试"
-            onClick={() => onRetry?.(message.id)}
-          />
-        )}
+      {showRetry && (
+        <MessageAction
+          icon="retry"
+          label={legacyFailure ? "重试" : "重新生成"}
+          onClick={() => onRetry?.(message.id)}
+        />
+      )}
       <MessageAction
         icon="feedbackGood"
         label="回答有帮助"

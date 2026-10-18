@@ -347,9 +347,9 @@ for (const viewport of VIEWPORTS) {
       const studyTurn = await sendFirstTurn(page);
       expect(studyTurn.mode).toBe("study");
 
-      await expect(page.getByTestId("turn-result").last()).toHaveAttribute(
-        "data-outcome",
-        /complete|partial/,
+      await expect(page.getByTestId("public-process").last()).toHaveAttribute(
+        "data-status",
+        "done",
         { timeout: 90_000 }
       );
       const progress = page.getByRole("region", { name: "局部学习进展" });

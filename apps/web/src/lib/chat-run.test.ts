@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { ChatStreamEvent, ChatMessageProjection } from "@/lib/api";
+import type {
+  ChatStreamEvent,
+  ChatMessageProjection,
+  TurnResultProjection,
+} from "@/lib/api";
 
 import {
   activeRunFromAssistant,
@@ -58,6 +62,30 @@ function message(
   };
 }
 
+function projection(
+  overrides: Partial<TurnResultProjection> = {}
+): TurnResultProjection {
+  return {
+    version: "turn-result-v1",
+    outcome: "running",
+    outcome_label: "正在生成。",
+    trust: null,
+    trust_label: null,
+    capability_list: [],
+    actual_module_id: null,
+    requested_module_id: null,
+    route_source: "ordinary_chat",
+    delivered: [],
+    blocked: [],
+    gaps: [],
+    recovery: null,
+    wait_reason: null,
+    task_id: null,
+    task_version: null,
+    ...overrides,
+  };
+}
+
 function run(overrides: Partial<ActiveRun> = {}): ActiveRun {
   return {
     messageId: "a-1",
@@ -89,6 +117,7 @@ describe("chat run 投影与事件归并", () => {
       "send"
     );
     expect(partial.content).toBe("已接收的部分正文");
+    expect(partial.attemptNumber).toBe(1);
     expect(partial.stage).toBeNull();
     expect(partial.node).toBeNull();
 
@@ -267,5 +296,52 @@ describe("chat run 投影与事件归并", () => {
     expect(failed.content).toBe("停止前正文");
     expect(failed.errorText).toBe("生成中断。");
     expect(failed.turnResult?.outcome).toBe("complete");
+  });
+
+  it("重复或重放的结果快照覆盖同一投影，不追加正文", () => {
+    const first = event({
+      kind: "result",
+      message_id: "a-1",
+      result: projection({
+        outcome: "partial",
+        delivered: [
+          {
+            module_id: "paper",
+            label: "论文",
+            state: "success",
+            trust: "qualified",
+            detail: "",
+          },
+        ],
+      }),
+    });
+    const withFirst = applyRunProgress(run(), first);
+    expect(withFirst?.turnResult?.delivered).toHaveLength(1);
+
+    const replay = event({
+      kind: "result",
+      message_id: "a-1",
+      result: projection({ outcome: "partial" }),
+    });
+    const withReplay = applyRunProgress(withFirst, replay);
+    expect(withReplay?.turnResult?.outcome).toBe("partial");
+    expect(withReplay?.turnResult?.delivered).toEqual([]);
+    expect(withReplay?.content).toBe(withFirst?.content);
+  });
+
+  it("停止后迟到的正文与结果快照不恢复生成，也不改写停止正文", () => {
+    const stopped = run({ status: "stopped", content: "停止前正文" });
+    const lateDelta = event({
+      kind: "delta",
+      message_id: "a-1",
+      delta: "迟到正文",
+    });
+    const lateResult = event({
+      kind: "result",
+      message_id: "a-1",
+      result: projection({ outcome: "complete", outcome_label: "本轮已完成。" }),
+    });
+    expect(applyRunProgress(stopped, lateDelta)).toBe(stopped);
+    expect(applyRunProgress(stopped, lateResult)).toBe(stopped);
   });
 });

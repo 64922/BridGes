@@ -207,7 +207,7 @@ for (const viewport of VIEWPORTS) {
               blocked: [
                 { module_id: "github", label: "GitHub 项目推荐", state: "error", trust: "evidence_bound", detail: "GitHub 接口限流" },
               ],
-              gaps: ["GitHub 接口限流"],
+              gaps: ["GitHub 接口限流", "其余来源等待上游恢复"],
             }),
           }
         ),
@@ -234,43 +234,43 @@ for (const viewport of VIEWPORTS) {
 
       await page.goto(`/chat/${CONVERSATION_ID}`);
 
-      const cards = page.getByTestId("turn-result");
-      await expect(cards).toHaveCount(2);
+      const notes = page.getByTestId("delivery-status");
+      await expect(notes).toHaveCount(2);
 
       const partial = page.locator('[data-outcome="partial"]');
       await expect(partial).toBeVisible();
-      await expect(partial.getByTestId("turn-result-outcome")).toContainText(
+      await expect(partial.getByTestId("delivery-outcome")).toContainText(
         "本轮先交付有效部分"
       );
-      await expect(partial.getByTestId("turn-result-trust")).toContainText(
+      await expect(partial.getByTestId("delivery-trust")).toContainText(
         "结果已附证据"
       );
-      // 请求模块提示与实际执行分开；多能力时如实列出。
-      await expect(partial.getByTestId("turn-result-capability")).toContainText(
-        "实际执行：职业规划"
+      // 多能力运行如实列出实际能力，不复制完整结果投影。
+      await expect(partial.getByTestId("delivery-capability")).toContainText(
+        "实际能力：职业规划、学习资料推荐、GitHub 项目推荐"
       );
-      await expect(partial.getByTestId("turn-result-delivered")).toContainText(
+      await expect(partial.getByTestId("delivery-delivered")).toContainText(
         "职业规划（已完成）"
       );
-      await expect(partial.getByTestId("turn-result-delivered")).toContainText(
+      await expect(partial.getByTestId("delivery-delivered")).toContainText(
         "学习资料（仅有链接）"
       );
-      await expect(partial.getByTestId("turn-result-blocked")).toContainText(
+      await expect(partial.getByTestId("delivery-blocked")).toContainText(
         "GitHub 项目推荐（失败）：GitHub 接口限流"
       );
-      await expect(partial.getByTestId("turn-result-gaps")).toContainText(
-        "GitHub 接口限流"
+      await expect(partial.getByTestId("delivery-gaps")).toContainText(
+        "其余来源等待上游恢复"
       );
       // 部分交付不伪造可点击恢复。
-      await expect(partial.getByTestId("turn-result-retry")).toHaveCount(0);
+      await expect(partial.getByTestId("delivery-retry")).toHaveCount(0);
 
       // 可重试失败：真实恢复文案 + 用户时区可用时间 + 键盘可达的继续入口。
       const failed = page.locator('[data-outcome="failed"]');
       await expect(failed).toBeVisible();
-      const recovery = failed.getByTestId("turn-result-recovery");
+      const recovery = failed.getByTestId("delivery-recovery");
       await expect(recovery).toContainText("请稍后重试。");
       await expect(recovery).toContainText("可在此时间后重试：");
-      const retryButton = failed.getByTestId("turn-result-retry");
+      const retryButton = failed.getByTestId("delivery-retry");
       await expect(retryButton).toBeVisible();
       await retryButton.focus();
       await expect(retryButton).toBeFocused();
@@ -344,7 +344,7 @@ for (const viewport of VIEWPORTS) {
       await page.reload();
       const card = page.locator('[data-outcome="cancelled"]');
       await expect(card).toBeVisible({ timeout: 15_000 });
-      await expect(card.getByTestId("turn-result-outcome")).toContainText(
+      await expect(card.getByTestId("delivery-outcome")).toContainText(
         "不会自动继续"
       );
       await expect(thread).toContainText("第一段：甲 8");

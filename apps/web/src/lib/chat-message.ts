@@ -51,6 +51,8 @@ export interface ChatPreviousAttempt {
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
+  /** 该轮助手尝试序号（从 1 开始）；用户消息或缺省时为空 */
+  attemptNumber?: number;
   /** 消息的纯文本（用于复制与朗读） */
   plainText: string;
   thinking?: ChatThinking;

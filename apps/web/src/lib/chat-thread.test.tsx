@@ -128,11 +128,22 @@ describe("buildThreadMessages（工单 38）", () => {
 
   it("同轮历史失败尝试折叠且不进入结果投影", () => {
     const items = buildThreadMessages([
-      message({ message_id: "a-1", status: "error", error_message: "旧失败" }),
-      message({ message_id: "a-2", status: "done", content: "新回答" }),
+      message({
+        message_id: "a-1",
+        attempt_number: 1,
+        status: "error",
+        error_message: "旧失败",
+      }),
+      message({
+        message_id: "a-2",
+        attempt_number: 2,
+        status: "done",
+        content: "新回答",
+      }),
     ]);
     expect(items).toHaveLength(1);
     expect(items[0].id).toBe("a-2");
+    expect(items[0].attemptNumber).toBe(2);
     expect(items[0].previousAttempts).toEqual([
       { attemptNumber: 1, status: "error", errorMessage: "旧失败" },
     ]);
