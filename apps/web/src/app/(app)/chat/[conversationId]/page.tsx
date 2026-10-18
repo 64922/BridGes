@@ -10,9 +10,14 @@ import { AttachmentViewerPanel } from "@/components/bridges/chat/AttachmentViewe
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { CitationViewerPanel } from "@/components/bridges/chat/CitationViewerPanel";
 import { Composer } from "@/components/bridges/Composer";
+import { PaperDetailsPanel } from "@/components/bridges/chat/PaperDetailsPanel";
 import { StudyProgress } from "@/components/bridges/chat/StudyProgress";
 import type { CapabilityAvailability } from "@/components/bridges/chat/capability-availability";
-import type { ChatAttachmentProjection, CitationProjection } from "@/lib/api";
+import type {
+  ChatAttachmentProjection,
+  CitationProjection,
+  PaperSearchProjection,
+} from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { buildThreadMessages } from "@/lib/chat-thread";
@@ -45,6 +50,13 @@ interface AttachmentSelection {
   conversationId: string;
   messageId: string;
   attachment: ChatAttachmentProjection;
+}
+
+interface PaperSelection {
+  conversationId: string;
+  messageId: string;
+  search: PaperSearchProjection;
+  paperId: string | null;
 }
 
 /**
@@ -93,6 +105,8 @@ export default function ChatConversationPage() {
   const citationTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [attachmentSelection, setAttachmentSelection] = useState<AttachmentSelection | null>(null);
   const attachmentTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [paperSelection, setPaperSelection] = useState<PaperSelection | null>(null);
+  const paperTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     resumeModuleCheckedRef.current = null;
@@ -103,8 +117,10 @@ export default function ChatConversationPage() {
   useEffect(() => {
     citationTriggerRef.current = null;
     attachmentTriggerRef.current = null;
+    paperTriggerRef.current = null;
     setCitationSelection(null);
     setAttachmentSelection(null);
+    setPaperSelection(null);
   }, [conversationId]);
 
   const restorePanelTrigger = useCallback((trigger: HTMLButtonElement | null) => {
@@ -126,7 +142,9 @@ export default function ChatConversationPage() {
     (messageId: string, citation: CitationProjection, trigger: HTMLButtonElement) => {
       citationTriggerRef.current = trigger;
       attachmentTriggerRef.current = null;
+      paperTriggerRef.current = null;
       setAttachmentSelection(null);
+      setPaperSelection(null);
       setCitationSelection({ conversationId, messageId, citation });
     },
     [conversationId]
@@ -143,7 +161,9 @@ export default function ChatConversationPage() {
     (messageId: string, attachment: ChatAttachmentProjection, trigger: HTMLButtonElement) => {
       attachmentTriggerRef.current = trigger;
       citationTriggerRef.current = null;
+      paperTriggerRef.current = null;
       setCitationSelection(null);
+      setPaperSelection(null);
       setAttachmentSelection({ conversationId, messageId, attachment });
     },
     [conversationId]
@@ -153,6 +173,29 @@ export default function ChatConversationPage() {
     setAttachmentSelection(null);
     const trigger = attachmentTriggerRef.current;
     attachmentTriggerRef.current = null;
+    restorePanelTrigger(trigger);
+  }, [restorePanelTrigger]);
+
+  const openPaper = useCallback(
+    (messageId: string, search: PaperSearchProjection, trigger: HTMLButtonElement) => {
+      paperTriggerRef.current = trigger;
+      citationTriggerRef.current = null;
+      attachmentTriggerRef.current = null;
+      setCitationSelection(null);
+      setAttachmentSelection(null);
+      setPaperSelection({ conversationId, messageId, search, paperId: null });
+    },
+    [conversationId]
+  );
+
+  const selectPaper = useCallback((paperId: string | null) => {
+    setPaperSelection((current) => (current ? { ...current, paperId } : current));
+  }, []);
+
+  const closePaper = useCallback(() => {
+    setPaperSelection(null);
+    const trigger = paperTriggerRef.current;
+    paperTriggerRef.current = null;
     restorePanelTrigger(trigger);
   }, [restorePanelTrigger]);
 
@@ -257,6 +300,8 @@ export default function ChatConversationPage() {
     citationSelection?.conversationId === conversationId ? citationSelection : null;
   const activeAttachmentSelection =
     attachmentSelection?.conversationId === conversationId ? attachmentSelection : null;
+  const activePaperSelection =
+    paperSelection?.conversationId === conversationId ? paperSelection : null;
 
   return (
     <AppShell>
@@ -320,6 +365,7 @@ export default function ChatConversationPage() {
                 conversationId={conversationId}
                 onRefreshMessages={() => void load(true)}
                 onOpenCitation={openCitation}
+                onOpenPaper={openPaper}
                 onOpenAttachment={openAttachment}
                 announcement={announcement}
               />
@@ -347,6 +393,11 @@ export default function ChatConversationPage() {
           conversationId={conversationId}
           selection={activeCitationSelection}
           onClose={closeCitation}
+        />
+        <PaperDetailsPanel
+          selection={activePaperSelection}
+          onClose={closePaper}
+          onSelectPaper={selectPaper}
         />
         <AttachmentViewerPanel
           conversationId={conversationId}
