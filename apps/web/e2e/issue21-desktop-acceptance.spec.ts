@@ -60,7 +60,7 @@ const MODULES = PLUS_MENU.slice(1);
 
 /** 各模块结果卡的 testid 前缀（状态后缀由真实结果决定）。 */
 const MODULE_CARD_PREFIX: Record<string, RegExp> = {
-  论文搜索: /^(paper-search-card|arxiv-search-card)/,
+  论文搜索: /^(paper-answer|arxiv-search-card)/,
   校园通勤: /^commute-answer/,
   贴吧信息搜集: /^tieba-research-card/,
 };

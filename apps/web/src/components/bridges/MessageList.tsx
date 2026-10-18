@@ -5,6 +5,7 @@ import type {
   ChatModuleId,
   CitationProjection,
   CommuteRouteProjection,
+  PaperSearchProjection,
 } from "@/lib/api";
 
 import { AssistantMessage } from "./message/AssistantMessage";
@@ -26,6 +27,12 @@ interface MessageListProps {
   onOpenCitation?: (
     messageId: string,
     citation: CitationProjection,
+    trigger: HTMLButtonElement
+  ) => void;
+  /** 打开该轮论文的右侧资料面板 */
+  onOpenPaper?: (
+    messageId: string,
+    search: PaperSearchProjection,
     trigger: HTMLButtonElement
   ) => void;
   /** 打开消息附件的右侧预览面板 */
@@ -56,6 +63,7 @@ export function MessageList({
   onUseModuleSuggestion,
   onRefreshMessages,
   onOpenCitation,
+  onOpenPaper,
   onOpenAttachment,
   onOpenCommuteDetails,
 }: MessageListProps) {
@@ -84,6 +92,7 @@ export function MessageList({
               onUseModuleSuggestion={onUseModuleSuggestion}
               onRefreshMessages={onRefreshMessages}
               onOpenCitation={onOpenCitation}
+              onOpenPaper={onOpenPaper}
               onOpenCommuteDetails={onOpenCommuteDetails}
             />
           )}

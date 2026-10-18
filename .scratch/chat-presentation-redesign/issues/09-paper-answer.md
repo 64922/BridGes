@@ -4,7 +4,7 @@
 
 **Blocked by:** 07 — 内联呈现交付状态、失败与真实恢复；08 — 从真实引用打开右侧资料并继续对话
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 > 已于 2026-10-17 经用户确认发布。仅在本票所有阻塞项完成验收后开始；无阻塞票可立即领取。设计与原型已批准，无需重新决定视觉方向。
 
@@ -20,14 +20,14 @@
 
 ## 验收标准
 
-- [ ] 按用户问题组织推荐，不再显示独立“论文搜索结果卡”或与正文重复的推荐清单。
-- [ ] 论文身份、年份、来源、链接与读取范围来自同轮真实投影。
-- [ ] 仅摘要时明确说明，不能把摘要预览称为全文已读；不可得全文有准确反馈。
-- [ ] 澄清、检索中、无结果、来源受限、部分成功、失败、停止各有可见状态与合法操作。
-- [ ] 用户选择某篇查看详情后继续追问，面板维持该论文，不被下一轮候选列表替换。
-- [ ] 条件来自用户表达还是推断的现有区分保留，筛选剔除依据能按需找到。
-- [ ] 现有引用图或等价关系信息仍可按需查看，不因默认隐藏卡片被删除。
-- [ ] 流式交付与历史重开保持推荐顺序、引用和证据限制一致。
+- [x] 按用户问题组织推荐，不再显示独立“论文搜索结果卡”或与正文重复的推荐清单。
+- [x] 论文身份、年份、来源、链接与读取范围来自同轮真实投影。
+- [x] 仅摘要时明确说明，不能把摘要预览称为全文已读；不可得全文有准确反馈。
+- [x] 澄清、检索中、无结果、来源受限、部分成功、失败、停止各有可见状态与合法操作。
+- [x] 用户选择某篇查看详情后继续追问，面板维持该论文，不被下一轮候选列表替换。
+- [x] 条件来自用户表达还是推断的现有区分保留，筛选剔除依据能按需找到。
+- [x] 现有引用图或等价关系信息仍可按需查看，不因默认隐藏卡片被删除。
+- [x] 流式交付与历史重开保持推荐顺序、引用和证据限制一致。
 
 ## 验证方式
 
@@ -51,7 +51,82 @@
 
 交接记录包含实际变更、验证命令和结果、必要截图／服务证据、遗留限制与回退方式；只有行为验收通过才解除后续票的阻塞。
 
+## 实现交接
+
+**分支/工作树：** `09-paper-answer` / `D:\BridGes-worktrees\09-paper-answer`；**基点：** main `b376e338`（已包含 07、08 的验收合并）。
+
+### 实际变更
+
+- 删除 `PaperSearchCard` 及其测试，并从 `ProjectionCards` 移除，不再渲染独立论文搜索结果卡。
+- 论文推荐继续使用服务端生成的连续正文；新增正文下方轻量入口 `PaperDetailsEntry`，不在正文重复渲染第二套推荐清单。
+- 新增右侧 `PaperDetailsPanel`、`PaperDetailsSections` 与样式：按需展示本轮条件、候选、查询记录、引用图和单篇详情。
+- 页面持有 `{ conversationId, messageId, search, paperId }` 快照；继续追问不替换已选论文，切换会话关闭面板，Esc/关闭按钮归还触发点焦点。
+- `AssistantMessage` 增加 `paper-answer` / `data-paper-status` 容器，覆盖澄清、检索中、空结果、来源受限、部分成功、失败与停止状态。
+- 检索中不提供基于不完整快照的资料入口；沿用 ticket 06 的单行公开进度和输入区停止操作。
+- `issue21-desktop-acceptance.spec.ts` 的论文测试标识更新为 `paper-answer`；新增 `e2e/issue09-paper-answer.spec.ts`。
+- 未修改后端协议、生成类型、数据库 schema 或检索策略。
+
+### 原论文卡信息去向核对表
+
+| 原论文卡信息 | 现在位置 |
+| --- | --- |
+| 状态标题、失败重试、停止 | 正文状态 + `DeliveryStatus` + 输入区；检索中由 ticket 06 公开进度与停止承接 |
+| 条件来源与原话 | 右侧“本轮检索”→“来自你原话的筛选条件” |
+| 检索查询与调用记录 | 右侧“本次外部调用记录” |
+| 推荐论文、顺序、理由、中文摘要、读取范围、链接 | 正文连续推荐；右侧“单篇资料”仅提供入口，展开后显示详情 |
+| 候选池、相关性、发现路径、候选摘要 | 右侧“完整候选” |
+| 引用图或引用关系 | 右侧“引用关系” |
+| 证据边界、部分来源失败、目标篇数不足 | 正文 `paper-source-notice` 与右侧“证据边界” |
+| 未核实项、来源原始摘要 | 右侧单篇详情 |
+| 澄清、空结果、失败、停止的合法操作 | 正文状态 + 输入区模块标签 / `DeliveryStatus` |
+
+### 验证命令与结果
+
+在 conda `agent` 环境、`D:\BridGes-worktrees\09-paper-answer\apps\web` 执行：
+
+```powershell
+npm run typecheck
+npm run test:unit
+npm run lint
+npm run build
+$env:CI='1'
+$env:BRIDGES_PYTHON='C:\Users\33755\anaconda3\envs\agent\python.exe'
+npx playwright test -c playwright.issue09.config.ts e2e/issue09-paper-answer.spec.ts
+```
+
+- `npm run typecheck`：通过。
+- `npm run test:unit`：49 个测试文件、394 项测试全部通过。
+- `npm run lint`：通过；仅保留仓库原有两处 `<img>` 警告。
+- `npm run build`：`Compiled successfully`，23/23 静态页生成，路由表完整。worktree 的 `node_modules` 为 junction，Next standalone trace 复制出现 `EPERM: symlink` 告警；该告警由 worktree 依赖目录形式导致，不是 TypeScript/React 编译失败。
+- E2E：4 项全部通过（成功/摘要读取、零结果、失败恢复、澄清与停止）。使用临时端口 3109/8109 避开其他任务占用的默认端口；API 为明确标注的受控替身，不是真实供应商检索。
+- Python：`C:\Users\33755\anaconda3\envs\agent\python.exe -m pytest tests/paper -q`，146 项通过。本票未改 Python，未另跑全量 pytest。
+- `git diff --check`：通过。
+
+### 截图
+
+位于 `evidence/09/`：
+
+- `paper-success-body.png`：正文推荐顺序与证据边界。
+- `paper-success-overview.png`：右侧条件、筛选原话、单篇资料入口、查询记录与引用关系。
+- `paper-success-detail.png`：摘要读取范围、不可得全文反馈、推荐理由与原始摘要。
+- `paper-empty.png`：零结果保留查询记录，不伪造推荐。
+- `paper-error.png`：真实失败提示与恢复入口。
+
+### 外部依赖与遗留限制
+
+- 通过 `127.0.0.1:7890` 检查 arXiv、OpenAlex、Crossref 均未成功（HTTP 502 / TLS EOF），三家真实供应商当前可得性未验证，未计入通过项；E2E 只代表受控替身行为。
+- 检索中不打开资料面板，避免展示流式过程中的不完整快照；检索中状态由 ticket 06 的公开进度与停止操作承接。
+- standalone trace 告警只影响 worktree 下的 standalone 产物复制；正式构建应在非 junction 的依赖目录执行。
+- 最终整合验收仍由 ticket 16 执行，本票不替代其全链路检查。
+
+### 回退方式
+
+合并前可直接放弃 `09-paper-answer` 分支；合并后使用 `git revert -m 1 <merge-commit>` 恢复 `PaperSearchCard` 与旧接线。无数据库迁移、无协议兼容层、无双写。
+
+行为验收通过，可解除本票对后续票的阻塞。
+
 ## Comments
 
 - 2026-10-17：依据已验收原型、设计原则及当前代码只读核对形成草案；未开始业务开发。
 - 2026-10-17：用户确认「发布」，按已批准拆分转为 ready-for-agent；未开始业务开发。
+- 2026-10-18：实现与受影响验证完成，交接记录、截图与信息去向表已补齐；转 ready-for-human。

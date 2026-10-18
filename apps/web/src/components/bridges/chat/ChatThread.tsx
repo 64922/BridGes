@@ -9,6 +9,7 @@ import type {
   ChatModuleId,
   CitationProjection,
   CommuteRouteProjection,
+  PaperSearchProjection,
 } from "@/lib/api";
 
 import styles from "./chat.module.css";
@@ -28,6 +29,12 @@ interface ChatThreadProps {
   onOpenCitation?: (
     messageId: string,
     citation: CitationProjection,
+    trigger: HTMLButtonElement
+  ) => void;
+  /** 打开该轮论文的右侧资料面板 */
+  onOpenPaper?: (
+    messageId: string,
+    search: PaperSearchProjection,
     trigger: HTMLButtonElement
   ) => void;
   /** 打开消息附件的右侧预览面板 */
@@ -62,6 +69,7 @@ export function ChatThread({
   conversationId,
   onRefreshMessages,
   onOpenCitation,
+  onOpenPaper,
   onOpenAttachment,
   onOpenCommuteDetails,
   announcement,
@@ -102,6 +110,7 @@ export function ChatThread({
           conversationId={conversationId}
           onRefreshMessages={onRefreshMessages}
           onOpenCitation={onOpenCitation}
+          onOpenPaper={onOpenPaper}
           onOpenAttachment={onOpenAttachment}
           onOpenCommuteDetails={onOpenCommuteDetails}
         />

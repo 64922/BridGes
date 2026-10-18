@@ -1,12 +1,14 @@
 "use client";
 
 import { BrandLogo } from "@/components/bridges/BrandLogo";
-import { RetrievalCard } from "@/components/bridges/RetrievalCard";
 import { CommuteAnswer } from "@/components/bridges/chat/CommuteAnswer";
+import { PaperDetailsEntry } from "@/components/bridges/chat/PaperDetailsEntry";
+import { RetrievalCard } from "@/components/bridges/RetrievalCard";
 import type {
   ChatModuleId,
   CitationProjection,
   CommuteRouteProjection,
+  PaperSearchProjection,
 } from "@/lib/api";
 
 import { AssistantActions } from "./AssistantActions";
@@ -27,6 +29,7 @@ export function AssistantMessage({
   onUseModuleSuggestion,
   onRefreshMessages,
   onOpenCitation,
+  onOpenPaper,
   onOpenCommuteDetails,
 }: {
   message: ChatMessageView;
@@ -42,12 +45,18 @@ export function AssistantMessage({
     citation: CitationProjection,
     trigger: HTMLButtonElement
   ) => void;
+  onOpenPaper?: (
+    messageId: string,
+    search: PaperSearchProjection,
+    trigger: HTMLButtonElement
+  ) => void;
   onOpenCommuteDetails?: (
     messageId: string,
     route: CommuteRouteProjection,
     trigger: HTMLButtonElement
   ) => void;
 }) {
+  const paperSearch = message.paperSearch ?? null;
   return (
     <article
       data-testid="assistant-message"
@@ -104,6 +113,15 @@ export function AssistantMessage({
           onRetry={onRetry}
           onOpenDetails={onOpenCommuteDetails}
         />
+
+        {paperSearch && (
+          <div data-testid="paper-answer" data-paper-status={paperSearch.status}>
+            <PaperDetailsEntry
+              search={paperSearch}
+              onOpen={(trigger) => onOpenPaper?.(message.id, paperSearch, trigger)}
+            />
+          </div>
+        )}
 
         <RetrievalCard
           retrieval={message.retrieval ?? null}
