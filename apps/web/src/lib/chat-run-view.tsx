@@ -46,6 +46,7 @@ export function composeConversationMessages(
     careerProcess: activeRun.careerProcess,
     image: activeRun.imageProcess?.task ?? undefined,
     video: activeRun.videoProcess?.task ?? undefined,
+    tiebaResearch: activeRun.tiebaResearch ?? null,
     status: isError ? "error" : isStopped ? "stopped" : isStreaming ? "streaming" : undefined,
     errorText: isError ? activeRun.errorText : undefined,
   });

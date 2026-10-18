@@ -232,7 +232,9 @@ describe("消息呈现边界（工单 02）", () => {
                 },
               ],
             }),
-            tiebaResearch: tiebaResearch(),
+            tiebaResearch: tiebaResearch({
+              summary: "贴吧已读楼层围绕宿舍条件形成总结。",
+            }),
             learningResources: learningResources(),
             commuteRoute: commuteRoute(),
             careerPlan: careerPlan(),
@@ -260,14 +262,111 @@ describe("消息呈现边界（工单 02）", () => {
     );
     expect(screen.getByTestId("paper-details-entry")).toBeTruthy();
     expect(screen.queryByTestId("paper-search-card-success")).toBeNull();
-    expect(screen.getByTestId("tieba-research-card-success")).toBeTruthy();
+    expect(screen.getByTestId("tieba-composite-evidence")).toBeTruthy();
+    expect(screen.queryByTestId("tieba-research-card-success")).toBeNull();
     expect(screen.getByTestId("resources-card-success")).toBeTruthy();
     expect(screen.getByTestId("commute-answer-success")).toBeTruthy();
     expect(screen.getByTestId("career-plan-card-success")).toBeTruthy();
     expect(screen.getByTestId("github-projects-card-success")).toBeTruthy();
     expect(screen.getByTestId("module-suggestion")).toBeTruthy();
     expect(screen.getByTestId("retrieval-citations-card")).toBeTruthy();
-    expect(screen.getByText("回答正文")).toBeTruthy();
+    expect(screen.getAllByText("回答正文")).toHaveLength(2);
+  });
+
+  it("贴吧投影存在时仍显示总结正文，不重复渲染已提交正文", () => {
+    render(
+      <MessageList
+        conversationId="conversation-1"
+        messages={[
+          assistant({
+            plainText: "服务端已提交正文（含同一份贴吧总结）",
+            tiebaResearch: tiebaResearch({
+              summary: "围绕宿舍条件，吧友普遍提到空调与热水时间。",
+              summary_citations: [
+                {
+                  citation_id: "E1",
+                  url: "https://tieba.baidu.com/p/8123456789",
+                  title: "南区宿舍到底怎么样",
+                  reply_id: "reply-3",
+                  parent_reply_id: null,
+                  floor: 3,
+                  posted_at: "2026-09-20 21:14",
+                  quote: "南区六人间，有空调，热水要刷卡。",
+                },
+              ],
+            }),
+          }),
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId("tieba-summary").textContent).toContain(
+      "围绕宿舍条件"
+    );
+    expect(
+      screen.queryByText("服务端已提交正文（含同一份贴吧总结）")
+    ).toBeNull();
+  });
+
+  it("贴吧投影未带错误时仍显示整轮错误，不因投影吞掉失败信息", () => {
+    render(
+      <MessageList
+        conversationId="conversation-1"
+        messages={[
+          assistant({
+            status: "error",
+            errorText: "模型调用失败，请稍后重试。",
+            tiebaResearch: tiebaResearch({ summary: "已读楼层形成的总结。" }),
+          }),
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId("tieba-summary").textContent).toContain("已读楼层形成的总结");
+    expect(screen.getByText("模型调用失败，请稍后重试。")).toBeTruthy();
+  });
+
+  it("复合回合保留服务端综合正文，只追加贴吧引用与依据", () => {
+    const compositeResult: TurnResultProjection = {
+      ...cancelledResult,
+      outcome: "complete",
+      delivered: [
+        { module_id: "paper", label: "论文检索", state: "success", trust: "qualified", detail: "" },
+        { module_id: "tieba", label: "贴吧信息搜集", state: "success", trust: "qualified", detail: "" },
+      ],
+    };
+    render(
+      <MessageList
+        conversationId="conversation-1"
+        messages={[
+          assistant({
+            plainText: "论文与贴吧的综合回答",
+            turnResult: compositeResult,
+            tiebaResearch: tiebaResearch({
+              summary: "贴吧总结（不应再单独出现）",
+              summary_citations: [
+                {
+                  citation_id: "E1",
+                  url: "https://tieba.baidu.com/p/8123456789",
+                  title: "南区宿舍到底怎么样",
+                  reply_id: "reply-3",
+                  parent_reply_id: null,
+                  floor: 3,
+                  posted_at: "2026-09-20 21:14",
+                  quote: "南区六人间，有空调，热水要刷卡。",
+                },
+              ],
+            }),
+          }),
+        ]}
+      />
+    );
+
+    expect(screen.getByText("论文与贴吧的综合回答")).toBeTruthy();
+    expect(screen.queryByTestId("tieba-summary")).toBeNull();
+    expect(screen.queryByText("贴吧总结（不应再单独出现）")).toBeNull();
+    expect(screen.getByTestId("tieba-citations")).toBeTruthy();
+    expect(screen.getByTestId("tieba-evidence")).toBeTruthy();
   });
 
   it("历史尝试、停止正文、空正文与操作行保持原行为", () => {

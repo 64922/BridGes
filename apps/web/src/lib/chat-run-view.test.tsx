@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ChatMessageView } from "@/lib/chat-message-view";
 
+import { tiebaResearch } from "./chat-modules.test-support";
 import type { ActiveRun, PendingUserMessage } from "./chat-run";
 import { composeConversationMessages } from "./chat-run-view";
 
@@ -44,6 +45,7 @@ function run(overrides: Partial<ActiveRun> = {}): ActiveRun {
     careerProcess: null,
     imageProcess: null,
     videoProcess: null,
+    tiebaResearch: null,
     ...overrides,
   };
 }
@@ -122,6 +124,32 @@ describe("会话线程合成", () => {
     expect(assistant.plainText).toBe("完整回答");
     expect(assistant.status).toBeUndefined();
     expect(assistant.body).toBeUndefined();
+  });
+
+  it("恢复运行时保留贴吧投影的已读范围、降级说明与同轮来源", () => {
+    const tieba = tiebaResearch({
+      status: "links_only",
+      candidate_links: [
+        {
+          url: "https://tieba.baidu.com/p/1",
+          title: "宿舍条件汇总",
+          source: "tavily",
+          unconfirmed_reason: "访问受限，未绕过",
+        },
+      ],
+      evidence_boundary: ["只取得帖链，未取得回复内容。"],
+    });
+    const messages = composeConversationMessages(
+      [userMessage("u-1", "问题")],
+      run({ messageId: "a-1", kind: "resume", tiebaResearch: tieba }),
+      null
+    );
+
+    expect(messages[1]?.tiebaResearch).toBe(tieba);
+    expect(messages[1]?.tiebaResearch?.status).toBe("links_only");
+    expect(
+      messages[1]?.tiebaResearch?.candidate_links?.[0]?.unconfirmed_reason
+    ).toContain("访问受限");
   });
 
   it("用户停止后到历史接管前显示停止状态，不误报完成", () => {

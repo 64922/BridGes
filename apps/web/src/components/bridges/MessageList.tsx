@@ -6,6 +6,8 @@ import type {
   CitationProjection,
   CommuteRouteProjection,
   PaperSearchProjection,
+  TiebaPostProjection,
+  TiebaSummaryCitation,
 } from "@/lib/api";
 
 import { AssistantMessage } from "./message/AssistantMessage";
@@ -41,6 +43,13 @@ interface MessageListProps {
     attachment: ChatAttachmentProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 打开贴吧总结引用对应的右侧帖子资料面板 */
+  onOpenTiebaEvidence?: (
+    messageId: string,
+    citation: TiebaSummaryCitation,
+    post: TiebaPostProjection | null,
+    trigger: HTMLButtonElement
+  ) => void;
   /** 打开该轮校园通勤的路线详情面板 */
   onOpenCommuteDetails?: (
     messageId: string,
@@ -65,6 +74,7 @@ export function MessageList({
   onOpenCitation,
   onOpenPaper,
   onOpenAttachment,
+  onOpenTiebaEvidence,
   onOpenCommuteDetails,
 }: MessageListProps) {
   return (
@@ -94,6 +104,7 @@ export function MessageList({
               onOpenCitation={onOpenCitation}
               onOpenPaper={onOpenPaper}
               onOpenCommuteDetails={onOpenCommuteDetails}
+              onOpenTiebaEvidence={onOpenTiebaEvidence}
             />
           )}
         </li>

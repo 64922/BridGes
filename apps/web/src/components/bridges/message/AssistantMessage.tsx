@@ -9,6 +9,8 @@ import type {
   CitationProjection,
   CommuteRouteProjection,
   PaperSearchProjection,
+  TiebaPostProjection,
+  TiebaSummaryCitation,
 } from "@/lib/api";
 
 import { AssistantActions } from "./AssistantActions";
@@ -31,6 +33,7 @@ export function AssistantMessage({
   onOpenCitation,
   onOpenPaper,
   onOpenCommuteDetails,
+  onOpenTiebaEvidence,
 }: {
   message: ChatMessageView;
   conversationId?: string;
@@ -53,6 +56,13 @@ export function AssistantMessage({
   onOpenCommuteDetails?: (
     messageId: string,
     route: CommuteRouteProjection,
+    trigger: HTMLButtonElement
+  ) => void;
+  /** 打开贴吧总结引用的右侧帖子资料面板 */
+  onOpenTiebaEvidence?: (
+    messageId: string,
+    citation: TiebaSummaryCitation,
+    post: TiebaPostProjection | null,
     trigger: HTMLButtonElement
   ) => void;
 }) {
@@ -105,7 +115,16 @@ export function AssistantMessage({
 
         <PublicProcess message={message} conversationId={conversationId} />
 
-        <AssistantBody message={message} conversationId={conversationId} />
+        <AssistantBody
+          message={message}
+          onRetry={onRetry}
+          onOpenTiebaEvidence={
+            onOpenTiebaEvidence
+              ? (citation, post, trigger) =>
+                  onOpenTiebaEvidence(message.id, citation, post, trigger)
+              : undefined
+          }
+        />
 
         <CommuteAnswer
           message={message}

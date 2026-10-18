@@ -10,6 +10,8 @@ import type {
   CitationProjection,
   CommuteRouteProjection,
   PaperSearchProjection,
+  TiebaPostProjection,
+  TiebaSummaryCitation,
 } from "@/lib/api";
 
 import styles from "./chat.module.css";
@@ -43,6 +45,13 @@ interface ChatThreadProps {
     attachment: ChatAttachmentProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 打开贴吧总结引用对应的右侧帖子资料面板 */
+  onOpenTiebaEvidence?: (
+    messageId: string,
+    citation: TiebaSummaryCitation,
+    post: TiebaPostProjection | null,
+    trigger: HTMLButtonElement
+  ) => void;
   /** 打开该轮校园通勤的路线详情面板 */
   onOpenCommuteDetails?: (
     messageId: string,
@@ -71,6 +80,7 @@ export function ChatThread({
   onOpenCitation,
   onOpenPaper,
   onOpenAttachment,
+  onOpenTiebaEvidence,
   onOpenCommuteDetails,
   announcement,
 }: ChatThreadProps) {
@@ -112,6 +122,7 @@ export function ChatThread({
           onOpenCitation={onOpenCitation}
           onOpenPaper={onOpenPaper}
           onOpenAttachment={onOpenAttachment}
+          onOpenTiebaEvidence={onOpenTiebaEvidence}
           onOpenCommuteDetails={onOpenCommuteDetails}
         />
       </div>

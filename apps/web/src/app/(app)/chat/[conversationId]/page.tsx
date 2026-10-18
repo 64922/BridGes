@@ -10,6 +10,10 @@ import { AttachmentViewerPanel } from "@/components/bridges/chat/AttachmentViewe
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { CitationViewerPanel } from "@/components/bridges/chat/CitationViewerPanel";
 import { CommuteDetailPanel } from "@/components/bridges/chat/CommuteDetailPanel";
+import {
+  TiebaEvidencePanel,
+  type TiebaEvidenceSelection,
+} from "@/components/bridges/chat/TiebaEvidencePanel";
 import { Composer } from "@/components/bridges/Composer";
 import { PaperDetailsPanel } from "@/components/bridges/chat/PaperDetailsPanel";
 import { StudyProgress } from "@/components/bridges/chat/StudyProgress";
@@ -19,6 +23,8 @@ import type {
   CitationProjection,
   CommuteRouteProjection,
   PaperSearchProjection,
+  TiebaPostProjection,
+  TiebaSummaryCitation,
 } from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
@@ -117,6 +123,8 @@ export default function ChatConversationPage() {
   const paperTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [commuteSelection, setCommuteSelection] = useState<CommuteDetailSelection | null>(null);
   const commuteTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [tiebaSelection, setTiebaSelection] = useState<TiebaEvidenceSelection | null>(null);
+  const tiebaTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     resumeModuleCheckedRef.current = null;
@@ -129,10 +137,12 @@ export default function ChatConversationPage() {
     attachmentTriggerRef.current = null;
     paperTriggerRef.current = null;
     commuteTriggerRef.current = null;
+    tiebaTriggerRef.current = null;
     setCitationSelection(null);
     setAttachmentSelection(null);
     setPaperSelection(null);
     setCommuteSelection(null);
+    setTiebaSelection(null);
   }, [conversationId]);
 
   const restorePanelTrigger = useCallback((trigger: HTMLButtonElement | null) => {
@@ -156,9 +166,11 @@ export default function ChatConversationPage() {
       attachmentTriggerRef.current = null;
       paperTriggerRef.current = null;
       commuteTriggerRef.current = null;
+      tiebaTriggerRef.current = null;
       setAttachmentSelection(null);
       setPaperSelection(null);
       setCommuteSelection(null);
+      setTiebaSelection(null);
       setCitationSelection({ conversationId, messageId, citation });
     },
     [conversationId]
@@ -177,9 +189,11 @@ export default function ChatConversationPage() {
       citationTriggerRef.current = null;
       paperTriggerRef.current = null;
       commuteTriggerRef.current = null;
+      tiebaTriggerRef.current = null;
       setCitationSelection(null);
       setPaperSelection(null);
       setCommuteSelection(null);
+      setTiebaSelection(null);
       setAttachmentSelection({ conversationId, messageId, attachment });
     },
     [conversationId]
@@ -192,15 +206,45 @@ export default function ChatConversationPage() {
     restorePanelTrigger(trigger);
   }, [restorePanelTrigger]);
 
+  const openTiebaEvidence = useCallback(
+    (
+      messageId: string,
+      citation: TiebaSummaryCitation,
+      post: TiebaPostProjection | null,
+      trigger: HTMLButtonElement
+    ) => {
+      tiebaTriggerRef.current = trigger;
+      citationTriggerRef.current = null;
+      attachmentTriggerRef.current = null;
+      paperTriggerRef.current = null;
+      commuteTriggerRef.current = null;
+      setCitationSelection(null);
+      setAttachmentSelection(null);
+      setPaperSelection(null);
+      setCommuteSelection(null);
+      setTiebaSelection({ conversationId, messageId, citation, post });
+    },
+    [conversationId]
+  );
+
+  const closeTiebaEvidence = useCallback(() => {
+    setTiebaSelection(null);
+    const trigger = tiebaTriggerRef.current;
+    tiebaTriggerRef.current = null;
+    restorePanelTrigger(trigger);
+  }, [restorePanelTrigger]);
+
   const openPaper = useCallback(
     (messageId: string, search: PaperSearchProjection, trigger: HTMLButtonElement) => {
       paperTriggerRef.current = trigger;
       citationTriggerRef.current = null;
       attachmentTriggerRef.current = null;
       commuteTriggerRef.current = null;
+      tiebaTriggerRef.current = null;
       setCitationSelection(null);
       setAttachmentSelection(null);
       setCommuteSelection(null);
+      setTiebaSelection(null);
       setPaperSelection({ conversationId, messageId, search, paperId: null });
     },
     [conversationId]
@@ -223,9 +267,11 @@ export default function ChatConversationPage() {
       citationTriggerRef.current = null;
       attachmentTriggerRef.current = null;
       paperTriggerRef.current = null;
+      tiebaTriggerRef.current = null;
       setCitationSelection(null);
       setAttachmentSelection(null);
       setPaperSelection(null);
+      setTiebaSelection(null);
       setCommuteSelection({ conversationId, messageId, route });
     },
     [conversationId]
@@ -343,6 +389,8 @@ export default function ChatConversationPage() {
     paperSelection?.conversationId === conversationId ? paperSelection : null;
   const activeCommuteSelection =
     commuteSelection?.conversationId === conversationId ? commuteSelection : null;
+  const activeTiebaSelection =
+    tiebaSelection?.conversationId === conversationId ? tiebaSelection : null;
 
   return (
     <AppShell>
@@ -408,6 +456,7 @@ export default function ChatConversationPage() {
                 onOpenCitation={openCitation}
                 onOpenPaper={openPaper}
                 onOpenAttachment={openAttachment}
+                onOpenTiebaEvidence={openTiebaEvidence}
                 onOpenCommuteDetails={openCommuteDetails}
                 announcement={announcement}
               />
@@ -449,6 +498,10 @@ export default function ChatConversationPage() {
           conversationId={conversationId}
           selection={activeAttachmentSelection}
           onClose={closeAttachment}
+        />
+        <TiebaEvidencePanel
+          selection={activeTiebaSelection}
+          onClose={closeTiebaEvidence}
         />
       </div>
     </AppShell>

@@ -12,7 +12,6 @@ import { GithubProjectsCard } from "@/components/bridges/chat/GithubProjectsCard
 import { ImageTaskCard } from "@/components/bridges/chat/ImageTaskCard";
 import { LearningResourcesCard } from "@/components/bridges/chat/LearningResourcesCard";
 import { ModuleSuggestionCard } from "@/components/bridges/chat/ModuleSuggestionCard";
-import { TiebaResearchCard } from "@/components/bridges/chat/TiebaResearchCard";
 import { VideoTaskCard } from "@/components/bridges/chat/VideoTaskCard";
 import { CAREER_INTENT_KEYWORDS, CAREER_INTENT_PREFIXES } from "@/lib/chat-tools";
 import type { ChatModuleId } from "@/lib/api";
@@ -66,12 +65,6 @@ export function SourceProjectionCards({
         streaming={streaming}
         onRetry={() => onRetry?.(message.id)}
         onCancel={onStop}
-      />
-
-      <TiebaResearchCard
-        research={message.tiebaResearch ?? null}
-        streaming={streaming}
-        onRetry={() => onRetry?.(message.id)}
       />
 
       <CareerPlanCard
