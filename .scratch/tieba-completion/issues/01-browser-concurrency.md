@@ -4,7 +4,7 @@
 
 **Blocked by:** 无 — 可立即开始
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 实施边界与关键决策
 
@@ -42,3 +42,7 @@
 
 
 - 2026-10-18：用户确认拆分，正式发布为 ready-for-agent；编号、内容范围和依赖保持已批准方案，未开始业务开发。
+- 2026-10-18：实现完成并转 ready-for-human。行为：浏览器请求许可区分容量等待、工作时间耗尽、动作超时、运行失效、取消、守卫失败与队列满；最多 2 个在途，其余进入有界队列，完成后由同一账本释放并继续；真实工作时间耗尽/动作超时/取消/守卫失败/队列满才终止本轮并写脱敏拒绝记录（原因、当前占位、上限、剩余工作时间、稳定拒绝码）。修复前第三个并发请求在剩余约 255 秒时被误报预算耗尽；修复后同一场景排队完成。动作截止不再伪装成工作时间耗尽，改报 `tieba_browser_timeout`。`tieba_browser_work_time_exhausted` 与 `tieba_browser_request_queue_full` 不再触发公开搜索回退或同义词轮次。提交：`4dfa432e`（主实现）、`3e6bf90c`（超时区分与评审修正），分支 `01-browser-concurrency` 已同步 main 最新 `a36df883`。
+  验证命令与结果：红测 `python -m pytest tests/tieba/test_issue01_browser_concurrency.py -q -o pythonpath="D:\BridGes\src"` → 5 failed, 1 passed（基线无 deadline/调度接口）；绿测 `python -m pytest tests/tieba -q` → 256 passed；共享账本回归 `python -m pytest tests/chat/test_improvement09_*.py tests/chat/test_run_budget_external_results.py tests/storage/test_schema_v63.py tests/lifecycle/test_run_budget_lifecycle.py -q` → 67 passed；`ruff check` 本票改动文件 → All checks passed；`pip check` → No broken requirements found；本票文件 `mypy` → 无新增错误（全仓 `mypy src` 仍有 10 个既有无关错误）。本地浏览器夹具使用系统 Chrome + 本地 HTTP 服务 + 真实 SQLite 账本：3 个并发 fetch 峰值 2、排队 1、无死锁、4 次外部调用与 4 次结果、0 拒绝、无泄漏。真实/模拟边界：确定性内存复现与本地真实浏览器夹具已过；真实贴吧专用会话按本票验证方式留给 04。
+  未验证/已知差距：真实贴吧会话最小旅程由 04 复验；容量等待是动作内瞬态，未新增独立聊天等待文案（认证等待仍沿用既有 `waiting_auth` 投影，`tests/tieba/test_browser_api.py` 覆盖）；全仓 `pytest -q` 在收集期被既有 `tests/career_plan` 的 `CareerBackgroundLoader` 缺失阻断，`--ignore=tests/career_plan -x` 的首个失败为既有 `test_production_wiring_injects_recorder`，均与本票无关；全仓 ruff 仍有 456 个既有错误。
+  公开契约/版本变化：`SCHEMA_VERSION` 89→90；迁移 90 重建 `run_budget_entries` 的 kind CHECK，新增 `external_call_denied`（不改变预算计数或运行状态），并保留全部行与索引；升级前自动备份。错误码新增/明确 `tieba_browser_work_time_exhausted`、`tieba_browser_request_queue_full`、`tieba_browser_run_invalidated`、`tieba_browser_request_guard_failed`、`tieba_browser_timeout`，移除 `tieba_browser_run_budget_exhausted`。回滚：代码回退到本票两个提交并恢复升级前备份；v90 数据库不能由旧二进制直接打开（版本守卫会拒绝）。
