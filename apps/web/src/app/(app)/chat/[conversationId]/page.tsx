@@ -9,10 +9,19 @@ import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBann
 import { AttachmentViewerPanel } from "@/components/bridges/chat/AttachmentViewerPanel";
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { CitationViewerPanel } from "@/components/bridges/chat/CitationViewerPanel";
+import {
+  TiebaEvidencePanel,
+  type TiebaEvidenceSelection,
+} from "@/components/bridges/chat/TiebaEvidencePanel";
 import { Composer } from "@/components/bridges/Composer";
 import { StudyProgress } from "@/components/bridges/chat/StudyProgress";
 import type { CapabilityAvailability } from "@/components/bridges/chat/capability-availability";
-import type { ChatAttachmentProjection, CitationProjection } from "@/lib/api";
+import type {
+  ChatAttachmentProjection,
+  CitationProjection,
+  TiebaPostProjection,
+  TiebaSummaryCitation,
+} from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { buildThreadMessages } from "@/lib/chat-thread";
@@ -93,6 +102,8 @@ export default function ChatConversationPage() {
   const citationTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [attachmentSelection, setAttachmentSelection] = useState<AttachmentSelection | null>(null);
   const attachmentTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [tiebaSelection, setTiebaSelection] = useState<TiebaEvidenceSelection | null>(null);
+  const tiebaTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     resumeModuleCheckedRef.current = null;
@@ -103,8 +114,10 @@ export default function ChatConversationPage() {
   useEffect(() => {
     citationTriggerRef.current = null;
     attachmentTriggerRef.current = null;
+    tiebaTriggerRef.current = null;
     setCitationSelection(null);
     setAttachmentSelection(null);
+    setTiebaSelection(null);
   }, [conversationId]);
 
   const restorePanelTrigger = useCallback((trigger: HTMLButtonElement | null) => {
@@ -126,7 +139,9 @@ export default function ChatConversationPage() {
     (messageId: string, citation: CitationProjection, trigger: HTMLButtonElement) => {
       citationTriggerRef.current = trigger;
       attachmentTriggerRef.current = null;
+      tiebaTriggerRef.current = null;
       setAttachmentSelection(null);
+      setTiebaSelection(null);
       setCitationSelection({ conversationId, messageId, citation });
     },
     [conversationId]
@@ -143,7 +158,9 @@ export default function ChatConversationPage() {
     (messageId: string, attachment: ChatAttachmentProjection, trigger: HTMLButtonElement) => {
       attachmentTriggerRef.current = trigger;
       citationTriggerRef.current = null;
+      tiebaTriggerRef.current = null;
       setCitationSelection(null);
+      setTiebaSelection(null);
       setAttachmentSelection({ conversationId, messageId, attachment });
     },
     [conversationId]
@@ -153,6 +170,30 @@ export default function ChatConversationPage() {
     setAttachmentSelection(null);
     const trigger = attachmentTriggerRef.current;
     attachmentTriggerRef.current = null;
+    restorePanelTrigger(trigger);
+  }, [restorePanelTrigger]);
+
+  const openTiebaEvidence = useCallback(
+    (
+      messageId: string,
+      citation: TiebaSummaryCitation,
+      post: TiebaPostProjection | null,
+      trigger: HTMLButtonElement
+    ) => {
+      tiebaTriggerRef.current = trigger;
+      citationTriggerRef.current = null;
+      attachmentTriggerRef.current = null;
+      setCitationSelection(null);
+      setAttachmentSelection(null);
+      setTiebaSelection({ conversationId, messageId, citation, post });
+    },
+    [conversationId]
+  );
+
+  const closeTiebaEvidence = useCallback(() => {
+    setTiebaSelection(null);
+    const trigger = tiebaTriggerRef.current;
+    tiebaTriggerRef.current = null;
     restorePanelTrigger(trigger);
   }, [restorePanelTrigger]);
 
@@ -257,6 +298,8 @@ export default function ChatConversationPage() {
     citationSelection?.conversationId === conversationId ? citationSelection : null;
   const activeAttachmentSelection =
     attachmentSelection?.conversationId === conversationId ? attachmentSelection : null;
+  const activeTiebaSelection =
+    tiebaSelection?.conversationId === conversationId ? tiebaSelection : null;
 
   return (
     <AppShell>
@@ -321,6 +364,7 @@ export default function ChatConversationPage() {
                 onRefreshMessages={() => void load(true)}
                 onOpenCitation={openCitation}
                 onOpenAttachment={openAttachment}
+                onOpenTiebaEvidence={openTiebaEvidence}
                 announcement={announcement}
               />
               {sendError && <ChatSendErrorBanner message={sendError} />}
@@ -352,6 +396,10 @@ export default function ChatConversationPage() {
           conversationId={conversationId}
           selection={activeAttachmentSelection}
           onClose={closeAttachment}
+        />
+        <TiebaEvidencePanel
+          selection={activeTiebaSelection}
+          onClose={closeTiebaEvidence}
         />
       </div>
     </AppShell>

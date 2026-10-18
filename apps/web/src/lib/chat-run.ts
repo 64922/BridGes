@@ -14,6 +14,7 @@ import {
   type ChatStreamStartedData,
   type ChatStreamVideoData,
   type TeachingTurnProjection,
+  type TiebaResearchProjection,
   type TurnResultProjection,
   type WebSearchProjection,
 } from "@/lib/api";
@@ -45,6 +46,8 @@ export interface ActiveRun {
   careerProcess: ChatStreamCareerData | null;
   imageProcess: ChatStreamImageData | null;
   videoProcess: ChatStreamVideoData | null;
+  /** 恢复运行时保留的贴吧投影：已读范围、降级说明与引用关系不丢失。 */
+  tiebaResearch: TiebaResearchProjection | null;
   status: ActiveRunStatus;
   errorText?: string;
 }
@@ -103,6 +106,7 @@ export function activeRunFromAssistant(
     careerProcess: null,
     imageProcess: null,
     videoProcess: null,
+    tiebaResearch: assistant.tieba_research ?? null,
   };
 }
 
@@ -134,6 +138,7 @@ export function activeRunFromStarted(
     careerProcess: null,
     imageProcess: null,
     videoProcess: null,
+    tiebaResearch: null,
   };
 }
 
@@ -168,6 +173,7 @@ export function activeRunFromError(
     careerProcess: current.careerProcess ?? null,
     imageProcess: current.imageProcess ?? null,
     videoProcess: current.videoProcess ?? null,
+    tiebaResearch: current.tiebaResearch ?? null,
   };
 }
 

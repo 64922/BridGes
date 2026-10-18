@@ -2,7 +2,12 @@
 
 import { BrandLogo } from "@/components/bridges/BrandLogo";
 import { RetrievalCard } from "@/components/bridges/RetrievalCard";
-import type { ChatModuleId, CitationProjection } from "@/lib/api";
+import type {
+  ChatModuleId,
+  CitationProjection,
+  TiebaPostProjection,
+  TiebaSummaryCitation,
+} from "@/lib/api";
 
 import { AssistantActions } from "./AssistantActions";
 import { AttemptHistory } from "./AttemptHistory";
@@ -22,6 +27,7 @@ export function AssistantMessage({
   onUseModuleSuggestion,
   onRefreshMessages,
   onOpenCitation,
+  onOpenTiebaEvidence,
 }: {
   message: ChatMessageView;
   conversationId?: string;
@@ -34,6 +40,13 @@ export function AssistantMessage({
   onOpenCitation?: (
     messageId: string,
     citation: CitationProjection,
+    trigger: HTMLButtonElement
+  ) => void;
+  /** 打开贴吧总结引用的右侧帖子资料面板 */
+  onOpenTiebaEvidence?: (
+    messageId: string,
+    citation: TiebaSummaryCitation,
+    post: TiebaPostProjection | null,
     trigger: HTMLButtonElement
   ) => void;
 }) {
@@ -85,7 +98,16 @@ export function AssistantMessage({
 
         <PublicProcess message={message} conversationId={conversationId} />
 
-        <AssistantBody message={message} conversationId={conversationId} />
+        <AssistantBody
+          message={message}
+          onRetry={onRetry}
+          onOpenTiebaEvidence={
+            onOpenTiebaEvidence
+              ? (citation, post, trigger) =>
+                  onOpenTiebaEvidence(message.id, citation, post, trigger)
+              : undefined
+          }
+        />
 
         <RetrievalCard
           retrieval={message.retrieval ?? null}

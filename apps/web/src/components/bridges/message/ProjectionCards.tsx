@@ -14,7 +14,6 @@ import { ImageTaskCard } from "@/components/bridges/chat/ImageTaskCard";
 import { LearningResourcesCard } from "@/components/bridges/chat/LearningResourcesCard";
 import { ModuleSuggestionCard } from "@/components/bridges/chat/ModuleSuggestionCard";
 import { PaperSearchCard } from "@/components/bridges/chat/PaperSearchCard";
-import { TiebaResearchCard } from "@/components/bridges/chat/TiebaResearchCard";
 import { VideoTaskCard } from "@/components/bridges/chat/VideoTaskCard";
 import { CAREER_INTENT_KEYWORDS, CAREER_INTENT_PREFIXES } from "@/lib/chat-tools";
 import type { ChatModuleId } from "@/lib/api";
@@ -72,12 +71,6 @@ export function SourceProjectionCards({
 
       <PaperSearchCard
         search={message.paperSearch ?? null}
-        streaming={streaming}
-        onRetry={() => onRetry?.(message.id)}
-      />
-
-      <TiebaResearchCard
-        research={message.tiebaResearch ?? null}
         streaming={streaming}
         onRetry={() => onRetry?.(message.id)}
       />

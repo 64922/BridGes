@@ -1,9 +1,52 @@
 "use client";
 
 import { Icon } from "@/components/design-system/Icon";
+import {
+  TiebaAnswer,
+  TiebaCompositeEvidence,
+} from "@/components/bridges/chat/TiebaAnswer";
+import type {
+  TiebaPostProjection,
+  TiebaSummaryCitation,
+  TurnResultProjection,
+} from "@/lib/api";
 import type { ChatMessageView } from "@/lib/chat-message-view";
 
 import { MarkdownBody } from "./MarkdownBody";
+
+/** 只有纯贴吧回合才用贴吧总结替换服务端正文；复合回合必须保留综合回答。 */
+export function isTiebaOnlyMessage(message: ChatMessageView): boolean {
+  const result: TurnResultProjection | null | undefined = message.turnResult;
+  if (!result) {
+    // 流式早期还没有回合结果：其他模块投影已经到达就说明不是纯贴吧回合。
+    return !(
+      message.paperSearch ||
+      message.learningResources ||
+      message.githubProjects ||
+      message.careerPlan ||
+      message.commuteRoute ||
+      message.webSearch ||
+      message.arxivSearch ||
+      message.retrieval ||
+      message.teaching ||
+      message.humanizer ||
+      message.careerPlanning ||
+      message.image ||
+      message.video
+    );
+  }
+  const moduleIds = new Set<string>();
+  for (const moduleId of [
+    result.requested_module_id,
+    result.actual_module_id,
+    ...(result.capability_list ?? []),
+    ...(result.delivered ?? []).map((block) => block.module_id),
+    ...(result.blocked ?? []).map((block) => block.module_id),
+  ]) {
+    if (moduleId) moduleIds.add(moduleId);
+  }
+  return moduleIds.size === 0 || (moduleIds.size === 1 && moduleIds.has("tieba"));
+}
 
 function PlainTextBody({ text }: { text: string }) {
   return (
@@ -49,10 +92,16 @@ export function MessageErrorAlert({
 
 export function AssistantBody({
   message,
-  conversationId,
+  onOpenTiebaEvidence,
+  onRetry,
 }: {
   message: ChatMessageView;
-  conversationId?: string;
+  onOpenTiebaEvidence?: (
+    citation: TiebaSummaryCitation,
+    post: TiebaPostProjection | null,
+    trigger: HTMLButtonElement
+  ) => void;
+  onRetry?: (id: string) => void;
 }) {
   const body =
     message.body !== undefined ? (
@@ -63,6 +112,45 @@ export function AssistantBody({
         streaming={message.status === "streaming"}
       />
     );
+
+  if (message.tiebaResearch) {
+    // 纯贴吧回合：正文直接从已核验投影重建，服务端同一份纯文本总结
+    // 不再重复渲染；复合回合保留服务端综合回答，只追加真实引用与依据。
+    const tiebaOnly = isTiebaOnlyMessage(message);
+    const genericError =
+      message.status === "error" &&
+      message.skill == null &&
+      Boolean(message.errorText) &&
+      (!tiebaOnly || !message.tiebaResearch.error_message);
+    const errorAlert = genericError ? (
+      <MessageErrorAlert text={message.errorText ?? ""} />
+    ) : null;
+    if (tiebaOnly) {
+      return (
+        <>
+          <TiebaAnswer
+            research={message.tiebaResearch}
+            streaming={message.status === "streaming"}
+            fallbackText={message.plainText}
+            onOpenCitation={onOpenTiebaEvidence}
+            onRetry={onRetry ? () => onRetry(message.id) : undefined}
+            showRetry={message.turnResult == null}
+          />
+          {errorAlert}
+        </>
+      );
+    }
+    return (
+      <>
+        {body}
+        <TiebaCompositeEvidence
+          research={message.tiebaResearch}
+          onOpenCitation={onOpenTiebaEvidence}
+        />
+        {errorAlert}
+      </>
+    );
+  }
 
   if (message.status === "error" && message.skill == null) {
     return (
@@ -81,11 +169,6 @@ export function AssistantBody({
         text={message.humanizer.error_message ?? "正文未交付。"}
       />
     );
-  }
-
-  if (conversationId && message.tiebaResearch) {
-    // 贴吧卡片已经呈现完整证据；正文仍保留在 plainText 供复制与导出。
-    return null;
   }
 
   return body;

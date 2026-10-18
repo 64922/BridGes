@@ -8,6 +8,8 @@ import type {
   ChatAttachmentProjection,
   ChatModuleId,
   CitationProjection,
+  TiebaPostProjection,
+  TiebaSummaryCitation,
 } from "@/lib/api";
 
 import styles from "./chat.module.css";
@@ -35,6 +37,13 @@ interface ChatThreadProps {
     attachment: ChatAttachmentProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 打开贴吧总结引用对应的右侧帖子资料面板 */
+  onOpenTiebaEvidence?: (
+    messageId: string,
+    citation: TiebaSummaryCitation,
+    post: TiebaPostProjection | null,
+    trigger: HTMLButtonElement
+  ) => void;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
   announcement?: string | null;
 }
@@ -56,6 +65,7 @@ export function ChatThread({
   onRefreshMessages,
   onOpenCitation,
   onOpenAttachment,
+  onOpenTiebaEvidence,
   announcement,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -95,6 +105,7 @@ export function ChatThread({
           onRefreshMessages={onRefreshMessages}
           onOpenCitation={onOpenCitation}
           onOpenAttachment={onOpenAttachment}
+          onOpenTiebaEvidence={onOpenTiebaEvidence}
         />
       </div>
       <p className="sc-visually-hidden" role="status" aria-live="polite">

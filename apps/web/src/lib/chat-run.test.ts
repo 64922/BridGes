@@ -6,6 +6,7 @@ import type {
   TurnResultProjection,
 } from "@/lib/api";
 
+import { tiebaResearch } from "./chat-modules.test-support";
 import {
   activeRunFromAssistant,
   activeRunFromError,
@@ -102,6 +103,7 @@ function run(overrides: Partial<ActiveRun> = {}): ActiveRun {
     careerProcess: null,
     imageProcess: null,
     videoProcess: null,
+    tiebaResearch: null,
     ...overrides,
   };
 }
@@ -127,6 +129,19 @@ describe("chat run 投影与事件归并", () => {
     );
     expect(replay.content).toBe("完整回答");
     expect(replay.stage).toBeNull();
+  });
+
+  it("恢复时保留已提交的贴吧投影，不丢已读范围与降级说明", () => {
+    const tieba = tiebaResearch({
+      summary: "已读楼层提到晚间热水不稳定。",
+      evidence_boundary: ["未读到全部楼层。"],
+    });
+    const resumed = activeRunFromAssistant(
+      message({ tieba_research: tieba }),
+      "resume"
+    );
+
+    expect(resumed.tiebaResearch).toBe(tieba);
   });
 
   it("恢复时使用服务端已持久化的真实阶段或节点", () => {

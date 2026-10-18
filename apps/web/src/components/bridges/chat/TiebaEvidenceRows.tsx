@@ -6,6 +6,7 @@ import type {
   TiebaOfficialCheck,
   TiebaPostProjection,
   TiebaRejectedCandidate,
+  TiebaSummaryCitation,
 } from "@/lib/api";
 
 const QUERY_STATUS_LABELS: Record<string, string> = {
@@ -18,7 +19,7 @@ const QUERY_STATUS_LABELS: Record<string, string> = {
   error: "失败",
 };
 
-const READ_STATUS_LABELS: Record<string, string> = {
+export const READ_STATUS_LABELS: Record<string, string> = {
   read: "已读到正文",
   partial: "只读到部分楼层",
   access_restricted: "访问受限（登录或验证要求），未绕过",
@@ -40,6 +41,36 @@ export function formatTime(value: string | null | undefined): string {
   if (!value) return "时间未知";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "时间未知" : date.toLocaleString("zh-CN");
+}
+
+/** 引用在帖子里的定位：楼层与发言时间；缺失处如实标注。 */
+export function citationLocation(citation: TiebaSummaryCitation): string {
+  const parts = [citation.floor != null ? `第 ${citation.floor} 楼` : "楼层未知"];
+  if (citation.posted_at) parts.push(citation.posted_at);
+  return parts.join(" · ");
+}
+
+/** 一个帖子本轮真实读到的范围：页数、楼层、时间与读取状态。 */
+export function postReadScope(post: TiebaPostProjection): string {
+  const parts = [
+    `已读 ${post.pages_read}/${post.pages_limit} 页`,
+  ];
+  if (post.scroll_rounds_limit) {
+    parts.push(`向下加载 ${post.scroll_rounds}/${post.scroll_rounds_limit} 轮`);
+  }
+  if (post.total_pages) parts.push(`页面声明共 ${post.total_pages} 页`);
+  if (post.floor_min != null && post.floor_max != null) {
+    parts.push(`第 ${post.floor_min}–${post.floor_max} 楼`);
+  }
+  const times = (post.replies ?? [])
+    .map((reply) => reply.posted_at)
+    .filter((value): value is string => Boolean(value));
+  if (times.length > 0) {
+    const sorted = [...times].sort();
+    parts.push(`时间 ${sorted[0]}–${sorted[sorted.length - 1]}`);
+  }
+  parts.push(READ_STATUS_LABELS[post.read_status] ?? post.read_status);
+  return parts.join(" · ");
 }
 
 /** 一次外部调用的真实记录：来源、实际查询词、结果分类、取得时间与错误。 */

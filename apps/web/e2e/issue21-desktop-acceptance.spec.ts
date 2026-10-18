@@ -58,11 +58,11 @@ const PLUS_MENU = [
 /** 三模块 = `+` 菜单第 2..4 项（第一项是文件选择，不是模块）。 */
 const MODULES = PLUS_MENU.slice(1);
 
-/** 各模块结果卡的 testid 前缀（状态后缀由真实结果决定）。 */
+/** 各模块结果入口的 testid 前缀（贴吧已改为正文与依据分区）。 */
 const MODULE_CARD_PREFIX: Record<string, RegExp> = {
   论文搜索: /^(paper-search-card|arxiv-search-card)/,
   校园通勤: /^commute-route-card/,
-  贴吧信息搜集: /^tieba-research-card/,
+  贴吧信息搜集: /^tieba-answer/,
 };
 
 /** 各模块首轮的输入（模块需要的最小主题，避免「缺主题」被当成不可用）。 */

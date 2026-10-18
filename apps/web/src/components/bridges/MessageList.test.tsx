@@ -76,7 +76,7 @@ function assistantMessage(overrides: Partial<ChatMessageView> = {}): ChatMessage
   };
 }
 
-it("贴吧结构化卡片只展示一次结果，正文仍保留用于复制", () => {
+it("贴吧结构化结果只展示一次，空态正文保留原因而不重复导出正文", () => {
   const tieba: TiebaResearchProjection = {
     status: "empty", topic: "国庆节 假期", original_question: "我想了解国庆节假期的讨论",
     question_kind: "mixed", parallel_evidence: false, official_check_requested: true, retryable: false,
@@ -88,9 +88,9 @@ it("贴吧结构化卡片只展示一次结果，正文仍保留用于复制", (
     status: "done", tiebaResearch: tieba,
     plainText: "完整导出正文",
   })]} />);
-  expect(screen.getAllByTestId("tieba-research-card-empty")).toHaveLength(1);
+  expect(screen.getAllByTestId("tieba-answer")).toHaveLength(1);
   expect(screen.queryByText("完整导出正文")).toBeNull();
-  expect(screen.getByText("没有取得相关讨论")).toBeTruthy();
+  expect(screen.getByText(/没有取得相关讨论/)).toBeTruthy();
 });
 
 describe("MessageList 附件卡片（V2 Issue 05/06）", () => {

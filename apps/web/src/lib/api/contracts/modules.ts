@@ -6,6 +6,8 @@ export type TiebaTimeFilter = components["schemas"]["TiebaTimeFilter"];
 
 export type TiebaPostProjection = components["schemas"]["TiebaPostProjection"];
 
+export type TiebaSummaryCitation = components["schemas"]["TiebaSummaryCitation"];
+
 export type TiebaReply = components["schemas"]["TiebaReply"];
 
 export type TiebaCandidateLink = components["schemas"]["TiebaCandidateLink"];

@@ -4,6 +4,8 @@ import type {
   ChatAttachmentProjection,
   ChatModuleId,
   CitationProjection,
+  TiebaPostProjection,
+  TiebaSummaryCitation,
 } from "@/lib/api";
 
 import { AssistantMessage } from "./message/AssistantMessage";
@@ -33,6 +35,13 @@ interface MessageListProps {
     attachment: ChatAttachmentProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 打开贴吧总结引用对应的右侧帖子资料面板 */
+  onOpenTiebaEvidence?: (
+    messageId: string,
+    citation: TiebaSummaryCitation,
+    post: TiebaPostProjection | null,
+    trigger: HTMLButtonElement
+  ) => void;
 }
 
 /**
@@ -50,6 +59,7 @@ export function MessageList({
   onRefreshMessages,
   onOpenCitation,
   onOpenAttachment,
+  onOpenTiebaEvidence,
 }: MessageListProps) {
   return (
     <ol
@@ -76,6 +86,7 @@ export function MessageList({
               onUseModuleSuggestion={onUseModuleSuggestion}
               onRefreshMessages={onRefreshMessages}
               onOpenCitation={onOpenCitation}
+              onOpenTiebaEvidence={onOpenTiebaEvidence}
             />
           )}
         </li>
