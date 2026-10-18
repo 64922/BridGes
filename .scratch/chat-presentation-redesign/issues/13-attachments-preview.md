@@ -98,6 +98,7 @@
 - `npm run test:unit`：48 文件 / 393 测试通过。
 - `npm run build`：生产构建成功；`.next/standalone` 复制 node_modules 时因工作树 junction 出现 EPERM 警告，构建与路由产物正常。
 - `CI=1 BRIDGES_PYTHON=C:\Users\33755\anaconda3\envs\agent\python.exe npx playwright test e2e/issue13-attachments-preview.spec.ts`：4/4 通过（30.1s）。覆盖预览打开时继续发送、关闭焦点与阅读位置、照片／Markdown／DOCX 降级、读取失败重试、快速切换只呈现当前附件、切换会话清除预览，以及 1280×720／1440×900／1920×1080 与 125% 缩放视口。
+- 合并后在 main 复跑：`typecheck`、`lint`、393 项单测与生产构建均通过（主仓库依赖布局下无 EPERM 警告）；清理生产构建残留的 `.next` 后 E2E 亦为 4/4 通过（32.2s）。首次复跑因复用生产构建的 `.next` 导致 dev server 退出，清理后稳定，属本地验证环境问题，不涉及产品代码。
 
 后端目标验证（worktree 根目录，`PYTHONPATH` 指向 worktree `src`）：
 
