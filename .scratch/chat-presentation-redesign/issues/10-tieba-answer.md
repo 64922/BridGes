@@ -73,10 +73,10 @@
 ### 验证命令与结果
 
 - `npm run typecheck`：通过。
-- `npm run test:unit -- --reporter=dot`：50 个文件 / 400 用例通过。
+- `npm run test:unit -- --reporter=dot`：合并 main 后 51 个文件 / 400 用例通过。
 - `npm run lint`：通过，仅保留 2 个既有 `<img>` 警告（`search-page-client.tsx`、`ImageTaskCard.tsx`）。
 - `npm run build`：通过；worktree 复用主工作树 `node_modules` junction，`next build` 仍打印既有 `EPERM ... .next/standalone/node_modules` 警告，不影响构建结果。
-- `BRIDGES_PYTHON=<agent python> npx playwright test e2e/issue10-tieba-answer.spec.ts e2e/issue08-citation-viewer.spec.ts e2e/issue07-delivery-and-recovery.spec.ts --workers=1`：10 项通过（issue10 2 项、issue08 5 项、issue07 3 项）。
+- 合并 main（含 issue 09 论文、issue 11 通勤）后解决共享呈现文件冲突，保留论文、通勤、贴吧三套正文/依据/面板入口及互斥关闭；`BRIDGES_PYTHON=<agent python> npx playwright test e2e/issue10-tieba-answer.spec.ts e2e/issue09-paper-answer.spec.ts e2e/issue11-commute-answer.spec.ts e2e/issue08-citation-viewer.spec.ts e2e/issue07-delivery-and-recovery.spec.ts --workers=1`：19 项通过（issue10 2、issue09 4、issue11 5、issue08 5、issue07 3）。
 - `conda run -n agent python -m pytest tests/tieba -q`：227 项通过。
 - `issue21-desktop-acceptance.spec.ts` 的 1280×720「三模块连接真实服务」未通过：贴吧一轮在 180 秒内停留在 `正在生成回答`，没有任何贴吧投影事件；数据库显示运行停在 `select_explicit_module`，未写入子图结果。该失败发生在本票未修改的采集/执行链路，且 issue10 的真实 UI 合同已由协议 E2E 覆盖；1440×900、1920×1080 未运行。未把该外部失败计为本票通过。
 

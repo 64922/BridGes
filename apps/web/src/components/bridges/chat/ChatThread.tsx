@@ -8,6 +8,8 @@ import type {
   ChatAttachmentProjection,
   ChatModuleId,
   CitationProjection,
+  CommuteRouteProjection,
+  PaperSearchProjection,
   TiebaPostProjection,
   TiebaSummaryCitation,
 } from "@/lib/api";
@@ -31,6 +33,12 @@ interface ChatThreadProps {
     citation: CitationProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 打开该轮论文的右侧资料面板 */
+  onOpenPaper?: (
+    messageId: string,
+    search: PaperSearchProjection,
+    trigger: HTMLButtonElement
+  ) => void;
   /** 打开消息附件的右侧预览面板 */
   onOpenAttachment?: (
     messageId: string,
@@ -42,6 +50,12 @@ interface ChatThreadProps {
     messageId: string,
     citation: TiebaSummaryCitation,
     post: TiebaPostProjection | null,
+    trigger: HTMLButtonElement
+  ) => void;
+  /** 打开该轮校园通勤的路线详情面板 */
+  onOpenCommuteDetails?: (
+    messageId: string,
+    route: CommuteRouteProjection,
     trigger: HTMLButtonElement
   ) => void;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
@@ -64,8 +78,10 @@ export function ChatThread({
   conversationId,
   onRefreshMessages,
   onOpenCitation,
+  onOpenPaper,
   onOpenAttachment,
   onOpenTiebaEvidence,
+  onOpenCommuteDetails,
   announcement,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -104,8 +120,10 @@ export function ChatThread({
           conversationId={conversationId}
           onRefreshMessages={onRefreshMessages}
           onOpenCitation={onOpenCitation}
+          onOpenPaper={onOpenPaper}
           onOpenAttachment={onOpenAttachment}
           onOpenTiebaEvidence={onOpenTiebaEvidence}
+          onOpenCommuteDetails={onOpenCommuteDetails}
         />
       </div>
       <p className="sc-visually-hidden" role="status" aria-live="polite">

@@ -8,12 +8,10 @@ import { TeachingCard } from "@/components/bridges/TeachingCard";
 import { WebSearchCard } from "@/components/bridges/WebSearchCard";
 import { ArxivPaperSearchCard } from "@/components/bridges/ArxivPaperSearchCard";
 import { CareerPlanCard } from "@/components/bridges/chat/CareerPlanCard";
-import { CommuteRouteCard } from "@/components/bridges/chat/CommuteRouteCard";
 import { GithubProjectsCard } from "@/components/bridges/chat/GithubProjectsCard";
 import { ImageTaskCard } from "@/components/bridges/chat/ImageTaskCard";
 import { LearningResourcesCard } from "@/components/bridges/chat/LearningResourcesCard";
 import { ModuleSuggestionCard } from "@/components/bridges/chat/ModuleSuggestionCard";
-import { PaperSearchCard } from "@/components/bridges/chat/PaperSearchCard";
 import { VideoTaskCard } from "@/components/bridges/chat/VideoTaskCard";
 import { CAREER_INTENT_KEYWORDS, CAREER_INTENT_PREFIXES } from "@/lib/chat-tools";
 import type { ChatModuleId } from "@/lib/api";
@@ -69,12 +67,6 @@ export function SourceProjectionCards({
         onCancel={onStop}
       />
 
-      <PaperSearchCard
-        search={message.paperSearch ?? null}
-        streaming={streaming}
-        onRetry={() => onRetry?.(message.id)}
-      />
-
       <CareerPlanCard
         plan={message.careerPlan ?? null}
         streaming={streaming}
@@ -91,13 +83,6 @@ export function SourceProjectionCards({
         resources={message.learningResources ?? null}
         streaming={streaming}
         onRetry={() => onRetry?.(message.id)}
-      />
-
-      <CommuteRouteCard
-        route={message.commuteRoute ?? null}
-        streaming={streaming}
-        onRetry={() => onRetry?.(message.id)}
-        returnTo={`/chat/${conversationId}`}
       />
 
       {!streaming && (

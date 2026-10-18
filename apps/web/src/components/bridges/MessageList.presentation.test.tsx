@@ -220,7 +220,18 @@ describe("消息呈现边界（工单 02）", () => {
         messages={[
           assistant({
             contextNote,
-            paperSearch: paperSearch(),
+            paperSearch: paperSearch({
+              queries: [
+                {
+                  source: "arxiv",
+                  query: "transformer",
+                  status: "success",
+                  evidence_count: 1,
+                  retrieved_at: NOW,
+                  retryable: false,
+                },
+              ],
+            }),
             tiebaResearch: tiebaResearch({
               summary: "贴吧已读楼层围绕宿舍条件形成总结。",
             }),
@@ -249,10 +260,12 @@ describe("消息呈现边界（工单 02）", () => {
     expect(within(process).getByTestId("context-note-details").textContent).toContain(
       "本轮使用了 1 条已授权背景信息"
     );
-    expect(screen.getByTestId("paper-search-card-success")).toBeTruthy();
+    expect(screen.getByTestId("paper-details-entry")).toBeTruthy();
+    expect(screen.queryByTestId("paper-search-card-success")).toBeNull();
     expect(screen.getByTestId("tieba-composite-evidence")).toBeTruthy();
+    expect(screen.queryByTestId("tieba-research-card-success")).toBeNull();
     expect(screen.getByTestId("resources-card-success")).toBeTruthy();
-    expect(screen.getByTestId("commute-route-card-success")).toBeTruthy();
+    expect(screen.getByTestId("commute-answer-success")).toBeTruthy();
     expect(screen.getByTestId("career-plan-card-success")).toBeTruthy();
     expect(screen.getByTestId("github-projects-card-success")).toBeTruthy();
     expect(screen.getByTestId("module-suggestion")).toBeTruthy();

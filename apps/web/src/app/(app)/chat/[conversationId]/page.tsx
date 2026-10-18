@@ -9,16 +9,20 @@ import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBann
 import { AttachmentViewerPanel } from "@/components/bridges/chat/AttachmentViewerPanel";
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { CitationViewerPanel } from "@/components/bridges/chat/CitationViewerPanel";
+import { CommuteDetailPanel } from "@/components/bridges/chat/CommuteDetailPanel";
 import {
   TiebaEvidencePanel,
   type TiebaEvidenceSelection,
 } from "@/components/bridges/chat/TiebaEvidencePanel";
 import { Composer } from "@/components/bridges/Composer";
+import { PaperDetailsPanel } from "@/components/bridges/chat/PaperDetailsPanel";
 import { StudyProgress } from "@/components/bridges/chat/StudyProgress";
 import type { CapabilityAvailability } from "@/components/bridges/chat/capability-availability";
 import type {
   ChatAttachmentProjection,
   CitationProjection,
+  CommuteRouteProjection,
+  PaperSearchProjection,
   TiebaPostProjection,
   TiebaSummaryCitation,
 } from "@/lib/api";
@@ -54,6 +58,19 @@ interface AttachmentSelection {
   conversationId: string;
   messageId: string;
   attachment: ChatAttachmentProjection;
+}
+
+interface PaperSelection {
+  conversationId: string;
+  messageId: string;
+  search: PaperSearchProjection;
+  paperId: string | null;
+}
+
+interface CommuteDetailSelection {
+  conversationId: string;
+  messageId: string;
+  route: CommuteRouteProjection;
 }
 
 /**
@@ -102,6 +119,10 @@ export default function ChatConversationPage() {
   const citationTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [attachmentSelection, setAttachmentSelection] = useState<AttachmentSelection | null>(null);
   const attachmentTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [paperSelection, setPaperSelection] = useState<PaperSelection | null>(null);
+  const paperTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [commuteSelection, setCommuteSelection] = useState<CommuteDetailSelection | null>(null);
+  const commuteTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [tiebaSelection, setTiebaSelection] = useState<TiebaEvidenceSelection | null>(null);
   const tiebaTriggerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -114,9 +135,13 @@ export default function ChatConversationPage() {
   useEffect(() => {
     citationTriggerRef.current = null;
     attachmentTriggerRef.current = null;
+    paperTriggerRef.current = null;
+    commuteTriggerRef.current = null;
     tiebaTriggerRef.current = null;
     setCitationSelection(null);
     setAttachmentSelection(null);
+    setPaperSelection(null);
+    setCommuteSelection(null);
     setTiebaSelection(null);
   }, [conversationId]);
 
@@ -139,8 +164,12 @@ export default function ChatConversationPage() {
     (messageId: string, citation: CitationProjection, trigger: HTMLButtonElement) => {
       citationTriggerRef.current = trigger;
       attachmentTriggerRef.current = null;
+      paperTriggerRef.current = null;
+      commuteTriggerRef.current = null;
       tiebaTriggerRef.current = null;
       setAttachmentSelection(null);
+      setPaperSelection(null);
+      setCommuteSelection(null);
       setTiebaSelection(null);
       setCitationSelection({ conversationId, messageId, citation });
     },
@@ -158,8 +187,12 @@ export default function ChatConversationPage() {
     (messageId: string, attachment: ChatAttachmentProjection, trigger: HTMLButtonElement) => {
       attachmentTriggerRef.current = trigger;
       citationTriggerRef.current = null;
+      paperTriggerRef.current = null;
+      commuteTriggerRef.current = null;
       tiebaTriggerRef.current = null;
       setCitationSelection(null);
+      setPaperSelection(null);
+      setCommuteSelection(null);
       setTiebaSelection(null);
       setAttachmentSelection({ conversationId, messageId, attachment });
     },
@@ -183,8 +216,12 @@ export default function ChatConversationPage() {
       tiebaTriggerRef.current = trigger;
       citationTriggerRef.current = null;
       attachmentTriggerRef.current = null;
+      paperTriggerRef.current = null;
+      commuteTriggerRef.current = null;
       setCitationSelection(null);
       setAttachmentSelection(null);
+      setPaperSelection(null);
+      setCommuteSelection(null);
       setTiebaSelection({ conversationId, messageId, citation, post });
     },
     [conversationId]
@@ -194,6 +231,56 @@ export default function ChatConversationPage() {
     setTiebaSelection(null);
     const trigger = tiebaTriggerRef.current;
     tiebaTriggerRef.current = null;
+    restorePanelTrigger(trigger);
+  }, [restorePanelTrigger]);
+
+  const openPaper = useCallback(
+    (messageId: string, search: PaperSearchProjection, trigger: HTMLButtonElement) => {
+      paperTriggerRef.current = trigger;
+      citationTriggerRef.current = null;
+      attachmentTriggerRef.current = null;
+      commuteTriggerRef.current = null;
+      tiebaTriggerRef.current = null;
+      setCitationSelection(null);
+      setAttachmentSelection(null);
+      setCommuteSelection(null);
+      setTiebaSelection(null);
+      setPaperSelection({ conversationId, messageId, search, paperId: null });
+    },
+    [conversationId]
+  );
+
+  const selectPaper = useCallback((paperId: string | null) => {
+    setPaperSelection((current) => (current ? { ...current, paperId } : current));
+  }, []);
+
+  const closePaper = useCallback(() => {
+    setPaperSelection(null);
+    const trigger = paperTriggerRef.current;
+    paperTriggerRef.current = null;
+    restorePanelTrigger(trigger);
+  }, [restorePanelTrigger]);
+
+  const openCommuteDetails = useCallback(
+    (messageId: string, route: CommuteRouteProjection, trigger: HTMLButtonElement) => {
+      commuteTriggerRef.current = trigger;
+      citationTriggerRef.current = null;
+      attachmentTriggerRef.current = null;
+      paperTriggerRef.current = null;
+      tiebaTriggerRef.current = null;
+      setCitationSelection(null);
+      setAttachmentSelection(null);
+      setPaperSelection(null);
+      setTiebaSelection(null);
+      setCommuteSelection({ conversationId, messageId, route });
+    },
+    [conversationId]
+  );
+
+  const closeCommuteDetails = useCallback(() => {
+    setCommuteSelection(null);
+    const trigger = commuteTriggerRef.current;
+    commuteTriggerRef.current = null;
     restorePanelTrigger(trigger);
   }, [restorePanelTrigger]);
 
@@ -298,6 +385,10 @@ export default function ChatConversationPage() {
     citationSelection?.conversationId === conversationId ? citationSelection : null;
   const activeAttachmentSelection =
     attachmentSelection?.conversationId === conversationId ? attachmentSelection : null;
+  const activePaperSelection =
+    paperSelection?.conversationId === conversationId ? paperSelection : null;
+  const activeCommuteSelection =
+    commuteSelection?.conversationId === conversationId ? commuteSelection : null;
   const activeTiebaSelection =
     tiebaSelection?.conversationId === conversationId ? tiebaSelection : null;
 
@@ -363,8 +454,10 @@ export default function ChatConversationPage() {
                 conversationId={conversationId}
                 onRefreshMessages={() => void load(true)}
                 onOpenCitation={openCitation}
+                onOpenPaper={openPaper}
                 onOpenAttachment={openAttachment}
                 onOpenTiebaEvidence={openTiebaEvidence}
+                onOpenCommuteDetails={openCommuteDetails}
                 announcement={announcement}
               />
               {sendError && <ChatSendErrorBanner message={sendError} />}
@@ -391,6 +484,15 @@ export default function ChatConversationPage() {
           conversationId={conversationId}
           selection={activeCitationSelection}
           onClose={closeCitation}
+        />
+        <PaperDetailsPanel
+          selection={activePaperSelection}
+          onClose={closePaper}
+          onSelectPaper={selectPaper}
+        />
+        <CommuteDetailPanel
+          selection={activeCommuteSelection}
+          onClose={closeCommuteDetails}
         />
         <AttachmentViewerPanel
           conversationId={conversationId}

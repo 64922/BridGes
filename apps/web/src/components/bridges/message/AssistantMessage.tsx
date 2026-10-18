@@ -1,10 +1,14 @@
 "use client";
 
 import { BrandLogo } from "@/components/bridges/BrandLogo";
+import { CommuteAnswer } from "@/components/bridges/chat/CommuteAnswer";
+import { PaperDetailsEntry } from "@/components/bridges/chat/PaperDetailsEntry";
 import { RetrievalCard } from "@/components/bridges/RetrievalCard";
 import type {
   ChatModuleId,
   CitationProjection,
+  CommuteRouteProjection,
+  PaperSearchProjection,
   TiebaPostProjection,
   TiebaSummaryCitation,
 } from "@/lib/api";
@@ -27,6 +31,8 @@ export function AssistantMessage({
   onUseModuleSuggestion,
   onRefreshMessages,
   onOpenCitation,
+  onOpenPaper,
+  onOpenCommuteDetails,
   onOpenTiebaEvidence,
 }: {
   message: ChatMessageView;
@@ -42,6 +48,16 @@ export function AssistantMessage({
     citation: CitationProjection,
     trigger: HTMLButtonElement
   ) => void;
+  onOpenPaper?: (
+    messageId: string,
+    search: PaperSearchProjection,
+    trigger: HTMLButtonElement
+  ) => void;
+  onOpenCommuteDetails?: (
+    messageId: string,
+    route: CommuteRouteProjection,
+    trigger: HTMLButtonElement
+  ) => void;
   /** 打开贴吧总结引用的右侧帖子资料面板 */
   onOpenTiebaEvidence?: (
     messageId: string,
@@ -50,6 +66,7 @@ export function AssistantMessage({
     trigger: HTMLButtonElement
   ) => void;
 }) {
+  const paperSearch = message.paperSearch ?? null;
   return (
     <article
       data-testid="assistant-message"
@@ -108,6 +125,22 @@ export function AssistantMessage({
               : undefined
           }
         />
+
+        <CommuteAnswer
+          message={message}
+          conversationId={conversationId}
+          onRetry={onRetry}
+          onOpenDetails={onOpenCommuteDetails}
+        />
+
+        {paperSearch && (
+          <div data-testid="paper-answer" data-paper-status={paperSearch.status}>
+            <PaperDetailsEntry
+              search={paperSearch}
+              onOpen={(trigger) => onOpenPaper?.(message.id, paperSearch, trigger)}
+            />
+          </div>
+        )}
 
         <RetrievalCard
           retrieval={message.retrieval ?? null}

@@ -60,8 +60,8 @@ const MODULES = PLUS_MENU.slice(1);
 
 /** 各模块结果入口的 testid 前缀（贴吧已改为正文与依据分区）。 */
 const MODULE_CARD_PREFIX: Record<string, RegExp> = {
-  论文搜索: /^(paper-search-card|arxiv-search-card)/,
-  校园通勤: /^commute-route-card/,
+  论文搜索: /^(paper-answer|arxiv-search-card)/,
+  校园通勤: /^commute-answer/,
   贴吧信息搜集: /^tieba-answer/,
 };
 

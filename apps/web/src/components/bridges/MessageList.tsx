@@ -4,6 +4,8 @@ import type {
   ChatAttachmentProjection,
   ChatModuleId,
   CitationProjection,
+  CommuteRouteProjection,
+  PaperSearchProjection,
   TiebaPostProjection,
   TiebaSummaryCitation,
 } from "@/lib/api";
@@ -29,6 +31,12 @@ interface MessageListProps {
     citation: CitationProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 打开该轮论文的右侧资料面板 */
+  onOpenPaper?: (
+    messageId: string,
+    search: PaperSearchProjection,
+    trigger: HTMLButtonElement
+  ) => void;
   /** 打开消息附件的右侧预览面板 */
   onOpenAttachment?: (
     messageId: string,
@@ -40,6 +48,12 @@ interface MessageListProps {
     messageId: string,
     citation: TiebaSummaryCitation,
     post: TiebaPostProjection | null,
+    trigger: HTMLButtonElement
+  ) => void;
+  /** 打开该轮校园通勤的路线详情面板 */
+  onOpenCommuteDetails?: (
+    messageId: string,
+    route: CommuteRouteProjection,
     trigger: HTMLButtonElement
   ) => void;
 }
@@ -58,8 +72,10 @@ export function MessageList({
   onUseModuleSuggestion,
   onRefreshMessages,
   onOpenCitation,
+  onOpenPaper,
   onOpenAttachment,
   onOpenTiebaEvidence,
+  onOpenCommuteDetails,
 }: MessageListProps) {
   return (
     <ol
@@ -86,6 +102,8 @@ export function MessageList({
               onUseModuleSuggestion={onUseModuleSuggestion}
               onRefreshMessages={onRefreshMessages}
               onOpenCitation={onOpenCitation}
+              onOpenPaper={onOpenPaper}
+              onOpenCommuteDetails={onOpenCommuteDetails}
               onOpenTiebaEvidence={onOpenTiebaEvidence}
             />
           )}
