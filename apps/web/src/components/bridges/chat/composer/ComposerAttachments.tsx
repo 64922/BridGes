@@ -19,6 +19,7 @@ interface ComposerAttachmentsProps {
   draftErrors: ComposerDraftError[];
   brokenPreviews: Set<string>;
   onDismissError: (id: number) => void;
+  onRetryUpload: (id: number) => void;
   onMove: (objectId: string, offset: -1 | 1) => void;
   onRemove: (objectId: string) => void;
   onPreviewError: (objectId: string) => void;
@@ -30,6 +31,7 @@ export function ComposerAttachments({
   draftErrors,
   brokenPreviews,
   onDismissError,
+  onRetryUpload,
   onMove,
   onRemove,
   onPreviewError,
@@ -61,6 +63,30 @@ export function ComposerAttachments({
             >
               <Icon name="alert" size={14} aria-hidden />
               <span>{error.filename ? `${error.filename}：${error.message}` : error.message}</span>
+              {error.retryFile && (
+                <button
+                  type="button"
+                  aria-label={`重试上传 ${error.filename ?? "附件"}`}
+                  onClick={() => onRetryUpload(error.id)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "2px",
+                    padding: "2px var(--space-1)",
+                    border: "1px solid currentColor",
+                    borderRadius: "999px",
+                    background: "transparent",
+                    color: "inherit",
+                    cursor: "pointer",
+                    font: "inherit",
+                    fontSize: "var(--text-xs)",
+                    fontWeight: 600,
+                  }}
+                >
+                  <Icon name="retry" size={12} aria-hidden />
+                  重试
+                </button>
+              )}
               <button
                 type="button"
                 aria-label="关闭提示"
@@ -209,6 +235,28 @@ export function ComposerAttachments({
                     }}
                   >
                     {draft.ingestion_error}
+                  </span>
+                )}
+                {!photo && draft.ingestion_status === "error" && (
+                  <span
+                    style={{
+                      fontSize: "var(--text-xs)",
+                      color: "var(--color-text-secondary)",
+                      overflowWrap: "break-word",
+                    }}
+                  >
+                    可移除后重新添加该文件。
+                  </span>
+                )}
+                {!photo && draft.ingestion_status === "empty" && (
+                  <span
+                    style={{
+                      fontSize: "var(--text-xs)",
+                      color: "var(--color-text-secondary)",
+                      overflowWrap: "break-word",
+                    }}
+                  >
+                    未识别出可引用正文；可移除后重新添加可解析的版本。
                   </span>
                 )}
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>

@@ -236,6 +236,21 @@ export function chatAttachmentContentUrl(
   return `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(objectId)}/download`;
 }
 
+/** 读取已绑定附件的原始字节（账户 + 会话授权；右侧预览用，不触发下载）。 */
+export async function fetchChatAttachmentContent(
+  conversationId: string,
+  objectId: string,
+  signal?: AbortSignal
+): Promise<Response> {
+  const res = await fetch(chatAttachmentContentUrl(conversationId, objectId), {
+    credentials: "same-origin",
+    cache: "no-store",
+    signal,
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res;
+}
+
 /** 移除一条草稿（幂等删除；发送成功后草稿随绑定自动消失）。 */
 export async function removeChatAttachmentDraft(objectId: string): Promise<void> {
   const res = await fetch(

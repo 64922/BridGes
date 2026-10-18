@@ -320,7 +320,7 @@ function AttachmentIngestionDetail({
               {detail.retry_count > 0 && (
                 <DetailRow label="处理尝试" value={`${detail.retry_count} 次`} />
               )}
-              {detail.status === "error" && (
+              {detail.status === "error" && onRetryIngestion && (
                 <button
                   type="button"
                   onClick={retry}

@@ -30,6 +30,8 @@ export interface ComposerDraftError {
   id: number;
   filename?: string;
   message: string;
+  /** 上传调用失败时保留原文件，允许用同一文件真实重试。 */
+  retryFile?: File;
 }
 
 /**
@@ -52,11 +54,17 @@ export function useComposerAttachments() {
   // 不丢弃同账户其他仍在草稿域的附件。
   const discardedDraftIdsRef = useRef<Set<string>>(new Set());
 
-  const addDraftError = useCallback((message: string, filename?: string) => {
-    draftErrorSeqRef.current += 1;
-    const id = draftErrorSeqRef.current;
-    setDraftErrors((current) => [...current, { id, filename, message }]);
-  }, []);
+  const addDraftError = useCallback(
+    (message: string, filename?: string, retryFile?: File) => {
+      draftErrorSeqRef.current += 1;
+      const id = draftErrorSeqRef.current;
+      setDraftErrors((current) => [
+        ...current,
+        { id, filename, message, retryFile },
+      ]);
+    },
+    []
+  );
 
   const dismissDraftError = useCallback((id: number) => {
     setDraftErrors((current) => current.filter((error) => error.id !== id));
@@ -80,7 +88,8 @@ export function useComposerAttachments() {
         } catch (error) {
           addDraftError(
             error instanceof Error ? error.message : "上传失败，请检查网络后重试。",
-            file.name
+            file.name,
+            file
           );
         } finally {
           setUploadingCount((count) => Math.max(0, count - 1));
@@ -126,6 +135,17 @@ export function useComposerAttachments() {
     addFiles(Array.from(input.files ?? []));
     input.value = "";
   }, [addFiles]);
+
+  /** 上传调用失败后用保留的同一文件重试；只移除该条提示，其他草稿不受影响。 */
+  const retryDraftError = useCallback(
+    (id: number) => {
+      const entry = draftErrors.find((error) => error.id === id);
+      if (!entry?.retryFile) return;
+      setDraftErrors((current) => current.filter((error) => error.id !== id));
+      addFiles([entry.retryFile]);
+    },
+    [addFiles, draftErrors]
+  );
 
   /** 调整页序（上移/下移按钮均为可聚焦元素，键盘即可完成排序）。 */
   const moveDraft = useCallback((objectId: string, offset: -1 | 1) => {
@@ -227,6 +247,7 @@ export function useComposerAttachments() {
     addFiles,
     onFileInputChange,
     dismissDraftError,
+    retryDraftError,
     moveDraft,
     removeDraft,
     markPreviewBroken,

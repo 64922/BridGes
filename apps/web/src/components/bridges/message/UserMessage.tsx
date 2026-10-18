@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/design-system/Icon";
+import type { ChatAttachmentProjection } from "@/lib/api";
 import { chatModuleIcon, chatModuleLabel } from "@/lib/chat-modules";
 
 import { MessageAttachments } from "./MessageAttachments";
@@ -10,9 +11,15 @@ import type { ChatMessageView } from "@/lib/chat-message-view";
 export function UserMessage({
   message,
   conversationId,
+  onOpenAttachment,
 }: {
   message: ChatMessageView;
   conversationId?: string;
+  onOpenAttachment?: (
+    messageId: string,
+    attachment: ChatAttachmentProjection,
+    trigger: HTMLButtonElement
+  ) => void;
 }) {
   const attachments = message.attachments ?? [];
   return (
@@ -54,6 +61,12 @@ export function UserMessage({
           <MessageAttachments
             attachments={attachments}
             conversationId={conversationId}
+            onOpenAttachment={
+              onOpenAttachment
+                ? (attachment, trigger) =>
+                    onOpenAttachment(message.id, attachment, trigger)
+                : undefined
+            }
           />
         )}
         <UserMessageBody message={message} />

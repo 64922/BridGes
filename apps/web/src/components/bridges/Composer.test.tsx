@@ -250,6 +250,23 @@ describe("Composer 照片附件（Issue 05）", () => {
     expect(screen.getAllByText("坏图.png").length).toBeGreaterThan(0);
   });
 
+  it("上传调用失败时保留原文件并可重试同一文件", async () => {
+    vi.mocked(uploadChatAttachmentDraft)
+      .mockRejectedValueOnce(new Error("网络中断，未完成上传。"))
+      .mockResolvedValueOnce(draftProjection("obj-retry", "重试.png"));
+
+    renderComposer();
+    pickFiles([pngFile("重试.png")]);
+
+    const retry = await screen.findByRole("button", { name: "重试上传 重试.png" });
+    expect(screen.getByText(/网络中断/)).toBeTruthy();
+    fireEvent.click(retry);
+
+    await waitForThumb("重试.png");
+    expect(uploadChatAttachmentDraft).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/网络中断/)).toBeNull();
+  });
+
   it("发送失败时保留文字与附件等待重试", async () => {
     const onSend = vi.fn().mockRejectedValue(new Error("发送失败"));
 
