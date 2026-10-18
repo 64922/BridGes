@@ -250,7 +250,7 @@ describe("消息呈现边界（工单 02）", () => {
     expect(screen.getByTestId("paper-search-card-success")).toBeTruthy();
     expect(screen.getByTestId("tieba-research-card-success")).toBeTruthy();
     expect(screen.getByTestId("resources-card-success")).toBeTruthy();
-    expect(screen.getByTestId("commute-route-card-success")).toBeTruthy();
+    expect(screen.getByTestId("commute-answer-success")).toBeTruthy();
     expect(screen.getByTestId("career-plan-card-success")).toBeTruthy();
     expect(screen.getByTestId("github-projects-card-success")).toBeTruthy();
     expect(screen.getByTestId("module-suggestion")).toBeTruthy();

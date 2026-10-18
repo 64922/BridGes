@@ -183,8 +183,8 @@ export function CommuteRouteMap({
         setState("failed");
         setNotice(
           error instanceof Error
-            ? `地图加载失败：${error.message}。距离、耗时与文字路段不受影响。`
-            : "地图加载失败，距离、耗时与文字路段不受影响。"
+            ? `地图加载失败：${error.message}。距离、耗时与文字路线不受影响。`
+            : "地图加载失败，距离、耗时与文字路线不受影响。"
         );
       }
     })();
@@ -206,25 +206,70 @@ export function CommuteRouteMap({
     );
   }
 
+  if (state === "unavailable") {
+    return (
+      <div
+        data-testid="commute-route-map-unavailable"
+        role="status"
+        style={noticeStyle}
+      >
+        <span>{notice || "地图当前不可用；距离、耗时与文字路线不受影响。"}</span>
+        {credentialMissing && browserMapSettingsHref && (
+          <Link
+            href={browserMapSettingsHref}
+            data-testid="commute-route-map-credential-action"
+            style={credentialLinkStyle}
+          >
+            前往配置高德浏览器地图凭据
+          </Link>
+        )}
+      </div>
+    );
+  }
+
+  if (state === "failed") {
+    return (
+      <div
+        data-testid="commute-route-map-failed"
+        role="alert"
+        style={{ ...noticeStyle, borderColor: "var(--color-status-error)", color: "var(--color-status-error)" }}
+      >
+        {notice || "地图加载失败；距离、耗时与文字路线不受影响。"}
+      </div>
+    );
+  }
+
   return (
     <div
       data-testid={`commute-route-map-${state}`}
       style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}
     >
-      <div
-        ref={containerRef}
-        data-testid="commute-route-map-canvas"
-        role="img"
-        aria-label={`校园通勤路线地图：${originTitle} 到 ${destinationTitle}，共 ${pointCount} 个高德返回的路径点`}
-        style={{
-          width: "100%",
-          height: "15rem",
-          borderRadius: "var(--radius-md)",
-          border: "1px solid var(--color-border)",
-          backgroundColor: "var(--color-bg-secondary)",
-          overflow: "hidden",
-        }}
-      />
+      <div style={{ position: "relative" }}>
+        <div
+          ref={containerRef}
+          data-testid="commute-route-map-canvas"
+          role="img"
+          aria-label={`校园通勤路线地图：${originTitle} 到 ${destinationTitle}，共 ${pointCount} 个高德返回的路径点`}
+          style={{
+            width: "100%",
+            height: "15rem",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--color-border)",
+            backgroundColor: "var(--color-bg-secondary)",
+            overflow: "hidden",
+          }}
+        />
+        {state === "loading" && (
+          <div
+            data-testid="commute-route-map-loading"
+            role="status"
+            style={loadingOverlayStyle}
+          >
+            <span className="bg-spinner" aria-hidden="true" />
+            正在加载地图…
+          </div>
+        )}
+      </div>
       <div
         style={{
           display: "flex",
@@ -260,23 +305,40 @@ export function CommuteRouteMap({
         <span>
           {state === "ready"
             ? `已按高德返回的 ${pointCount} 个路径点画线；可拖拽平移、滚轮缩放。`
-            : state === "loading"
-              ? "正在加载地图…"
-              : notice}
+            : "正在加载地图…"}
         </span>
-        {credentialMissing && browserMapSettingsHref && (
-          <Link
-            href={browserMapSettingsHref}
-            data-testid="commute-route-map-credential-action"
-            style={credentialLinkStyle}
-          >
-            前往配置高德浏览器地图凭据
-          </Link>
-        )}
       </div>
     </div>
   );
 }
+
+const noticeStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  gap: "var(--space-1)",
+  margin: 0,
+  padding: "var(--space-3)",
+  border: "1px solid var(--color-border)",
+  borderRadius: "var(--radius-md)",
+  backgroundColor: "var(--color-bg-secondary)",
+  color: "var(--color-status-wait)",
+  fontSize: "var(--text-sm)",
+  overflowWrap: "anywhere",
+};
+
+const loadingOverlayStyle: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "var(--space-2)",
+  borderRadius: "var(--radius-md)",
+  backgroundColor: "var(--color-bg-secondary)",
+  color: "var(--color-text-secondary)",
+  fontSize: "var(--text-sm)",
+};
 
 const zoomButtonStyle: React.CSSProperties = {
   display: "inline-flex",

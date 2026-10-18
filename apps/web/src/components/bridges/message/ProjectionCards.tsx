@@ -8,7 +8,6 @@ import { TeachingCard } from "@/components/bridges/TeachingCard";
 import { WebSearchCard } from "@/components/bridges/WebSearchCard";
 import { ArxivPaperSearchCard } from "@/components/bridges/ArxivPaperSearchCard";
 import { CareerPlanCard } from "@/components/bridges/chat/CareerPlanCard";
-import { CommuteRouteCard } from "@/components/bridges/chat/CommuteRouteCard";
 import { GithubProjectsCard } from "@/components/bridges/chat/GithubProjectsCard";
 import { ImageTaskCard } from "@/components/bridges/chat/ImageTaskCard";
 import { LearningResourcesCard } from "@/components/bridges/chat/LearningResourcesCard";
@@ -98,13 +97,6 @@ export function SourceProjectionCards({
         resources={message.learningResources ?? null}
         streaming={streaming}
         onRetry={() => onRetry?.(message.id)}
-      />
-
-      <CommuteRouteCard
-        route={message.commuteRoute ?? null}
-        streaming={streaming}
-        onRetry={() => onRetry?.(message.id)}
-        returnTo={`/chat/${conversationId}`}
       />
 
       {!streaming && (

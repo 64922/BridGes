@@ -9,10 +9,15 @@ import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBann
 import { AttachmentViewerPanel } from "@/components/bridges/chat/AttachmentViewerPanel";
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { CitationViewerPanel } from "@/components/bridges/chat/CitationViewerPanel";
+import { CommuteDetailPanel } from "@/components/bridges/chat/CommuteDetailPanel";
 import { Composer } from "@/components/bridges/Composer";
 import { StudyProgress } from "@/components/bridges/chat/StudyProgress";
 import type { CapabilityAvailability } from "@/components/bridges/chat/capability-availability";
-import type { ChatAttachmentProjection, CitationProjection } from "@/lib/api";
+import type {
+  ChatAttachmentProjection,
+  CitationProjection,
+  CommuteRouteProjection,
+} from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { buildThreadMessages } from "@/lib/chat-thread";
@@ -45,6 +50,12 @@ interface AttachmentSelection {
   conversationId: string;
   messageId: string;
   attachment: ChatAttachmentProjection;
+}
+
+interface CommuteDetailSelection {
+  conversationId: string;
+  messageId: string;
+  route: CommuteRouteProjection;
 }
 
 /**
@@ -93,6 +104,8 @@ export default function ChatConversationPage() {
   const citationTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [attachmentSelection, setAttachmentSelection] = useState<AttachmentSelection | null>(null);
   const attachmentTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [commuteSelection, setCommuteSelection] = useState<CommuteDetailSelection | null>(null);
+  const commuteTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     resumeModuleCheckedRef.current = null;
@@ -103,8 +116,10 @@ export default function ChatConversationPage() {
   useEffect(() => {
     citationTriggerRef.current = null;
     attachmentTriggerRef.current = null;
+    commuteTriggerRef.current = null;
     setCitationSelection(null);
     setAttachmentSelection(null);
+    setCommuteSelection(null);
   }, [conversationId]);
 
   const restorePanelTrigger = useCallback((trigger: HTMLButtonElement | null) => {
@@ -126,7 +141,9 @@ export default function ChatConversationPage() {
     (messageId: string, citation: CitationProjection, trigger: HTMLButtonElement) => {
       citationTriggerRef.current = trigger;
       attachmentTriggerRef.current = null;
+      commuteTriggerRef.current = null;
       setAttachmentSelection(null);
+      setCommuteSelection(null);
       setCitationSelection({ conversationId, messageId, citation });
     },
     [conversationId]
@@ -143,7 +160,9 @@ export default function ChatConversationPage() {
     (messageId: string, attachment: ChatAttachmentProjection, trigger: HTMLButtonElement) => {
       attachmentTriggerRef.current = trigger;
       citationTriggerRef.current = null;
+      commuteTriggerRef.current = null;
       setCitationSelection(null);
+      setCommuteSelection(null);
       setAttachmentSelection({ conversationId, messageId, attachment });
     },
     [conversationId]
@@ -153,6 +172,25 @@ export default function ChatConversationPage() {
     setAttachmentSelection(null);
     const trigger = attachmentTriggerRef.current;
     attachmentTriggerRef.current = null;
+    restorePanelTrigger(trigger);
+  }, [restorePanelTrigger]);
+
+  const openCommuteDetails = useCallback(
+    (messageId: string, route: CommuteRouteProjection, trigger: HTMLButtonElement) => {
+      commuteTriggerRef.current = trigger;
+      citationTriggerRef.current = null;
+      attachmentTriggerRef.current = null;
+      setCitationSelection(null);
+      setAttachmentSelection(null);
+      setCommuteSelection({ conversationId, messageId, route });
+    },
+    [conversationId]
+  );
+
+  const closeCommuteDetails = useCallback(() => {
+    setCommuteSelection(null);
+    const trigger = commuteTriggerRef.current;
+    commuteTriggerRef.current = null;
     restorePanelTrigger(trigger);
   }, [restorePanelTrigger]);
 
@@ -257,6 +295,8 @@ export default function ChatConversationPage() {
     citationSelection?.conversationId === conversationId ? citationSelection : null;
   const activeAttachmentSelection =
     attachmentSelection?.conversationId === conversationId ? attachmentSelection : null;
+  const activeCommuteSelection =
+    commuteSelection?.conversationId === conversationId ? commuteSelection : null;
 
   return (
     <AppShell>
@@ -321,6 +361,7 @@ export default function ChatConversationPage() {
                 onRefreshMessages={() => void load(true)}
                 onOpenCitation={openCitation}
                 onOpenAttachment={openAttachment}
+                onOpenCommuteDetails={openCommuteDetails}
                 announcement={announcement}
               />
               {sendError && <ChatSendErrorBanner message={sendError} />}
@@ -352,6 +393,10 @@ export default function ChatConversationPage() {
           conversationId={conversationId}
           selection={activeAttachmentSelection}
           onClose={closeAttachment}
+        />
+        <CommuteDetailPanel
+          selection={activeCommuteSelection}
+          onClose={closeCommuteDetails}
         />
       </div>
     </AppShell>

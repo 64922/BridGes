@@ -2,7 +2,12 @@
 
 import { BrandLogo } from "@/components/bridges/BrandLogo";
 import { RetrievalCard } from "@/components/bridges/RetrievalCard";
-import type { ChatModuleId, CitationProjection } from "@/lib/api";
+import { CommuteAnswer } from "@/components/bridges/chat/CommuteAnswer";
+import type {
+  ChatModuleId,
+  CitationProjection,
+  CommuteRouteProjection,
+} from "@/lib/api";
 
 import { AssistantActions } from "./AssistantActions";
 import { AttemptHistory } from "./AttemptHistory";
@@ -22,6 +27,7 @@ export function AssistantMessage({
   onUseModuleSuggestion,
   onRefreshMessages,
   onOpenCitation,
+  onOpenCommuteDetails,
 }: {
   message: ChatMessageView;
   conversationId?: string;
@@ -34,6 +40,11 @@ export function AssistantMessage({
   onOpenCitation?: (
     messageId: string,
     citation: CitationProjection,
+    trigger: HTMLButtonElement
+  ) => void;
+  onOpenCommuteDetails?: (
+    messageId: string,
+    route: CommuteRouteProjection,
     trigger: HTMLButtonElement
   ) => void;
 }) {
@@ -86,6 +97,13 @@ export function AssistantMessage({
         <PublicProcess message={message} conversationId={conversationId} />
 
         <AssistantBody message={message} conversationId={conversationId} />
+
+        <CommuteAnswer
+          message={message}
+          conversationId={conversationId}
+          onRetry={onRetry}
+          onOpenDetails={onOpenCommuteDetails}
+        />
 
         <RetrievalCard
           retrieval={message.retrieval ?? null}

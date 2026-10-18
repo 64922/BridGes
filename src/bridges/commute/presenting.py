@@ -41,6 +41,10 @@ def format_duration(seconds: int | None) -> str:
     return f"{hours} 小时 {rest} 分钟" if rest else f"{hours} 小时"
 
 
+#: 正文只列主要路段，完整长步骤放入按需打开的路线详情。
+ROUTE_BODY_STEP_LIMIT = 4
+
+
 def render_result_content(projection: CommuteRouteProjection) -> str:
     """成功或未验证结果的正文（顺序与交互规格 §4.1 一致）。"""
     mode_label = projection.mode_label or _mode_label(projection.mode)
@@ -52,7 +56,10 @@ def render_result_content(projection: CommuteRouteProjection) -> str:
     if projection.mode is not None and projection.mode_phrase:
         lines.append(f"方式：{mode_label}（你说的是「{projection.mode_phrase}」）。")
     lines.append(f"距离：{format_distance(projection.distance_m)}")
-    lines.append(f"高德基础耗时：{format_duration(projection.base_duration_seconds)}")
+    lines.append(
+        f"高德基础耗时：{format_duration(projection.base_duration_seconds)}"
+        "（高德估计，不是保证到达时间）。"
+    )
     if projection.buffer is not None:
         buffer = projection.buffer
         if buffer.in_window and buffer.matched_break_time:
@@ -62,11 +69,14 @@ def render_result_content(projection: CommuteRouteProjection) -> str:
             )
         else:
             lines.append("课间缓冲：当前不在课间高峰窗口内，不加缓冲。")
-        lines.append(f"建议总时间：{format_duration(projection.suggested_total_seconds)}")
+        lines.append(
+            f"建议总时间：{format_duration(projection.suggested_total_seconds)}"
+            "（基础耗时加上课间规则缓冲的估计值，不是保证到达时间）。"
+        )
     if projection.path_verified:
         lines.append(
             f"地图：已取得高德返回的 {len(projection.polyline)} 个路径点，"
-            "可在下面路线卡中缩放查看，并适合截图保存。"
+            "地图按这些路径点绘制在正文下方；完整路段、POI 与调用记录可在「查看路线详情」中读取。"
         )
     else:
         lines.append(
@@ -74,12 +84,16 @@ def render_result_content(projection: CommuteRouteProjection) -> str:
             "只保留高德已证实的地点、距离与耗时。"
         )
     if projection.steps:
+        visible_steps = projection.steps[:ROUTE_BODY_STEP_LIMIT]
         lines.append("")
-        lines.append("路线文字：")
-        for step in projection.steps:
+        lines.append("路线要点：")
+        for step in visible_steps:
             road = f"（{step.road_name}）" if step.road_name else ""
             distance = f"，{format_distance(step.distance_m)}" if step.distance_m else ""
             lines.append(f"{step.index}. {step.instruction}{road}{distance}")
+        remaining = len(projection.steps) - len(visible_steps)
+        if remaining > 0:
+            lines.append(f"其余 {remaining} 段路线文字见「查看路线详情」。")
     if projection.evidence_notes:
         lines.append("")
         lines.append("证据边界：")
@@ -107,7 +121,7 @@ def render_error_content(projection: CommuteRouteProjection) -> str:
     else:
         lines.append("路线查询失败，请稍后重试。")
     if projection.retryable:
-        lines.append("可以在下面重试同一条请求。")
+        lines.append("可以在下方按真实可用的恢复入口重试同一条请求。")
     return "\n".join(lines)
 
 

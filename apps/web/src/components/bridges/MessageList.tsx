@@ -4,6 +4,7 @@ import type {
   ChatAttachmentProjection,
   ChatModuleId,
   CitationProjection,
+  CommuteRouteProjection,
 } from "@/lib/api";
 
 import { AssistantMessage } from "./message/AssistantMessage";
@@ -33,6 +34,12 @@ interface MessageListProps {
     attachment: ChatAttachmentProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 打开该轮校园通勤的路线详情面板 */
+  onOpenCommuteDetails?: (
+    messageId: string,
+    route: CommuteRouteProjection,
+    trigger: HTMLButtonElement
+  ) => void;
 }
 
 /**
@@ -50,6 +57,7 @@ export function MessageList({
   onRefreshMessages,
   onOpenCitation,
   onOpenAttachment,
+  onOpenCommuteDetails,
 }: MessageListProps) {
   return (
     <ol
@@ -76,6 +84,7 @@ export function MessageList({
               onUseModuleSuggestion={onUseModuleSuggestion}
               onRefreshMessages={onRefreshMessages}
               onOpenCitation={onOpenCitation}
+              onOpenCommuteDetails={onOpenCommuteDetails}
             />
           )}
         </li>
