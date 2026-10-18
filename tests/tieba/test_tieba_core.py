@@ -104,10 +104,12 @@ def test_topic_terms_keep_real_phrases_containing_positional_chars(
         assert "秋节" not in query.split()
     for term in expected:
         assert term in queries[0]
-    # 备用查询允许减少放假、条件等泛词，保留完整事件与地点词。
-    for term in expected:
-        if term in {"中秋节", "上铺", "下铺", "中午", "外语", "家里", "下课后"}:
-            assert term in queries[1]
+    # 备用查询允许减少放假、条件等泛词，保留完整事件与地点词；没有产生
+    # 真正不同的备用表达时，计划不会用装饰词凑一条重复查询。
+    if len(queries) > 1:
+        for term in expected:
+            if term in {"中秋节", "上铺", "下铺", "中午", "外语", "家里", "下课后"}:
+                assert term in queries[-1]
 
 
 def test_holiday_question_requests_official_check_without_inventing_a_year() -> None:

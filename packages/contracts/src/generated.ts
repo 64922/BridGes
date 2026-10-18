@@ -29126,6 +29126,30 @@ export interface components {
             retrieved_at: string;
         };
         /**
+         * TiebaQueryRound
+         * @description 一轮检索的目标与真实执行词。
+         *
+         *     ``query`` 是带固定来源约束的完整计划查询；``execution_terms`` 是去掉
+         *     来源前缀与「贴吧」等装饰词后真正用于吧内检索、并作为去重键的最小表达。
+         */
+        TiebaQueryRound: {
+            /**
+             * Goal
+             * @description 本轮检索目标（原词／常用说法／备用放宽词）。
+             */
+            goal: string;
+            /**
+             * Query
+             * @description 带固定来源约束的完整查询词。
+             */
+            query: string;
+            /**
+             * Execution Terms
+             * @description 去掉来源前缀与装饰词后的真实执行词。
+             */
+            execution_terms: string;
+        };
+        /**
          * TiebaQuestionKind
          * @description 问题类型：规定、体验与混合（决定取证顺序与来源范围）。
          *
@@ -29228,6 +29252,11 @@ export interface components {
              * @description 问题点名的校区／区域原词。
              */
             campus_terms?: string[];
+            /**
+             * Query Rounds
+             * @description 本轮检索计划：每轮目标与真实执行词。
+             */
+            query_rounds?: components["schemas"]["TiebaQueryRound"][];
             /**
              * Source Priority
              * @description 本轮实际采用的来源优先级。

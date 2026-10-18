@@ -28,7 +28,7 @@ from bridges.tieba.official import (
 from bridges.tieba.presenting import build_sections
 from bridges.tieba.recipe import CONSENSUS_PHRASES, OFFICIAL_UNVERIFIED_NOTE
 from bridges.tieba.searching import (
-    plan_queries,
+    plan_query_rounds,
 )
 
 
@@ -44,7 +44,7 @@ def build_evidence_plan(
             official_required=False,
             official_blocked_reason=None,
             check_requirements=["以目标贴吧的真实帖子与回复呈现实际经历与不同看法。"],
-            tieba_queries=list(plan_queries(analysis)),
+            query_rounds=list(plan_query_rounds(analysis)),
             official_queries=[],
             rationale="体验类问题：以目标贴吧实际帖子与回复为主，只使用真实读到的楼层。",
         )
@@ -72,7 +72,7 @@ def build_evidence_plan(
         official_required=not blocked,
         official_blocked_reason=blocked,
         check_requirements=requirements,
-        tieba_queries=list(plan_queries(analysis)),
+        query_rounds=list(plan_query_rounds(analysis)),
         official_queries=(
             [] if blocked else [official_query(analysis), official_fallback_query(analysis)]
         ),
