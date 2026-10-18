@@ -1,0 +1,175 @@
+/* 正文旁的媒体容器：嵌入可用图片或视频，状态与失败反馈就近显示。
+   容器随阅读列收缩，不撑破页面；完整媒体与版本详情在右侧面板打开。 */
+
+.media {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+.statusRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.statusChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full, 999px);
+  font-weight: 600;
+}
+
+.statusChip[data-status="queued"],
+.statusChip[data-status="recovery"],
+.statusChip[data-status="submitting"],
+.statusChip[data-status="generating"],
+.statusChip[data-status="cancelling"] {
+  color: var(--color-status-wait);
+  background-color: var(--color-status-wait-bg);
+}
+
+.statusChip[data-status="running"] {
+  color: var(--color-status-info);
+  background-color: var(--color-status-info-bg);
+}
+
+.statusChip[data-status="succeeded"] {
+  color: var(--color-status-success);
+  background-color: var(--color-status-success-bg);
+}
+
+.statusChip[data-status="failed"] {
+  color: var(--color-status-error);
+  background-color: var(--color-status-error-bg);
+}
+
+.statusChip[data-status="cancelled"] {
+  color: var(--color-status-unknown);
+  background-color: var(--color-status-unknown-bg);
+}
+
+.meta {
+  min-width: 0;
+  color: var(--color-text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.caption {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-relaxed);
+  overflow-wrap: anywhere;
+}
+
+.previewWrap {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.imageButton {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.imageButton:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+.image {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 22rem;
+  height: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+}
+
+.video {
+  display: block;
+  width: 100%;
+  max-width: 30rem;
+  max-height: 22rem;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.actionButton,
+.actionLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--target-size);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+
+.actionButton:focus-visible,
+.actionLink:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+.notice {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-relaxed);
+  overflow-wrap: anywhere;
+}
+
+.noticeError {
+  color: var(--color-status-error);
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  line-height: var(--line-height-relaxed);
+  overflow-wrap: anywhere;
+}
+
+.statusLine {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}

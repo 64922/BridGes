@@ -352,4 +352,47 @@ describe("buildThreadMessages（工单 38）", () => {
     expect(items[1].plainText).toBe("完整回答");
     expect(items[1].body).toBeUndefined();
   });
+
+  it("重复完成事件或重复助手消息只保留一条媒体产物", () => {
+    const image: ImageTaskProjection = {
+      task_id: "img-1",
+      attempt_number: 1,
+      kind: "generate",
+      prompt: "画一只猫",
+      status: "succeeded",
+      asset_id: "asset-1",
+      result_version_id: "version-1",
+      retryable: false,
+      deleted: false,
+      synthetic: true,
+      created_at: NOW,
+      updated_at: NOW,
+    };
+    const video: VideoTaskProjection = {
+      task_id: "video-1",
+      prompt: "一段海浪视频",
+      synthetic_media: true,
+      status: "succeeded",
+      asset_id: "video-asset-1",
+      retryable: false,
+      deleted: false,
+      created_at: NOW,
+      updated_at: NOW,
+    };
+
+    const items = buildThreadMessages([
+      message({ message_id: "u-1", role: "user", content: "画一张图" }),
+      message({ message_id: "a-1", content: "图片生成完成。", image }),
+      message({ message_id: "a-2", attempt_number: 2, content: "图片生成完成。", image }),
+      message({ message_id: "u-2", role: "user", content: "生成一段视频" }),
+      message({ message_id: "a-3", content: "视频生成完成。", video }),
+      message({ message_id: "a-4", attempt_number: 2, content: "视频生成完成。", video }),
+    ]);
+
+    expect(items).toHaveLength(4);
+    expect(items[1].image?.task_id).toBe("img-1");
+    expect(items[1].previousAttempts).toHaveLength(1);
+    expect(items[3].video?.task_id).toBe("video-1");
+    expect(items[3].previousAttempts).toHaveLength(1);
+  });
 });

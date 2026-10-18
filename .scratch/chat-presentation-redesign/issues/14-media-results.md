@@ -4,7 +4,7 @@
 
 **Blocked by:** 07 — 内联呈现交付状态、失败与真实恢复；08 — 从真实引用打开右侧资料并继续对话
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 > 已于 2026-10-17 经用户确认发布。仅在本票所有阻塞项完成验收后开始；无阻塞票可立即领取。设计与原型已批准，无需重新决定视觉方向。
 
@@ -20,14 +20,14 @@
 
 ## 验收标准
 
-- [ ] 任务生成成功但资产未可访问时，不显示可下载的假链接或成功缩略图。
-- [ ] 图片、视频和文字说明属于同一任务及消息，重复完成事件不插入重复产物。
-- [ ] 排队、处理中、失败、停止和成功真实呈现；恢复动作按实际能力决定。
-- [ ] 媒体加载失败不删除说明正文，用户能返回对话并获取准确反馈。
-- [ ] 视频不自动播放；已有播放控制、图片替代文字和下载权限保留。
-- [ ] 切换会话、关闭预览或账户变化释放对象 URL、播放器与轮询资源。
-- [ ] 历史产物仍可读，资产已删除或无权限时明确说明，不泄漏旧缓存。
-- [ ] 媒体容器随窗口变化保持比例，不阻塞文本阅读或撑破页面。
+- [x] 任务生成成功但资产未可访问时，不显示可下载的假链接或成功缩略图。
+- [x] 图片、视频和文字说明属于同一任务及消息，重复完成事件不插入重复产物。
+- [x] 排队、处理中、失败、停止和成功真实呈现；恢复动作按实际能力决定。
+- [x] 媒体加载失败不删除说明正文，用户能返回对话并获取准确反馈。
+- [x] 视频不自动播放；已有播放控制、图片替代文字和下载权限保留。
+- [x] 切换会话、关闭预览或账户变化释放对象 URL、播放器与轮询资源。
+- [x] 历史产物仍可读，资产已删除或无权限时明确说明，不泄漏旧缓存。
+- [x] 媒体容器随窗口变化保持比例，不阻塞文本阅读或撑破页面。
 
 ## 验证方式
 
@@ -55,3 +55,53 @@
 
 - 2026-10-17：依据已验收原型、设计原则及当前代码只读核对形成草案；未开始业务开发。
 - 2026-10-17：用户确认「发布」，按已批准拆分转为 ready-for-agent；未开始业务开发。
+- 2026-10-18：已完成实现并自测，转 ready-for-human。图片/视频媒体进入正文，复用已有任务与授权资产读取；未改协议、schema 或后台生成管线。图片/视频生成已退役，因此只保留历史只读，不提供取消、重试、删除等写操作。
+
+### 交接记录
+
+**实际变更**
+
+- 正文媒体组件：新增 `apps/web/src/components/bridges/chat/ImageMedia.tsx`、`VideoMedia.tsx`、`MediaResult.module.css`，替换并删除原 `ImageTaskCard.tsx`、`VideoTaskCard.tsx`。正文、状态、说明、预览与下载属于同一条消息。
+- 右侧媒体详情：新增 `MediaViewerPanel.tsx` / `.module.css`，重新读取最新授权资产与字节，支持图片版本切换、视频播放、下载、Esc/关闭。
+- 面板生命周期：新增 `apps/web/src/lib/use-chat-detail-panels.ts`，把引用、论文、通勤、贴吧、附件与媒体面板统一为“同一时间只开一个”；关闭后按“触发按钮 → 输入框 → 主内容区”恢复焦点。聊天页接入媒体面板。
+- 媒体状态与接口：新增 `apps/web/src/lib/media-status.ts`、`apps/web/src/lib/chat-media.ts`；`apps/web/src/lib/api/media.ts` 增加既有图片版本字节与视频字节读取封装。
+- 统一过程：`PublicProcess.tsx` 增加“媒体任务”真实状态区块，并计入可展开的过程详情。
+- 消息接线：`ProjectionCards.tsx`、`AssistantMessage.tsx`、`MessageList.tsx`、`ChatThread.tsx` 透传 `onOpenMedia`；媒体放在正文之后。
+- 测试：新增 `ImageMedia.test.tsx`、`VideoMedia.test.tsx`、`MediaViewerPanel.test.tsx`、`e2e/issue14-media-results.spec.ts`；`chat-thread.test.tsx` 增加重复完成事件/重复助手消息不重复插入媒体的用例；`PublicProcess.test.tsx` 增加媒体过程用例。
+
+**任务状态与资产状态映射**
+
+- 图片：`queued` → 排队中，`running` → 生成中，`recovery` → 恢复中，`succeeded` → 已完成，`failed` → 失败，`cancelled` → 已停止。
+- 视频：`queued` → 排队中，`submitting` → 提交中，`generating` → 生成中，`recovery` → 恢复中，`cancelling` → 正在停止，`succeeded` → 已完成，`failed` → 失败，`cancelled` → 已停止。
+- 成功不推断资产可访问：仅当 `succeeded && !deleted && asset_id` 才读取资产投影；404/403 明确“已删除或当前账户无权访问”，不显示缩略图、播放器或下载；503 提供读取重试；字节解码失败保留正文说明并给出重新显示/下载；任务已删除时不读取资产。
+- 视频始终 `controls preload="none"`，无 `autoplay`；图片保留替代文字与下载入口。
+
+**轮询归属与资源释放**
+
+- 任务轮询归正文媒体组件：5 秒间隔，仅活跃状态轮询，终态停止；首次观察到活跃 → 成功时通知会话刷新一次权威消息，避免重复轮询/重复插入。
+- 资产查询为一次性；右侧面板打开时重新读取资产与字节，切换版本先释放旧 object URL。
+- 关闭面板、切换会话、卸载组件会取消在途请求并释放 object URL；视频卸载前暂停播放器。账户变化由 AppShell 的 key 重挂载页面，面板随页面卸载。
+- 同一任务/消息只渲染一个媒体视图；连续助手尝试在 thread 层合并，重复完成事件不追加重复产物。
+
+**验证命令与结果**
+
+- `npm run typecheck`：通过。
+- `npm run test:unit`：54 个测试文件、425 个测试全部通过。
+- `npm run build`：编译、lint、类型检查与静态页面生成通过；worktree 使用 node_modules junction，Next standalone trace 复制 `node_modules` 符号链接时报 Windows `EPERM`，属 worktree 目录限制，非代码错误。普通检出目录应无此问题。
+- `npx playwright test e2e/issue14-media-results.spec.ts --project=chromium`：2 个用例通过（18.3s）。覆盖图片/视频成功、历史重开、面板焦点与关闭、切换会话清除面板、三档桌面尺寸与 125% 等效视口；失败/停止/排队/资产 404/503/字节失败/删除的真实呈现。
+- 回归：issue13 附件预览 4 passed、issue14 会话模式 2 passed、issue08 文章交付 6 passed、issue38 终态历史 3 passed。issue13/14/08 均通过。
+- 后端：`python -m pytest tests/image/test_image_service.py tests/video/test_video_service.py -q` → 46 passed，包含跨账户隔离、资产读取与任务状态用例。
+- E2E 因并行工作树占用默认 3000/8000/8026/8027，本次使用隔离端口运行；在无冲突环境可直接用标准 Playwright 配置执行上述命令。
+- 证据截图：`.scratch/chat-presentation-redesign/evidence/14/media-1280x720.png`、`media-1440x900.png`、`media-1920x1080.png`、`media-1280x720-zoom125.png`（1024×576 等效 125% 缩放视口）。
+
+**已记录的既有/范围外失败**
+
+- issue22-conversation-viewport：3 个用例失败，分别因 composer 按钮实际为 3 个而断言 2 个、`chat-thread` 查询目标缺失、citation 详情未出现；本票未修改 composer、thread 容器或引用组件，建议另票处理。
+- issue38-trusted-progress 的“真实流式”3 个用例：测试固定请求 `127.0.0.1:8000/_test/chat-stream-script`，隔离端口运行时连接被拒；同一文件终态历史 3 个用例通过。属测试环境端口假设，不是媒体行为回归。
+- 未调用真实图片/视频模型或渲染器；视频字节由浏览器 `MediaRecorder` 生成 WebM 仅供播放测试。图片字节为固定 1×1 PNG 替身。
+
+**遗留限制与回退**
+
+- 图片/视频生成写入口已退役，失败/停止任务只保留历史说明；本票不新增取消、重试、删除或重新生成。资产无权限/已删除只说明真实原因。
+- 图片历史只读无“当前版本”编辑链；视频无版本链，仅保留单资产。
+- 回退：回滚本票提交即可；未新增 schema、迁移、后台管线或稳定协议。媒体 UI 与面板 hook 均为前端内部路径，不涉及兼容 shim。

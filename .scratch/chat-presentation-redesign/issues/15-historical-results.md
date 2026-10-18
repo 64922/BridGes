@@ -59,7 +59,7 @@
 
 ## 交接记录（2026-10-18）
 
-**分支与基线：** `15-historical-results`，基于 main `f53db886`。本票只改前端与测试，未修改 Python 业务源码、API 合同、数据库 schema、迁移或依赖。
+**分支与基线：** `15-historical-results`，基于 main `f53db886`，合并时已合入 main `aefc860e`（Issue 14 图片/视频呈现）。本票只改前端与测试，未修改 Python 业务源码、API 合同、数据库 schema、迁移或依赖。
 
 **实际变更**
 
@@ -68,6 +68,7 @@
 - 新增 `HistoricalExpression.tsx`：人味化历史结果唯一入口；已交付正文由消息正文承担，结果卡只显示交付状态、复制与审计折叠；失败/未交付时正文区显示“正文未交付”，不恢复候选稿；保留 legacy 徽标、来源保真、表达审稿、修订、剔除、证据、待确认及 `expand`/`copy`/`legacy_read` 遥测。
 - 接入 `AssistantMessage`、`MessageBody`、`AssistantActions`、`AttemptHistory`、`chat-message.ts`、`chat-thread.tsx`：复制优先取历史可交付正文；无正文时禁用复制；旧尝试按 `attempt_number` 展示已保存正文，不与最新回答混写。
 - `ProjectionCards` 移除退役模块与 humanizer 分支，保留活跃的 `careerPlanning`、teaching、web、paper、tieba、image/video 等投影。
+- 合入 main 的 Issue 14 后，`AssistantMessage` 同时保留 `HistoricalResults` 与 `MediaTaskCards`；`ProjectionCards` 使用新的 `ImageMedia`/`VideoMedia`，不再引用已删除的 `ImageTaskCard`/`VideoTaskCard`。
 - 删除旧内部路径：
   - `apps/web/src/components/bridges/chat/LearningResourcesCard.tsx` + `.test.tsx`
   - `apps/web/src/components/bridges/chat/CareerPlanCard.tsx` + `.test.tsx`
@@ -101,7 +102,7 @@
 ```powershell
 cd apps/web
 npm run typecheck   # 通过
-npm run test:unit   # 48 files / 370 tests 通过
+npm run test:unit   # 合并 main 后 51 files / 395 tests 通过
 npm run lint        # 通过，仅 2 条既有 <img> 警告
 npm run build       # 通过 23 个页面；Windows junction 导致 standalone symlink EPERM 警告，命令退出成功
 ```
@@ -115,8 +116,8 @@ ruff check tests/chat/test_issue15_historical_results.py
 # 通过
 
 $env:CI='1'
-npx playwright test e2e/issue15-historical-results.spec.ts e2e/issue08-article-result-projection.spec.ts --workers=1
-# 9 passed（issue15 3 + issue08 6）
+npx playwright test e2e/issue08-article-result-projection.spec.ts e2e/issue14-media-results.spec.ts e2e/issue15-historical-results.spec.ts --workers=1
+# 11 passed（issue08 6 + issue14 2 + issue15 3）
 ```
 
 **既有失败与未验证项**
