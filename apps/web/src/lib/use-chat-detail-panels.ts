@@ -39,7 +39,14 @@ interface CommuteDetailSelection {
   route: CommuteRouteProjection;
 }
 
-type PanelKey = "citation" | "attachment" | "paper" | "commute" | "tieba" | "media";
+type PanelKey =
+  | "citation"
+  | "attachment"
+  | "paper"
+  | "commute"
+  | "tieba"
+  | "media"
+  | "study";
 
 /**
  * 对话页右侧资料/媒体面板的选择与焦点生命周期。
@@ -57,6 +64,7 @@ export function useChatDetailPanels(conversationId: string) {
     useState<CommuteDetailSelection | null>(null);
   const [tiebaSelection, setTiebaSelection] = useState<TiebaEvidenceSelection | null>(null);
   const [mediaSelection, setMediaSelection] = useState<ChatMediaSelection | null>(null);
+  const [studyDetailsOpen, setStudyDetailsOpen] = useState(false);
 
   const triggerRefs = useRef<Record<PanelKey, HTMLButtonElement | null>>({
     citation: null,
@@ -65,6 +73,7 @@ export function useChatDetailPanels(conversationId: string) {
     commute: null,
     tieba: null,
     media: null,
+    study: null,
   });
 
   useEffect(() => {
@@ -77,6 +86,7 @@ export function useChatDetailPanels(conversationId: string) {
     setCommuteSelection(null);
     setTiebaSelection(null);
     setMediaSelection(null);
+    setStudyDetailsOpen(false);
   }, [conversationId]);
 
   const restoreTrigger = useCallback((trigger: HTMLButtonElement | null) => {
@@ -104,6 +114,7 @@ export function useChatDetailPanels(conversationId: string) {
     if (keep !== "commute") setCommuteSelection(null);
     if (keep !== "tieba") setTiebaSelection(null);
     if (keep !== "media") setMediaSelection(null);
+    if (keep !== "study") setStudyDetailsOpen(false);
   }, []);
 
   const closePanel = useCallback(
@@ -179,6 +190,15 @@ export function useChatDetailPanels(conversationId: string) {
     [clearOthers, conversationId]
   );
 
+  const openStudyDetails = useCallback(
+    (trigger: HTMLButtonElement) => {
+      clearOthers("study");
+      triggerRefs.current.study = trigger;
+      setStudyDetailsOpen(true);
+    },
+    [clearOthers]
+  );
+
   const selectPaper = useCallback((paperId: string | null) => {
     setPaperSelection((current) => (current ? { ...current, paperId } : current));
   }, []);
@@ -207,6 +227,10 @@ export function useChatDetailPanels(conversationId: string) {
     () => closePanel("media", () => setMediaSelection(null)),
     [closePanel]
   );
+  const closeStudyDetails = useCallback(
+    () => closePanel("study", () => setStudyDetailsOpen(false)),
+    [closePanel]
+  );
 
   return {
     activeCitation:
@@ -233,5 +257,8 @@ export function useChatDetailPanels(conversationId: string) {
     activeMedia: mediaSelection?.conversationId === conversationId ? mediaSelection : null,
     openMedia,
     closeMedia,
+    studyDetailsOpen,
+    openStudyDetails,
+    closeStudyDetails,
   };
 }

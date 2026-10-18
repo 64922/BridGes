@@ -1,0 +1,86 @@
+.turnStatus {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-2) 0 var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-border-strong);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-relaxed);
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+}
+
+.item[data-state="unanswered"] {
+  color: var(--color-status-wait);
+}
+
+.item[data-state="recorded"] {
+  color: var(--color-text-secondary);
+}
+
+.item[data-state="unverified"] {
+  color: var(--color-text-secondary);
+}
+
+.item[data-state="verification-pending"] {
+  color: var(--color-status-wait);
+}
+
+.item[data-state="verified"] {
+  color: var(--color-status-success);
+}
+
+.item[data-state="hinted"] {
+  color: var(--color-status-info);
+}
+
+.item[data-state="misconception"],
+.item[data-state="service-failure"] {
+  color: var(--color-status-error);
+}
+
+.label {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.action {
+  min-height: var(--target-size);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-accent-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.action:hover {
+  border-color: var(--color-accent-secondary);
+}
+
+.action:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+.action:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

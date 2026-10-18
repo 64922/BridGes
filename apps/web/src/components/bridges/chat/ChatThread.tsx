@@ -65,6 +65,10 @@ interface ChatThreadProps {
     target: ChatMediaTarget,
     trigger: HTMLButtonElement
   ) => void;
+  /** 工单 12：打开学习详情面板，返回焦点到真实触发按钮。 */
+  onOpenStudyDetails?: (trigger: HTMLButtonElement) => void;
+  busy?: boolean;
+  onRetryDiagnosis?: (taskId: string) => Promise<void>;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
   announcement?: string | null;
 }
@@ -90,6 +94,9 @@ export function ChatThread({
   onOpenTiebaEvidence,
   onOpenCommuteDetails,
   onOpenMedia,
+  onOpenStudyDetails,
+  busy,
+  onRetryDiagnosis,
   announcement,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -133,6 +140,9 @@ export function ChatThread({
           onOpenTiebaEvidence={onOpenTiebaEvidence}
           onOpenCommuteDetails={onOpenCommuteDetails}
           onOpenMedia={onOpenMedia}
+          onOpenStudyDetails={onOpenStudyDetails}
+          busy={busy}
+          onRetryDiagnosis={onRetryDiagnosis}
         />
       </div>
       <p className="sc-visually-hidden" role="status" aria-live="polite">

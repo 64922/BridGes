@@ -226,6 +226,8 @@ for (const viewport of VIEWPORTS) {
     await page.setViewportSize(viewport);
     await mockStudyApi(page, testInfo, { records: [RECORD] });
     await page.goto(`/chat/${CONVERSATION_ID}`);
+    await expect(page.getByTestId("study-details-panel")).toHaveCount(0);
+    await page.getByTestId("study-details-open").click();
 
     const goalPanel = page.getByRole("region", { name: "学习目标" });
     await expect(goalPanel).toBeVisible();
@@ -269,6 +271,7 @@ test("键盘完成纠正：Enter 打开、输入、Tab 到保存、Enter 提交�
   const state: MockState = { records: [RECORD] };
   await mockStudyApi(page, testInfo, state);
   await page.goto(`/chat/${CONVERSATION_ID}`);
+  await page.getByTestId("study-details-open").click();
 
   const panel = page.locator('[aria-label="学习档案"]');
   const correctButton = panel.getByRole("button", { name: "纠正" });
@@ -301,6 +304,7 @@ test("键盘完成纠正：Enter 打开、输入、Tab 到保存、Enter 提交�
   await expect(textarea).toBeHidden();
 
   await page.reload();
+  await page.getByTestId("study-details-open").click();
   await expect(
     page
       .locator('[aria-label="学习档案"]')

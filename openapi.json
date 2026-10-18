@@ -59684,6 +59684,12 @@
             "description": "相关但待进一步验证的学情说明。",
             "default": ""
           },
+          "assistant_message_id": {
+            "type": "string",
+            "title": "Assistant Message Id",
+            "description": "实际采用该学情的助手消息标识；用于把依据归到真实回合。",
+            "default": ""
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -59788,6 +59794,12 @@
             "title": "Released",
             "description": "是否解除了该问题的作答等待。",
             "default": false
+          },
+          "assistant_message_id": {
+            "type": "string",
+            "title": "Assistant Message Id",
+            "description": "承载该控制结果的助手消息标识；用于把状态归到真实回合。",
+            "default": ""
           },
           "created_at": {
             "type": "string",

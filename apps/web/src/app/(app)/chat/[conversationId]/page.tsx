@@ -14,12 +14,14 @@ import { MediaViewerPanel } from "@/components/bridges/chat/MediaViewerPanel";
 import { TiebaEvidencePanel } from "@/components/bridges/chat/TiebaEvidencePanel";
 import { Composer } from "@/components/bridges/Composer";
 import { PaperDetailsPanel } from "@/components/bridges/chat/PaperDetailsPanel";
-import { StudyProgress } from "@/components/bridges/chat/StudyProgress";
+import { StudyDetailsPanel } from "@/components/bridges/chat/StudyDetailsPanel";
+import { StudyStatusBar } from "@/components/bridges/chat/StudyStatusBar";
 import type { CapabilityAvailability } from "@/components/bridges/chat/capability-availability";
 import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { buildThreadMessages } from "@/lib/chat-thread";
 import { composeConversationMessages } from "@/lib/chat-run-view";
+import { buildStudyTurns } from "@/lib/study-presentation";
 import { isIngestionSettled, isPhotoAttachment } from "@/lib/chat-attachments";
 import {
   hasPendingCommuteClarification,
@@ -185,7 +187,12 @@ export default function ChatConversationPage() {
     activeRun,
     pendingUser
   );
-
+  const studyTurns = buildStudyTurns(conversation);
+  const renderedMessages = threadMessages.map((message) => {
+    if (message.role !== "assistant") return message;
+    const studyTurn = studyTurns.get(message.id);
+    return studyTurn ? { ...message, studyTurn } : message;
+  });
   return (
     <AppShell>
       <div className={styles.chatShell}>
@@ -216,28 +223,19 @@ export default function ChatConversationPage() {
           ) : (
             <>
               {conversation?.mode === "study" && (
-                <StudyProgress
+                <StudyStatusBar
                   study={conversation.study}
                   studyLocalProgress={conversation.study_local_progress}
                   studyGoal={conversation.study_goal}
-                  studyGoalNotice={conversation.study_goal_notice}
                   studyPendingCheck={conversation.study_pending_check}
-                  studyLastControl={conversation.study_last_control}
                   studyPause={conversation.study_pause}
-                  studySummary={conversation.study_summary}
                   historyStatus={conversation.study_history_status}
-                  studyDiagnosisTasks={conversation.study_diagnosis_tasks}
-                  studyLearningRecord={conversation.study_learning_record}
-                  studyRecordAdoptions={conversation.study_record_adoptions}
-                  restart={study.restart}
-                  busy={generating}
-                  onRetryDiagnosis={study.retryDiagnosis}
-                  onCorrectRecord={study.correctRecord}
-                  onDeleteRecord={study.deleteRecord}
+                  open={panels.studyDetailsOpen}
+                  onOpen={panels.openStudyDetails}
                 />
               )}
               <ChatThread
-                messages={threadMessages}
+                messages={renderedMessages}
                 onRetry={(messageId) => void retry(messageId)}
                 onStop={() => void stop()}
                 onTeachingSkip={() => skipTeachingQuestion()}
@@ -253,6 +251,9 @@ export default function ChatConversationPage() {
                 onOpenTiebaEvidence={panels.openTiebaEvidence}
                 onOpenCommuteDetails={panels.openCommuteDetails}
                 onOpenMedia={panels.openMedia}
+                onOpenStudyDetails={panels.openStudyDetails}
+                busy={generating}
+                onRetryDiagnosis={study.retryDiagnosis}
                 announcement={announcement}
               />
               {sendError && <ChatSendErrorBanner message={sendError} />}
@@ -303,6 +304,28 @@ export default function ChatConversationPage() {
           selection={panels.activeMedia}
           onClose={panels.closeMedia}
         />
+        {panels.studyDetailsOpen && conversation?.mode === "study" && (
+          <StudyDetailsPanel
+            study={conversation.study}
+            studyLocalProgress={conversation.study_local_progress}
+            studyGoal={conversation.study_goal}
+            studyGoalNotice={conversation.study_goal_notice}
+            studyPendingCheck={conversation.study_pending_check}
+            studyLastControl={conversation.study_last_control}
+            studyPause={conversation.study_pause}
+            studySummary={conversation.study_summary}
+            historyStatus={conversation.study_history_status}
+            studyDiagnosisTasks={conversation.study_diagnosis_tasks}
+            studyLearningRecord={conversation.study_learning_record}
+            studyRecordAdoptions={conversation.study_record_adoptions}
+            restart={study.restart}
+            busy={generating}
+            onRetryDiagnosis={study.retryDiagnosis}
+            onCorrectRecord={study.correctRecord}
+            onDeleteRecord={study.deleteRecord}
+            onClose={panels.closeStudyDetails}
+          />
+        )}
       </div>
     </AppShell>
   );

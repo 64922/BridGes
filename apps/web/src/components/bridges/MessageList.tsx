@@ -63,6 +63,10 @@ interface MessageListProps {
     target: ChatMediaTarget,
     trigger: HTMLButtonElement
   ) => void;
+  /** 工单 12：打开学习详情面板，返回焦点到真实触发按钮。 */
+  onOpenStudyDetails?: (trigger: HTMLButtonElement) => void;
+  busy?: boolean;
+  onRetryDiagnosis?: (taskId: string) => Promise<void>;
 }
 
 /**
@@ -84,6 +88,9 @@ export function MessageList({
   onOpenTiebaEvidence,
   onOpenCommuteDetails,
   onOpenMedia,
+  onOpenStudyDetails,
+  busy,
+  onRetryDiagnosis,
 }: MessageListProps) {
   return (
     <ol
@@ -114,6 +121,9 @@ export function MessageList({
               onOpenCommuteDetails={onOpenCommuteDetails}
               onOpenTiebaEvidence={onOpenTiebaEvidence}
               onOpenMedia={onOpenMedia}
+              onOpenStudyDetails={onOpenStudyDetails}
+              busy={busy}
+              onRetryDiagnosis={onRetryDiagnosis}
             />
           )}
         </li>

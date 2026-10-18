@@ -55,6 +55,10 @@ class StudyControlProjection(BaseModel):
     released: bool = Field(
         default=False, description="是否解除了该问题的作答等待。"
     )
+    assistant_message_id: str = Field(
+        default="",
+        description="承载该控制结果的助手消息标识；用于把状态归到真实回合。",
+    )
     created_at: datetime = Field(description="控制生效时间。")
 
 

@@ -154,7 +154,9 @@ def test_full_explanation_releases_wait_and_never_forces_quiz(
                 "独立指一个事件发生不影响另一个的概率。两者含义不同，"
                 "互斥通常不独立（除非概率为零）。"
             )
-            _send(client, conversation_id, "直接完整讲解，我不想答题。", "i04-explain-2")
+            assistant_message_id = _send(
+                client, conversation_id, "直接完整讲解，我不想答题。", "i04-explain-2"
+            )
             generation_helpers["drive"](app)
 
             detail = client.get(f"/chat/conversations/{conversation_id}").json()
@@ -183,6 +185,8 @@ def test_full_explanation_releases_wait_and_never_forces_quiz(
             assert control["kind"] == "full_explanation"
             assert control["question"] == _Q1
             assert control["released"] is True
+            # 控制状态归到真正承载该结果的助手回合，供逐条消息定位。
+            assert control["assistant_message_id"] == assistant_message_id
 
             # 未验证不是门禁：可以继续下一步并获得新检查。
             plan.default = _plan_pose(_Q2)
@@ -214,7 +218,9 @@ def test_skip_releases_only_bound_check_and_records_unverified(
 
             plan.default = _plan(action="help", intent="skip")
             text.answer = f"好，这题先放一放，保持未验证。{_Q2}"
-            _send(client, conversation_id, "这题跳过吧。", "i04-skip-2")
+            skip_assistant_id = _send(
+                client, conversation_id, "这题跳过吧。", "i04-skip-2"
+            )
             generation_helpers["drive"](app)
 
             detail = client.get(f"/chat/conversations/{conversation_id}").json()
@@ -223,6 +229,7 @@ def test_skip_releases_only_bound_check_and_records_unverified(
             assert control["kind"] == "skip"
             assert control["released"] is True
             assert control["question"] == _Q1
+            assert control["assistant_message_id"] == skip_assistant_id
 
             evidence = StudyVerificationRepository(database).list_evidence(
                 account["id"], conversation_id
