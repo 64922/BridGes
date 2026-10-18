@@ -260,6 +260,22 @@ describe("单行公开过程（工单 06）", () => {
     ).toBe("正在生成回答…");
   });
 
+  it("论文模块的检索进度不再固定声称只查 arXiv", () => {
+    expect(
+      publicProcessLabel(
+        assistant({
+          status: "streaming",
+          node: {
+            kind: "node",
+            message_id: "assistant-1",
+            node: "paper.search",
+            status: "started",
+          },
+        })
+      )
+    ).toBe("检索学术来源…");
+  });
+
   it("媒体任务的真实状态进入统一过程入口", () => {
     const image: ImageTaskProjection = {
       task_id: "image-1",

@@ -178,6 +178,7 @@ class _ServiceRetryMixin:
                 "文章人味化任务已退役，历史结果仍可查看与导出，不能重试。",
                 410,
             )
+        paper_module_active = "paper" in previous_modules
         max_attempt = max(
             (m.attempt_number for m in attempt_group(existing, owner.message_id)),
             default=0,
@@ -226,6 +227,9 @@ class _ServiceRetryMixin:
             if self._arxiv_search is not None
             and route is not None
             and route.is_paper_search
+            # 论文模块自行执行多来源检索并提交 paper_search 投影；不能
+            # 再为它写入旧的 arXiv 恢复卡，否则失败后卡片会永久 loading。
+            and not paper_module_active
             else None
         )
         new_attempt = MessageRecord(

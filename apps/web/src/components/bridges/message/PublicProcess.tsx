@@ -36,7 +36,7 @@ const NODE_LABEL: Record<string, string> = {
   "study.summarize": "整理本节总结",
   "paper.parse": "理解论文请求",
   "paper.plan": "规划论文检索",
-  "paper.search": "检索 arXiv",
+  "paper.search": "检索学术来源",
   "paper.enrich": "核对论文来源",
   "paper.rank": "筛选与排序论文",
   "paper.present": "整理论文结果",

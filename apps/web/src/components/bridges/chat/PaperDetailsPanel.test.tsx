@@ -259,4 +259,22 @@ describe("论文正文入口与资料面板（Issue 09）", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("没有实际调用来源时不伪造计划来源", () => {
+    render(
+      <PaperDetailsPanel
+        selection={{
+          messageId: "a-1",
+          search: projection({ selected_sources: [], queries: [] }),
+          paperId: null,
+        }}
+        onClose={vi.fn()}
+        onSelectPaper={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("paper-search-overview").textContent).toContain(
+      "实际调用来源：未实际调用来源"
+    );
+  });
 });

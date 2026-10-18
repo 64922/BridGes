@@ -95,6 +95,10 @@ class _ServiceGenerationRecordsMixin:
             )
             if self._arxiv_search is not None
             and route.is_paper_search
+            # 论文模块自行提交 paper_search 投影；显式模块路径不能再写入
+            # 旧的 arXiv 卡片，避免失败终态留下 loading/取消入口。
+            and module_id != "paper"
+            and route.module_id != "paper"
             else None
         )
         teaching = None

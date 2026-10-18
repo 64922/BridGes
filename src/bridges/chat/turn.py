@@ -91,6 +91,7 @@ from bridges.chat.material_reading import (
     select_file_segments,
 )
 from bridges.chat.repository import ConversationRepository, MessageRecord
+from bridges.chat.search_state import cancelled_web_search
 from bridges.chat.selections import ChatSelectionsService, selection_key
 from bridges.chat.stream_protection import StreamProtectionAssembler
 from bridges.chat.task_materials import (
@@ -768,6 +769,16 @@ _RETRYABLE_CODES = frozenset(
         "arxiv_internal",
         "arxiv_no_results",
         "arxiv_citation_invalid",
+        # 工单 02：论文模块声明可恢复的瞬时故障；不可恢复的来源/主题
+        # 失败不在此列，避免把“调整请求”伪装成点击重试。
+        "paper_intent_analysis_failed",
+        "paper_query_planning_failed",
+        "paper_search_failed",
+        "paper_node_exception",
+        "paper_semantic_evaluation_unavailable",
+        "arxiv_search_error",
+        "openalex_search_error",
+        "crossref_search_error",
         # Issue 28：人味化任务可重试错误（原任务输入保留）。
         "humanizer_generation_failed",
         "humanizer_failed",
@@ -1394,49 +1405,6 @@ def teaching_payload(
     """把可选教学投影安全转换为消息 JSON。"""
 
     return teaching.model_dump(mode="json") if teaching is not None else None
-
-
-def cancelled_web_search(
-    web_search: dict[str, Any] | None, now: datetime
-) -> dict[str, Any] | None:
-    """把已触发的公网搜索与生成终态一起收敛为取消，避免卡片残留 loading。"""
-    if web_search is None:
-        return None
-    cancelled = dict(web_search)
-    cancelled.update(
-        {
-            "status": WebSearchStatus.CANCELLED.value,
-            "results": [],
-            "searched_at": now.isoformat(),
-            "error_code": "web_search_cancelled",
-            "error_message": "已取消本轮联网搜索。",
-            "can_retry": False,
-            "can_cancel": False,
-        }
-    )
-    return cancelled
-
-
-def cancelled_arxiv_search(
-    arxiv_search: dict[str, Any] | None, now: datetime
-) -> dict[str, Any] | None:
-    """把 arXiv 搜索与生成终态一起收敛为取消，避免卡片残留 loading。"""
-    if arxiv_search is None:
-        return None
-    cancelled = dict(arxiv_search)
-    cancelled.update(
-        {
-            "status": ArxivSearchStatus.CANCELLED.value,
-            "papers": [],
-            "searched_at": now.isoformat(),
-            "error_code": None,
-            "error_message": "已取消本轮论文搜索。",
-            "upstream_status": "cancelled",
-            "can_retry": False,
-            "can_cancel": False,
-        }
-    )
-    return cancelled
 
 
 def teaching_context(teaching: TeachingTurnProjection) -> str:

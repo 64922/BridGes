@@ -17,12 +17,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-from bridges.contracts.modules import ModuleQueryRecord, ModuleWaitState
+from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus, ModuleWaitState
 
 
 class PaperSearchStatus(StrEnum):
@@ -333,7 +334,10 @@ class PaperSearchProjection(BaseModel):
         default_factory=list, description="真实取得的引用边；为空时不提供引用图。"
     )
     research_question: str = Field(default="", description="本轮理解后的研究问题。")
-    selected_sources: list[str] = Field(default_factory=list, description="本轮实际启用的来源。")
+    selected_sources: list[str] = Field(
+        default_factory=list,
+        description="本轮实际调用过的来源（含失败与空结果，不含未执行/跳过）。",
+    )
     condition_sources: list[PaperConditionSource] = Field(
         default_factory=list, description="本轮硬条件及其来自请求/任务条件的原话片段。"
     )
@@ -357,3 +361,14 @@ class PaperSearchProjection(BaseModel):
     error_code: str | None = Field(default=None, description="失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文错误说明。")
     retryable: bool = Field(default=False, description="本轮失败是否可重试。")
+
+
+def selected_sources(records: Sequence[ModuleQueryRecord]) -> list[str]:
+    """从真实调用记录派生实际来源（含失败/空结果，排除跳过）。"""
+    return list(
+        dict.fromkeys(
+            record.source
+            for record in records
+            if record.query and record.status is not ModuleQueryStatus.SKIPPED
+        )
+    )

@@ -213,7 +213,7 @@ export function PaperSearchOverview({
           <p className={styles.sectionText}>扩展词：{search.expansions?.join("、")}</p>
         )}
         <p className={styles.sectionText}>
-          检索来源：{sources.length > 0 ? sources.map(sourceLabel).join("、") : "未实际调用来源"}
+          实际调用来源：{sources.length > 0 ? sources.map(sourceLabel).join("、") : "未实际调用来源"}
         </p>
         <div data-testid="paper-search-conditions">
           {conditions.length > 0 ? (

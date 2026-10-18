@@ -16,11 +16,12 @@ from bridges.chat.repository import (
     MessageRecord,
     ModeEventRecord,
 )
+from bridges.chat.search_state import converge_terminal_searches
 from bridges.chat.service_helpers import (
     _humanizer_projection,
     _route_projection,
 )
-from bridges.chat.turn_result import derive_turn_result
+from bridges.chat.turn_result import derive_turn_result, recovery_for_error
 from bridges.commute.contracts import CommuteRouteProjection
 from bridges.contracts.career import CareerPlanningProjection
 from bridges.contracts.chat import (
@@ -64,7 +65,11 @@ from bridges.contracts.study_goals import (
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection
 from bridges.github.contracts import GithubProjectsProjection
-from bridges.paper.contracts import PaperSearchProjection
+from bridges.paper.contracts import (
+    PaperSearchProjection,
+    PaperSearchStatus,
+    selected_sources,
+)
 from bridges.resources.contracts import LearningResourcesProjection
 from bridges.study.adaptation import StudyAdaptationService
 from bridges.study.controls import StudyControlRepository
@@ -237,6 +242,50 @@ class _ServiceProjectionsMixin:
             if self._attachments is not None and message.role == ChatMessageRole.USER
             else []
         )
+        web_search_payload = message.web_search
+        arxiv_search_payload = message.arxiv_search
+        paper_search = (
+            PaperSearchProjection.model_validate(message.paper_search)
+            if message.paper_search is not None
+            and message.role == ChatMessageRole.ASSISTANT
+            else None
+        )
+        if paper_search is not None:
+            updates: dict[str, object] = {}
+            if not paper_search.selected_sources and paper_search.queries:
+                updates["selected_sources"] = selected_sources(paper_search.queries)
+            if (
+                message.status
+                in {ChatMessageStatus.ERROR, ChatMessageStatus.STOPPED}
+                and paper_search.status is PaperSearchStatus.SEARCHING
+            ):
+                if message.status is ChatMessageStatus.ERROR:
+                    recovery = recovery_for_error(message.error_code)
+                    updates.update(
+                        status=PaperSearchStatus.ERROR,
+                        error_code=message.error_code,
+                        error_message=message.error_message,
+                        retryable=bool(recovery and recovery.retryable),
+                    )
+                else:
+                    updates.update(
+                        status=PaperSearchStatus.STOPPED,
+                        error_code=None,
+                        error_message=None,
+                        retryable=False,
+                    )
+            if updates:
+                paper_search = paper_search.model_copy(update=updates)
+        if message.role == ChatMessageRole.ASSISTANT and message.status in {
+            ChatMessageStatus.ERROR,
+            ChatMessageStatus.STOPPED,
+        }:
+            web_search_payload, arxiv_search_payload = converge_terminal_searches(
+                web_search_payload,
+                arxiv_search_payload,
+                message.updated_at,
+                cancelled=message.status is ChatMessageStatus.STOPPED,
+            )
         return ChatMessageProjection(
             message_id=message.message_id,
             conversation_id=message.conversation_id,
@@ -267,14 +316,14 @@ class _ServiceProjectionsMixin:
                 else None
             ),
             web_search=(
-                WebSearchProjection(**message.web_search)
-                if message.web_search is not None
+                WebSearchProjection(**web_search_payload)
+                if web_search_payload is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
             arxiv_search=(
-                ArxivSearchProjection(**message.arxiv_search)
-                if message.arxiv_search is not None
+                ArxivSearchProjection(**arxiv_search_payload)
+                if arxiv_search_payload is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
@@ -284,12 +333,7 @@ class _ServiceProjectionsMixin:
                 and message.role == ChatMessageRole.USER
                 else None
             ),
-            paper_search=(
-                PaperSearchProjection.model_validate(message.paper_search)
-                if message.paper_search is not None
-                and message.role == ChatMessageRole.ASSISTANT
-                else None
-            ),
+            paper_search=paper_search,
             module_suggestion=(
                 ModuleSuggestionProjection.model_validate(message.module_suggestion)
                 if message.module_suggestion is not None
