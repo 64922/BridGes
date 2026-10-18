@@ -22,7 +22,7 @@ from bridges.tieba.searching import (
     HitDiagnostics,
     SearchOutcome,
     TiebaSearchPort,
-    plan_queries,
+    plan_query_rounds,
 )
 
 #: 目标贴吧名称由词表单点定义。
@@ -41,15 +41,6 @@ FAILED_QUERY_STATUSES: frozenset[ModuleQueryStatus] = frozenset(
         ModuleQueryStatus.CANCELLED,
         ModuleQueryStatus.RATE_LIMITED,
     }
-)
-
-
-#: 逐轮查询的中文标签；有界计划固定为精确词 + 一条备用放宽词（见 ``plan_queries``）。
-QUERY_ROUND_LABELS: tuple[str, ...] = (
-    "原词查询",
-    "常用说法查询",
-    "相关说法查询",
-    "备用放宽词查询",
 )
 
 
@@ -122,22 +113,26 @@ def search_candidates(
         usable += int(resume.get("usable", len(seeded_hits)) or 0)
     partial = False
     found_by_url: dict[str, TiebaSearchHit] = {hit.url: hit for hit in seeded_hits}
-    queries = plan_queries(analysis)
+    query_rounds = plan_query_rounds(analysis)
+    executed_expressions = {
+        item.execution_terms for item in query_rounds if item.query in completed
+    }
     deadline = time.monotonic() + deadline_seconds
-    for position, query in enumerate(queries):
-        if query in completed:
+    for position, query_round in enumerate(query_rounds):
+        if query_round.query in completed or query_round.execution_terms in executed_expressions:
             continue
         if position and budget_exhausted(stop_event, deadline):
-            rounds.append(_skipped_round_note(position, stop_event, len(queries)))
+            rounds.append(_skipped_round_note(query_round.goal, stop_event))
             partial = True
             break
         outcome = port.search_public(
             account_id,
-            query=query,
+            query=query_round.query,
             reason=f"{FORUM_NAME}信息搜集：只发送最小公开查询词",
             stop_event=stop_event,
             deadline=deadline,
         )
+        executed_expressions.add(query_round.execution_terms)
         deadline += max(0, outcome.excluded_wait_ms) / 1000
         records.extend(outcome.prior_records)
         records.append(outcome.record)
@@ -148,7 +143,7 @@ def search_candidates(
         fresh = [item for item in outcome.rejected if item.url not in rejected_urls]
         rejected_urls.update(item.url for item in fresh)
         rejected.extend(fresh)
-        rounds.append(_round_note(position, outcome, len(queries)))
+        rounds.append(_round_note(query_round.goal, outcome))
         for hit in outcome.candidates:
             found_by_url.setdefault(hit.url, hit)
         if not _plan_continues(outcome.record):
@@ -161,7 +156,7 @@ def search_candidates(
                 outcome.record.retryable and outcome.record.status in FAILED_QUERY_STATUSES
             )
             break
-    if len(records) < len(queries) and not any(
+    if len(records) < len(query_rounds) and not any(
         record.status in STOP_QUERY_STATUSES for record in records
     ):
         partial = partial or len(found_by_url) > 0
@@ -215,34 +210,24 @@ def _plan_continues(record: ModuleQueryRecord) -> bool:
     return True
 
 
-def _round_note(position: int, outcome: SearchOutcome, query_count: int) -> str:
+def _round_note(goal: str, outcome: SearchOutcome) -> str:
     """逐轮诊断：查询词、原始结果数、可用候选数与剔除数（脱敏，只记计数）。"""
-    label = _query_round_label(position, query_count)
     if outcome.record.status in FAILED_QUERY_STATUSES:
         reason = outcome.record.error_message or outcome.record.status.value
         return (
-            f"{label}「{outcome.record.query}」未完成（{reason}），"
+            f"{goal}「{outcome.record.query}」未完成（{reason}），"
             f"取得 {len(outcome.hits)} 条原始结果。"
         )
     return (
-        f"{label}「{outcome.record.query}」取得 {len(outcome.hits)} 条原始结果："
+        f"{goal}「{outcome.record.query}」取得 {len(outcome.hits)} 条原始结果："
         f"可用候选 {len(outcome.candidates)} 条，"
         f"剔除 {len(outcome.rejected)} 条（其中非帖子链接 {outcome.diagnostics.not_a_thread} 条、"
         f"他吧证据 {outcome.diagnostics.other_forum} 条）。"
     )
 
 
-def _skipped_round_note(position: int, stop_event: threading.Event | None, query_count: int) -> str:
+def _skipped_round_note(goal: str, stop_event: threading.Event | None) -> str:
     """备用查询没有执行时的原因：停止还是预算耗尽。"""
-    label = _query_round_label(position, query_count)
     if stop_event is not None and stop_event.is_set():
-        return f"{label}因你已停止而未执行。"
-    return f"{label}因超出本轮检索预算而未执行。"
-
-
-def _query_round_label(position: int, query_count: int) -> str:
-    if position == 0:
-        return QUERY_ROUND_LABELS[0]
-    if position == query_count - 1:
-        return QUERY_ROUND_LABELS[-1]
-    return QUERY_ROUND_LABELS[min(position, len(QUERY_ROUND_LABELS) - 2)]
+        return f"{goal}因你已停止而未执行。"
+    return f"{goal}因超出本轮检索预算而未执行。"

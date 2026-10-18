@@ -46,6 +46,10 @@ MODULE_STOPWORDS: frozenset[str] = frozenset(
         "搜索",
         "搜集",
         "收集",
+        "获取",
+        "获得",
+        "查找",
+        "查阅",
         "信息",
         "消息",
         "怎么样",
@@ -392,7 +396,10 @@ def extract_topic_terms(question: str) -> list[str]:
     单字同时也是真实名词的成分（中秋／上铺／中午），删掉会破坏原词，因此
     保留原字。
     """
-    remainder = question
+    # 时间条件由专门字段执行过滤，不再作为主题词进入查询（否则「近三个月」
+    # 会被拆成「近三」这样的碎片）。
+    time_requirement = detect_time_requirement(question)
+    remainder = question.replace(time_requirement, " ") if time_requirement else question
     terms: list[str] = []
     for term in sorted(PLACE_EVENT_TERMS | OFFICIAL_TRIGGERS, key=lambda term: (-len(term), term)):
         if term in remainder and term not in terms:

@@ -16,11 +16,13 @@ from bridges.tieba.contracts import (
     TiebaSearchHit,
 )
 from bridges.tieba.searching import (
+    QUERY_SCOPE_PREFIX,
     HitDiagnostics,
     SearchOutcome,
     TiebaSearchPort,
     canonical_url,
     classify_hits_with_diagnostics,
+    execution_terms,
     query_record,
     thread_id_of,
 )
@@ -29,12 +31,10 @@ BROWSER_SCROLL_ROUNDS_LIMIT = 8
 
 
 def browser_terms(query: str) -> str:
-    words = query.split()
-    if words[:2] != ["site:tieba.baidu.com/p/", "华东交通大学吧"]:
+    """把计划查询转换成浏览器实际发送的吧内检索词。"""
+    if tuple(query.split()[:2]) != QUERY_SCOPE_PREFIX:
         raise ValueError("只接受目标贴吧的检索计划")
-    return " ".join("国庆" if word == "国庆节" else word for word in words[2:6] if word != "贴吧")[
-        :80
-    ]
+    return execution_terms(query)
 
 
 def read_projection(url: str, value: dict[str, Any]) -> TiebaReadResult:

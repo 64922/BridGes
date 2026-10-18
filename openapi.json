@@ -65585,6 +65585,33 @@
         "title": "TiebaPostProjection",
         "description": "一个真实读到并确认属于目标贴吧的帖子。"
       },
+      "TiebaQueryRound": {
+        "properties": {
+          "goal": {
+            "type": "string",
+            "title": "Goal",
+            "description": "本轮检索目标（原词／常用说法／备用放宽词）。"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "带固定来源约束的完整查询词。"
+          },
+          "execution_terms": {
+            "type": "string",
+            "title": "Execution Terms",
+            "description": "去掉来源前缀与装饰词后的真实执行词。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "goal",
+          "query",
+          "execution_terms"
+        ],
+        "title": "TiebaQueryRound",
+        "description": "一轮检索的目标与真实执行词。\n\n``query`` 是带固定来源约束的完整计划查询；``execution_terms`` 是去掉\n来源前缀与「贴吧」等装饰词后真正用于吧内检索、并作为去重键的最小表达。"
+      },
       "TiebaQuestionKind": {
         "type": "string",
         "enum": [
@@ -65737,6 +65764,14 @@
             "type": "array",
             "title": "Campus Terms",
             "description": "问题点名的校区／区域原词。"
+          },
+          "query_rounds": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaQueryRound"
+            },
+            "type": "array",
+            "title": "Query Rounds",
+            "description": "本轮检索计划：每轮目标与真实执行词。"
           },
           "source_priority": {
             "items": {

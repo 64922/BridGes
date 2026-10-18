@@ -99,6 +99,18 @@ class TiebaQuestionAnalysis(BaseModel):
     )
 
 
+class TiebaQueryRound(BaseModel):
+    """一轮检索的目标与真实执行词。
+
+    ``query`` 是带固定来源约束的完整计划查询；``execution_terms`` 是去掉
+    来源前缀与「贴吧」等装饰词后真正用于吧内检索、并作为去重键的最小表达。
+    """
+
+    goal: str = Field(description="本轮检索目标（原词／常用说法／备用放宽词）。")
+    query: str = Field(description="带固定来源约束的完整查询词。")
+    execution_terms: str = Field(description="去掉来源前缀与装饰词后的真实执行词。")
+
+
 class TiebaEvidencePlan(BaseModel):
     """``tieba.plan`` 的取证计划：来源顺序、并行关系与查询范围。"""
 
@@ -120,7 +132,9 @@ class TiebaEvidencePlan(BaseModel):
     check_requirements: list[str] = Field(
         default_factory=list, description="本轮要核实的事项（面向用户的中文说明）。"
     )
-    tieba_queries: list[str] = Field(default_factory=list, description="贴吧路径的有界查询词。")
+    query_rounds: list[TiebaQueryRound] = Field(
+        default_factory=list, description="贴吧路径每轮检索的目标与真实执行词。"
+    )
     official_queries: list[str] = Field(
         default_factory=list, description="官方路径的有界查询词（受限时为省略）。"
     )
@@ -412,6 +426,9 @@ class TiebaResearchProjection(BaseModel):
         default=TiebaQuestionKind.EXPERIENCE, description="规定／体验／混合分类。"
     )
     campus_terms: list[str] = Field(default_factory=list, description="问题点名的校区／区域原词。")
+    query_rounds: list[TiebaQueryRound] = Field(
+        default_factory=list, description="本轮检索计划：每轮目标与真实执行词。"
+    )
     source_priority: list[TiebaEvidenceRoute] = Field(
         default_factory=list, description="本轮实际采用的来源优先级。"
     )

@@ -39,6 +39,7 @@ from bridges.tieba.recipe import (
     NODE_SYNTHESIZE,
     NODE_VERIFY,
 )
+from bridges.tieba.searching import plan_query_rounds
 from bridges.tieba.service_contract import (
     TIEBA_MODULE_ID,
     TIEBA_TOTAL_BUDGET_MS,
@@ -431,6 +432,7 @@ def _base_projection(
         place_or_event=list(analysis.place_or_event),
         question_kind=analysis.question_kind,
         campus_terms=list(analysis.campus_terms),
+        query_rounds=list(plan_query_rounds(analysis)),
         time_filter=_time_filter_state(analysis, list(confirmed)),
         queries=list(queries),
         confirmed_posts=list(confirmed),
