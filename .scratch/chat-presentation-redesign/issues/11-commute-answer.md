@@ -59,7 +59,7 @@
 
 ## 交接记录（2026-10-18）
 
-**分支与基线：** `11-commute-answer`，基于 main `b376e338`。未改 schema、协议或依赖；后端只调整通勤正文渲染并新增一条纯渲染测试。
+**分支与基线：** `11-commute-answer`，基于 main `b376e338`；完成后合并 main `d8c021f9`（09 论文答案已合入），保留论文与通勤两个详情面板并统一互斥状态。未改 schema、协议或依赖；后端只调整通勤正文渲染并新增一条纯渲染测试。
 
 **实际变更**
 
@@ -83,14 +83,14 @@
 
 **验证**
 
-- `pytest tests/commute -q`：106 通过；新增正文渲染测试锁定最多 4 段、剩余段提示与估计语义。
+- `pytest tests/commute -q`：106 通过（合并 main 后复跑）；新增正文渲染测试锁定最多 4 段、剩余段提示与估计语义。
 - `python -m ruff check src/bridges/commute/presenting.py tests/commute/test_commute_module_flow.py`：通过。
-- `npm run test:unit`：50 文件 / 400 测试通过。
+- `npm run test:unit`：50 文件 / 397 测试通过（合并 main 后复跑）。
 - `npm run typecheck`：通过。
 - `npm run lint`：通过；仅两处既有 `<img>` 警告。
 - `npm run build`：成功；`.next/standalone` 复制 node_modules 时因工作树 junction 出现 EPERM 警告，构建产物正常，属工作树环境限制。
-- `npx playwright test e2e/issue11-commute-answer.spec.ts`：5/5 通过，覆盖有效路线、澄清续接、无路径点、地图界面失败与供应商失败分离、历史重开不静默刷新。
-- `npx playwright test e2e/settings-navigation.spec.ts --grep "缺高德路线 Key"`：1/1 通过，验证 `amap_not_configured` 失败卡、凭据分区入口与返回原会话。
+- `npx playwright test e2e/issue11-commute-answer.spec.ts e2e/issue09-paper-answer.spec.ts`：9/9 通过（合并 main 后复跑）；通勤覆盖有效路线、澄清续接、无路径点、地图界面失败与供应商失败分离、历史重开不静默刷新，论文路径同时回归。
+- `npx playwright test e2e/settings-navigation.spec.ts --grep "缺高德路线 Key"`：1/1 通过（合并 main 后复跑），验证 `amap_not_configured` 失败卡、凭据分区入口与返回原会话。
 
 **证据**
 
