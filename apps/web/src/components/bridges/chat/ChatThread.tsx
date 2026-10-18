@@ -8,6 +8,7 @@ import type {
   ChatAttachmentProjection,
   ChatModuleId,
   CitationProjection,
+  CommuteRouteProjection,
   PaperSearchProjection,
 } from "@/lib/api";
 
@@ -42,6 +43,12 @@ interface ChatThreadProps {
     attachment: ChatAttachmentProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 打开该轮校园通勤的路线详情面板 */
+  onOpenCommuteDetails?: (
+    messageId: string,
+    route: CommuteRouteProjection,
+    trigger: HTMLButtonElement
+  ) => void;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
   announcement?: string | null;
 }
@@ -64,6 +71,7 @@ export function ChatThread({
   onOpenCitation,
   onOpenPaper,
   onOpenAttachment,
+  onOpenCommuteDetails,
   announcement,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -104,6 +112,7 @@ export function ChatThread({
           onOpenCitation={onOpenCitation}
           onOpenPaper={onOpenPaper}
           onOpenAttachment={onOpenAttachment}
+          onOpenCommuteDetails={onOpenCommuteDetails}
         />
       </div>
       <p className="sc-visually-hidden" role="status" aria-live="polite">

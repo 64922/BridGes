@@ -4,6 +4,7 @@ import type {
   ChatAttachmentProjection,
   ChatModuleId,
   CitationProjection,
+  CommuteRouteProjection,
   PaperSearchProjection,
 } from "@/lib/api";
 
@@ -40,6 +41,12 @@ interface MessageListProps {
     attachment: ChatAttachmentProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 打开该轮校园通勤的路线详情面板 */
+  onOpenCommuteDetails?: (
+    messageId: string,
+    route: CommuteRouteProjection,
+    trigger: HTMLButtonElement
+  ) => void;
 }
 
 /**
@@ -58,6 +65,7 @@ export function MessageList({
   onOpenCitation,
   onOpenPaper,
   onOpenAttachment,
+  onOpenCommuteDetails,
 }: MessageListProps) {
   return (
     <ol
@@ -85,6 +93,7 @@ export function MessageList({
               onRefreshMessages={onRefreshMessages}
               onOpenCitation={onOpenCitation}
               onOpenPaper={onOpenPaper}
+              onOpenCommuteDetails={onOpenCommuteDetails}
             />
           )}
         </li>

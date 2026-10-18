@@ -1,11 +1,13 @@
 "use client";
 
 import { BrandLogo } from "@/components/bridges/BrandLogo";
+import { CommuteAnswer } from "@/components/bridges/chat/CommuteAnswer";
 import { PaperDetailsEntry } from "@/components/bridges/chat/PaperDetailsEntry";
 import { RetrievalCard } from "@/components/bridges/RetrievalCard";
 import type {
   ChatModuleId,
   CitationProjection,
+  CommuteRouteProjection,
   PaperSearchProjection,
 } from "@/lib/api";
 
@@ -28,6 +30,7 @@ export function AssistantMessage({
   onRefreshMessages,
   onOpenCitation,
   onOpenPaper,
+  onOpenCommuteDetails,
 }: {
   message: ChatMessageView;
   conversationId?: string;
@@ -45,6 +48,11 @@ export function AssistantMessage({
   onOpenPaper?: (
     messageId: string,
     search: PaperSearchProjection,
+    trigger: HTMLButtonElement
+  ) => void;
+  onOpenCommuteDetails?: (
+    messageId: string,
+    route: CommuteRouteProjection,
     trigger: HTMLButtonElement
   ) => void;
 }) {
@@ -98,6 +106,13 @@ export function AssistantMessage({
         <PublicProcess message={message} conversationId={conversationId} />
 
         <AssistantBody message={message} conversationId={conversationId} />
+
+        <CommuteAnswer
+          message={message}
+          conversationId={conversationId}
+          onRetry={onRetry}
+          onOpenDetails={onOpenCommuteDetails}
+        />
 
         {paperSearch && (
           <div data-testid="paper-answer" data-paper-status={paperSearch.status}>

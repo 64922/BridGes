@@ -117,7 +117,7 @@ test.describe("设置入口（鼠标）", () => {
     await page.getByLabel("输入消息").fill(COMMUTE_PROMPT);
     const conversationId = await sendMessage(page, COMMUTE_PROMPT);
 
-    const card = page.getByTestId("commute-route-card-error");
+    const card = page.getByTestId("commute-answer-error");
     await expect(card).toBeVisible({ timeout: 180_000 });
     await expect(card).toContainText("amap_not_configured");
     await expect(card).toContainText("高德路线 Web 服务 Key");
@@ -147,7 +147,7 @@ test.describe("设置入口（鼠标）", () => {
     await page.getByTestId("settings-return-to-chat").click();
     await page.waitForURL(`/chat/${conversationId}`);
     await expect(page.getByTestId("chat-thread")).toContainText(COMMUTE_PROMPT);
-    await expect(page.getByTestId("commute-route-card-error")).toContainText(
+    await expect(page.getByTestId("commute-answer-error")).toContainText(
       "amap_not_configured"
     );
   });

@@ -21,7 +21,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bridges.ai.adapters import StreamChunk
-from bridges.commute.contracts import CommuteMode
+from bridges.commute.contracts import (
+    CommuteBreakBuffer,
+    CommuteMode,
+    CommuteRouteProjection,
+    CommuteRouteStatus,
+    CommuteRouteStep,
+)
+from bridges.commute.presenting import render_result_content
 from bridges.commute.service import CommuteService
 from bridges.commute.sources import (
     AMAP_SOURCE_PLACE,
@@ -805,3 +812,42 @@ def test_colloquial_sentence_reports_a_service_failure_not_a_missing_place(
     assert route["retryable"] is False
     assert "设置页" in (route["error_message"] or "")
     assert calls == [], "未配置凭据时绝不发出外部请求"
+
+
+def test_result_body_keeps_four_steps_and_marks_estimates() -> None:
+    """正文只列主要路段，并明确耗时与缓冲都是估计而非保证到达。"""
+    route = CommuteRouteProjection(
+        status=CommuteRouteStatus.SUCCESS,
+        mode=CommuteMode.WALKING,
+        mode_label="步行",
+        mode_phrase="步行",
+        distance_m=1800,
+        base_duration_seconds=1400,
+        suggested_total_seconds=1700,
+        steps=[
+            CommuteRouteStep(index=index, instruction=f"第 {index} 段", distance_m=100)
+            for index in range(1, 7)
+        ],
+        polyline=["115.86,28.68", "115.86,28.69"],
+        path_verified=True,
+        buffer=CommuteBreakBuffer(
+            in_window=True,
+            matched_break_time="09:40",
+            minutes_away=5,
+            added_minutes=5,
+            checked_at=NOON_SHANGHAI,
+            timezone="Asia/Shanghai",
+            rule_note="课间高峰按固定时间点规则估计，这是规则估计，不是实时人流数据。",
+        ),
+    )
+
+    content = render_result_content(route)
+
+    assert "高德基础耗时：23 分钟（高德估计，不是保证到达时间）。" in content
+    assert (
+        "建议总时间：28 分钟（基础耗时加上课间规则缓冲的估计值，不是保证到达时间）。"
+        in content
+    )
+    assert "第 4 段" in content
+    assert "第 5 段" not in content
+    assert "其余 2 段路线文字见「查看路线详情」" in content
