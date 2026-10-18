@@ -304,7 +304,7 @@ test.describe("Issue 11 — 持久化流式聊天", () => {
     await page
       .getByRole("toolbar", { name: "消息操作" })
       .first()
-      .getByRole("button", { name: "重试" })
+      .getByRole("button", { name: "重新生成" })
       .click();
 
     // 重试流：新尝试正文呈现，历史尝试折叠保留

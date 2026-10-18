@@ -32,9 +32,9 @@ test("真实浏览器链路：学习、画像、论文三条旅程与画像回�
   // 会话公开投影给出真实局部进展，且不显示未核实的掌握宣称。
   await page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" }).click();
   await sendFromNewChat(page, LEARNING_QUERY);
-  await expect(page.getByTestId("turn-result").last()).toHaveAttribute(
-    "data-outcome",
-    /complete|partial/,
+  await expect(page.getByTestId("public-process").last()).toHaveAttribute(
+    "data-status",
+    "done",
     { timeout: 45_000 }
   );
   const studyProgress = page.getByRole("region", { name: "局部学习进展" });

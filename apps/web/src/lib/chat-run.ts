@@ -31,6 +31,8 @@ export interface PendingUserMessage {
 export interface ActiveRun {
   turnResult?: TurnResultProjection | null;
   messageId: string;
+  /** 服务端持久化的助手尝试序号；缺失时不在进行中视图猜测。 */
+  attemptNumber?: number;
   content: string;
   kind: ActiveRunKind;
   thinking: ChatThinking | null;
@@ -78,6 +80,7 @@ export function activeRunFromAssistant(
       : null;
   return {
     messageId: assistant.message_id,
+    attemptNumber: assistant.attempt_number,
     content: assistant.content ?? "",
     kind,
     status: "streaming",
@@ -109,6 +112,7 @@ export function activeRunFromStarted(
 ): ActiveRun {
   return {
     messageId: started.message_id,
+    attemptNumber: started.attempt_number,
     content: "",
     kind,
     status: "streaming",
@@ -140,6 +144,7 @@ export function activeRunFromError(
 ): ActiveRun {
   return {
     messageId: error.message_id,
+    attemptNumber: current.attemptNumber,
     content: current.content,
     kind,
     status: "error",

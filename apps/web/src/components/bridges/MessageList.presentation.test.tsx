@@ -279,7 +279,7 @@ describe("消息呈现边界（工单 02）", () => {
     expect(screen.getByText("此问题的前 1 次尝试")).toBeTruthy();
     expect(screen.getByText(/第 1 次尝试（失败）：旧失败/)).toBeTruthy();
     expect(screen.getByText("已生成的部分正文")).toBeTruthy();
-    expect(screen.getByTestId("turn-result")).toBeTruthy();
+    expect(screen.getByTestId("delivery-status")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getAllByRole("toolbar", { name: "消息操作" })).toHaveLength(2);
     expect(screen.queryByRole("button", { name: /朗读/ })).toBeNull();
@@ -311,7 +311,7 @@ describe("消息呈现边界（工单 02）", () => {
 
     expect(screen.getByRole("alert").textContent).toContain("部分来源读取失败");
     expect(screen.getByText("已交付的正文")).toBeTruthy();
-    const results = screen.getAllByTestId("turn-result");
+    const results = screen.getAllByTestId("delivery-status");
     expect(results[0].textContent).toContain("本轮先交付有效部分");
     expect(results[1].textContent).toContain("请补充出发地点");
     expect(screen.getAllByTestId("public-process-toggle")).toHaveLength(2);

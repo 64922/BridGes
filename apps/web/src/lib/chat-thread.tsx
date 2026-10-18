@@ -42,6 +42,8 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
     items.push({
       id: latest.message_id,
       role: "assistant",
+      // 重试后保留该轮尝试序号，使新回答与旧尝试的关系可追溯。
+      attemptNumber: latest.attempt_number,
       // 历史与流式共用 AssistantBody 的 Markdown 渲染路径；
       // 这里只保留原文，供复制、朗读等语义使用。
       plainText: latest.content,

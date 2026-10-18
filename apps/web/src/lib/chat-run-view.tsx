@@ -33,6 +33,7 @@ export function composeConversationMessages(
   messages.push({
     id: activeRun.messageId,
     role: "assistant",
+    attemptNumber: activeRun.attemptNumber,
     plainText: activeRun.content,
     thinking: activeRun.thinking ?? undefined,
     webSearch: activeRun.webSearch,
