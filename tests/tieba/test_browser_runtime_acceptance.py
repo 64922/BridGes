@@ -141,7 +141,7 @@ def test_runtime_logs_browser_request_result_and_duration(
     assert '"allowed": true' in process.stdin.getvalue()
 
 
-def test_runtime_blocks_browser_request_when_budget_is_exhausted(
+def test_runtime_blocks_browser_request_when_work_time_is_exhausted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -172,7 +172,7 @@ def test_runtime_blocks_browser_request_when_budget_is_exhausted(
     with pytest.raises(TiebaBrowserError) as failure:
         runtime.request("alice", {"action": "search"}, request_budget=budget)
 
-    assert failure.value.code == "tieba_browser_run_budget_exhausted"
+    assert failure.value.code == "tieba_browser_work_time_exhausted"
     assert ledger.registrations
     assert ledger.results == []
     assert '"allowed": false' in process.stdin.getvalue()

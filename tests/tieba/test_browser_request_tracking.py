@@ -134,16 +134,36 @@ class _Budget:
         self.allowed = allowed
         self.registered: list[tuple[str, str]] = []
         self.released: list[dict[str, Any]] = []
+        self.denied: list[dict[str, Any]] = []
 
     def next_call_key(self, _prefix: str) -> str:
         return "call-1"
 
-    def register_external(self, call_key: str, *, purpose: str) -> bool:
+    def register_external_decision(
+        self, call_key: str, *, purpose: str
+    ) -> Any:
+        from bridges.external_call_decision import ExternalCallDecision
+
         self.registered.append((call_key, purpose))
-        return self.allowed
+        return ExternalCallDecision(
+            allowed=self.allowed,
+            reason="allowed" if self.allowed else "work_time_exhausted",
+            active=0,
+            limit=2,
+            remaining_ms=255_000,
+        )
+
+    def register_external(self, call_key: str, *, purpose: str) -> bool:
+        return self.register_external_decision(call_key, purpose=purpose).allowed
 
     def release_external(self, call_key: str, **values: Any) -> None:
         self.released.append({"call_key": call_key, **values})
+
+    def record_external_call_denial(self, call_key: str | None, **values: Any) -> None:
+        self.denied.append({"call_key": call_key, **values})
+
+    def remaining_work_ms(self) -> int:
+        return 255_000
 
 
 def test_request_budget_records_result_and_duration() -> None:

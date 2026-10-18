@@ -398,19 +398,22 @@ def main() -> None:
                         continue
                     if payload is None:
                         break
+                    raw_deadline = payload.get("deadline_monotonic")
+                    deadline = (
+                        float(raw_deadline)
+                        if isinstance(raw_deadline, (float, int))
+                        else None
+                    )
+                    request_tracker.set_deadline(deadline)
                     try:
                         result, page = _run_action(context, page, payload, closed)
-                        raw_deadline = payload.get("deadline_monotonic")
-                        deadline = (
-                            float(raw_deadline)
-                            if isinstance(raw_deadline, (float, int))
-                            else None
-                        )
                         request_tracker.wait_until_idle(context, deadline)
                         emit(result)
                     except Exception as error:  # 每个请求独立失败，保留本账户浏览器上下文
                         emit(_error_payload(error))
                         page = context.pages[-1] if context.pages else context.new_page()
+                    finally:
+                        request_tracker.set_deadline(None)
     except RuntimeLockError:
         emit(
             {

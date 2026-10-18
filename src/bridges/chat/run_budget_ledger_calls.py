@@ -9,6 +9,10 @@ from bridges.chat.run_budget_ledger_types import (
     RunBudgetSnapshot,
     _iso,
 )
+from bridges.external_call_decision import (
+    ExternalCallDecision,
+    ExternalCallReason,
+)
 
 
 class _RunBudgetLedgerCalls(_RunBudgetLedgerStorage):
@@ -166,10 +170,29 @@ class _RunBudgetLedgerCalls(_RunBudgetLedgerStorage):
         purpose: str | None = None,
         now: datetime,
     ) -> bool:
-        """登记一次外部调用（搜索/检索分支）；并发超过上限时拒绝。
+        """登记一次外部调用（搜索/检索分支）；并发超过上限时拒绝。"""
+        return self.register_external_call_decision(
+            account_id=account_id,
+            run_id=run_id,
+            call_key=call_key,
+            purpose=purpose,
+            now=now,
+        ).allowed
+
+    def register_external_call_decision(
+        self,
+        *,
+        account_id: str,
+        run_id: str,
+        call_key: str,
+        purpose: str | None = None,
+        now: datetime,
+    ) -> ExternalCallDecision:
+        """登记一次外部调用，并把「暂时容量不足」与终止原因分开返回。
 
         并行与串行消耗同一账本：``external_calls_active`` 是共享并发占位，
-        全部分支领取与释放都经本方法族。
+        全部分支领取与释放都经本方法族。容量不足由调用方的有界调度等待，
+        不当作预算耗尽；时间耗尽、运行失效、取消与版本竞争各有稳定原因。
         """
 
         def consume(snapshot: RunBudgetSnapshot) -> bool:
@@ -182,7 +205,9 @@ class _RunBudgetLedgerCalls(_RunBudgetLedgerStorage):
                 "execution_process": self._execution_process_token(),
             }
 
-        return self._mutate(
+        reasons: list[str] = []
+        snapshots: list[RunBudgetSnapshot] = []
+        allowed = self._mutate(
             account_id,
             run_id,
             now,
@@ -195,7 +220,69 @@ class _RunBudgetLedgerCalls(_RunBudgetLedgerStorage):
             },
             gate=consume,
             extra_detail=extra_fields,
+            reason_out=reasons,
+            snapshot_out=snapshots,
+            denial_reason=ExternalCallReason.CAPACITY.value,
         )
+        snapshot = snapshots[-1] if snapshots else None
+        if allowed:
+            reason = ExternalCallReason.ALLOWED.value
+            active = (snapshot.external_calls_active if snapshot else 0) + 1
+        else:
+            reason = reasons[-1] if reasons else ExternalCallReason.RUN_INVALIDATED.value
+            active = snapshot.external_calls_active if snapshot else 0
+        limit = snapshot.plan.external_parallel_max if snapshot else 0
+        remaining_ms = 0
+        if snapshot is not None:
+            work_deadline = snapshot.plan.deadline_at - timedelta(
+                milliseconds=snapshot.plan.verify_deliver_reserve_ms
+            )
+            remaining_ms = max(0, int((work_deadline - now).total_seconds() * 1000))
+        return ExternalCallDecision(
+            allowed=allowed,
+            reason=reason,
+            active=active,
+            limit=limit,
+            remaining_ms=remaining_ms,
+        )
+
+    def record_external_call_denial(
+        self,
+        *,
+        account_id: str,
+        run_id: str,
+        call_key: str | None,
+        purpose: str | None,
+        reason: str,
+        active: int,
+        limit: int,
+        remaining_ms: int,
+        now: datetime,
+        denial_code: str | None = None,
+    ) -> None:
+        """只追加一条脱敏拒绝记录，不改变并发占位或预算计数。"""
+        with self.transaction():
+            snapshot = self.load(account_id, run_id)
+            if snapshot is None:
+                return
+            detail = {
+                "reason": reason,
+                "external_calls_active": max(0, active),
+                "external_parallel_max": max(0, limit),
+                "remaining_work_ms": max(0, remaining_ms),
+            }
+            if denial_code is not None:
+                detail["denial_code"] = denial_code
+            self._append_entry(
+                account_id,
+                run_id,
+                kind="external_call_denied",
+                purpose=purpose,
+                call_key=call_key,
+                outcome_code=reason,
+                detail=detail,
+                now=now,
+            )
 
     def recover_external_calls(self, account_id: str, run_id: str, *, now: datetime) -> None:
         """单实例进程重启后回收旧进程的占位；不重置历史调用消耗。"""

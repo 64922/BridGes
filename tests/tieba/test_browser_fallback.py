@@ -74,6 +74,46 @@ def test_unverified_auth_state_does_not_fall_back_or_request_manual_continue() -
     assert result.record.retryable is False
 
 
+def test_work_time_exhaustion_is_terminal_and_never_uses_public_fallback() -> None:
+    class Exhausted:
+        def request(self, *args: Any, **kwargs: Any) -> Any:
+            raise TiebaBrowserError(
+                "tieba_browser_work_time_exhausted",
+                "本轮剩余贴吧工作预算已耗尽，未发起后续页面请求。",
+            )
+
+    class MustNotFallback:
+        def search_public(self, *args: Any, **kwargs: Any) -> SearchOutcome:
+            raise AssertionError("工作预算耗尽不能回退成普通公开索引成功")
+
+    result = BrowserTiebaSearch(Exhausted(), MustNotFallback()).search_public(  # type: ignore[arg-type]
+        "alice", query="site:tieba.baidu.com/p/ 华东交通大学吧 宿舍", reason="测试"
+    )
+    assert result.record.status is ModuleQueryStatus.ERROR
+    assert result.record.error_code == "tieba_browser_work_time_exhausted"
+    assert result.record.retryable is False
+
+
+def test_queue_full_is_terminal_and_never_uses_public_fallback() -> None:
+    class QueueFull:
+        def request(self, *args: Any, **kwargs: Any) -> Any:
+            raise TiebaBrowserError(
+                "tieba_browser_request_queue_full",
+                "同时等待的贴吧页面请求过多，已停止继续加载。",
+            )
+
+    class MustNotFallback:
+        def search_public(self, *args: Any, **kwargs: Any) -> SearchOutcome:
+            raise AssertionError("等待队列已满不能回退成普通公开索引成功")
+
+    result = BrowserTiebaSearch(QueueFull(), MustNotFallback()).search_public(  # type: ignore[arg-type]
+        "alice", query="site:tieba.baidu.com/p/ 华东交通大学吧 宿舍", reason="测试"
+    )
+    assert result.record.status is ModuleQueryStatus.ERROR
+    assert result.record.error_code == "tieba_browser_request_queue_full"
+    assert result.record.retryable is False
+
+
 def test_browser_search_forwards_run_deadline_to_worker() -> None:
     deadline = time.monotonic() + 10
 

@@ -14,6 +14,10 @@ from urllib.parse import urlsplit
 import httpx
 
 from bridges.contracts.modules import ModuleQueryStatus
+from bridges.external_call_decision import (
+    ExternalCallDecision,
+    ExternalCallReason,
+)
 from bridges.public_search_budget import (
     bind_outcome_reporter,
     bind_request_tracker,
@@ -152,12 +156,86 @@ class TiebaBudget:
             )
 
     def register_external(self, call_key: str, *, purpose: str) -> bool:
-        return self._ledger.register_external_call(
+        return self.register_external_decision(call_key, purpose=purpose).allowed
+
+    def register_external_decision(
+        self,
+        call_key: str,
+        *,
+        purpose: str,
+        now: datetime | None = None,
+    ) -> ExternalCallDecision:
+        """返回带原因的许可；暂时容量不足与终止原因分开。"""
+        moment = now or datetime.now(UTC)
+        decider = getattr(self._ledger, "register_external_call_decision", None)
+        if callable(decider):
+            decision: ExternalCallDecision = decider(
+                account_id=self._account_id,
+                run_id=self._run_id,
+                call_key=call_key,
+                purpose=purpose,
+                now=moment,
+            )
+            return decision
+        allowed = self._ledger.register_external_call(
             account_id=self._account_id,
             run_id=self._run_id,
             call_key=call_key,
             purpose=purpose,
-            now=datetime.now(UTC),
+            now=moment,
+        )
+        return ExternalCallDecision(
+            allowed=allowed,
+            reason=(
+                ExternalCallReason.ALLOWED.value
+                if allowed
+                else ExternalCallReason.WORK_TIME_EXHAUSTED.value
+            ),
+            remaining_ms=self.remaining_work_ms(moment),
+        )
+
+    def record_external_call_denial(
+        self,
+        call_key: str | None,
+        *,
+        purpose: str | None,
+        decision: ExternalCallDecision,
+        denial_code: str | None = None,
+        now: datetime | None = None,
+    ) -> None:
+        """记录一次终止性拒绝；容量等待不会走到这里。"""
+        recorder = getattr(self._ledger, "record_external_call_denial", None)
+        if not callable(recorder):
+            return
+        recorder(
+            account_id=self._account_id,
+            run_id=self._run_id,
+            call_key=call_key,
+            purpose=purpose,
+            reason=decision.reason,
+            active=decision.active,
+            limit=decision.limit,
+            remaining_ms=decision.remaining_ms,
+            now=now or datetime.now(UTC),
+            denial_code=denial_code,
+        )
+
+    def external_call_stats(self) -> tuple[int, int, int]:
+        """读取当前占位、上限与剩余工作时间；供守卫失败拒绝记录使用。"""
+        loader = getattr(self._ledger, "load", None)
+        if not callable(loader):
+            return (0, 0, self.remaining_work_ms())
+        snapshot = loader(self._account_id, self._run_id)
+        if snapshot is None:
+            return (0, 0, 0)
+        work_deadline = snapshot.plan.deadline_at - timedelta(
+            milliseconds=snapshot.plan.verify_deliver_reserve_ms
+        )
+        remaining_ms = max(0, int((work_deadline - datetime.now(UTC)).total_seconds() * 1000))
+        return (
+            snapshot.external_calls_active,
+            snapshot.plan.external_parallel_max,
+            remaining_ms,
         )
 
     def next_call_key(self, prefix: str) -> str:

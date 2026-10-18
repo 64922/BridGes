@@ -198,20 +198,35 @@ class _RunBudgetLedgerStorage:
         extra_detail_values: dict[str, Any] | None = None,
         deadline_extension_ms: int = 0,
         allow_closed: bool = False,
+        reason_out: list[str] | None = None,
+        snapshot_out: list[RunBudgetSnapshot] | None = None,
+        denial_reason: str = "denied",
     ) -> bool:
-        """在同一写事务中检查许可、更新版本和追加流水，避免取消竞争。"""
+        """在同一写事务中检查许可、更新版本和追加流水，避免取消竞争。
+
+        ``reason_out``/``snapshot_out`` 只供需要区分许可原因的调用方使用；
+        其余调用方仍只看布尔结果，账本行为不变。
+        """
+
+        def deny(reason: str) -> bool:
+            if reason_out is not None:
+                reason_out.append(reason)
+            return False
+
         with self.transaction():
             snapshot = self.load(account_id, run_id)
+            if snapshot is not None and snapshot_out is not None:
+                snapshot_out.append(snapshot)
             if snapshot is None or snapshot.contract_version != RUN_BUDGET_CONTRACT_VERSION:
-                return False
+                return deny("run_invalidated")
             if not snapshot.active and not allow_closed:
-                return False
+                return deny("run_invalidated")
             if not allow_closed:
                 work_deadline = snapshot.plan.deadline_at - timedelta(
                     milliseconds=snapshot.plan.verify_deliver_reserve_ms
                 )
                 if now >= work_deadline:
-                    return False
+                    return deny("work_time_exhausted")
                 if kind in {"model_call", "transient_retry", "external_call"}:
                     batches = [
                         e for e in self.list_entries(account_id, run_id)
@@ -220,27 +235,28 @@ class _RunBudgetLedgerStorage:
                     if batches and batches[-1].kind == "batch_started":
                         batch = batches[-1].detail
                         if batch.get("execution_process") != self._execution_process_token():
-                            return False
+                            return deny("run_invalidated")
                         batch_deadline = _parse(batch["deadline_at"])
                         if batch_deadline is None or now >= batch_deadline:
-                            return False
+                            return deny("work_time_exhausted")
                         if kind != "external_call" and (
                             snapshot.model_calls_used - batch["calls_before"]
                             >= batch["model_call_limit"]
                             or snapshot.input_tokens_used + snapshot.output_tokens_used
                             - batch["tokens_before"] >= batch["token_limit"]
                         ):
-                            return False
+                            return deny("work_time_exhausted")
                 run = self._db.scoped(account_id).execute(
                     "SELECT stop_requested, status FROM generation_runs"
                     " WHERE run_id = ? AND account_id = ?", (run_id, account_id),
                 ).fetchone()
-                if run is not None and (
-                    run["stop_requested"] or run["status"] not in ("queued", "running")
-                ):
-                    return False
+                if run is not None:
+                    if run["stop_requested"]:
+                        return deny("cancelled")
+                    if run["status"] not in ("queued", "running"):
+                        return deny("run_invalidated")
             if not gate(snapshot):
-                return False
+                return deny(denial_reason)
             detail: dict[str, Any] = {}
             if extra_detail is not None:
                 detail.update(extra_detail(snapshot))
@@ -265,7 +281,7 @@ class _RunBudgetLedgerStorage:
                 " WHERE run_id = ? AND account_id = ? AND version = ?", params,
             ).rowcount
             if not updated:
-                return False
+                return deny("contended")
             self._append_entry(
                 account_id, run_id, kind=kind, purpose=purpose, call_key=call_key,
                 attempt=attempt, outcome_code=outcome_code, duration_ms=duration_ms,

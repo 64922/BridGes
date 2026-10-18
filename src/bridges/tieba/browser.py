@@ -164,6 +164,8 @@ class BrowserTiebaSearch:
                     "tieba_browser_task_changed",
                     "tieba_browser_run_invalidated",
                     "tieba_browser_request_guard_failed",
+                    "tieba_browser_work_time_exhausted",
+                    "tieba_browser_request_queue_full",
                 },
             )
             if cancelled or (deadline is not None and time.monotonic() >= deadline):
@@ -178,7 +180,8 @@ class BrowserTiebaSearch:
                 "tieba_browser_auth_required",
                 "tieba_browser_auth_interrupted",
                 "tieba_browser_auth_unverified",
-                "tieba_browser_run_budget_exhausted",
+                "tieba_browser_work_time_exhausted",
+                "tieba_browser_request_queue_full",
                 "tieba_browser_task_changed",
                 "tieba_browser_run_invalidated",
                 "tieba_browser_request_guard_failed",
@@ -309,16 +312,20 @@ class BrowserTiebaThreadReader:
             return TiebaReadResult(
                 url=canonical_url(url),
                 thread_id=thread_id_of(url),
-                status=ReadStatus.CANCELLED
-                if error.code == "tieba_browser_cancelled"
-                else ReadStatus.ERROR
-                if error.code == "tieba_browser_run_budget_exhausted"
-                or error.code in {
-                    "tieba_browser_task_changed",
-                    "tieba_browser_run_invalidated",
-                    "tieba_browser_request_guard_failed",
-                }
-                else ReadStatus.ACCESS_RESTRICTED,
+                status=(
+                    ReadStatus.CANCELLED
+                    if error.code == "tieba_browser_cancelled"
+                    else ReadStatus.ERROR
+                    if error.code
+                    in {
+                        "tieba_browser_work_time_exhausted",
+                        "tieba_browser_request_queue_full",
+                        "tieba_browser_task_changed",
+                        "tieba_browser_run_invalidated",
+                        "tieba_browser_request_guard_failed",
+                    }
+                    else ReadStatus.ACCESS_RESTRICTED
+                ),
                 error_code=error.code,
                 error_message=str(error),
                 excluded_wait_ms=error.excluded_wait_ms,

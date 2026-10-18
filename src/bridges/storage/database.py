@@ -22,7 +22,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 89
+SCHEMA_VERSION = 90
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -3843,6 +3843,61 @@ MIGRATIONS: dict[int, list[str]] = {
             updated_at TEXT NOT NULL,
             PRIMARY KEY (rebuild_id, message_id)
         )
+        """,
+    ],
+    # 工单 01：浏览器请求被并发容量、工作时间、运行失效、取消或守卫失败
+    # 拒绝时，记录可审计的拒绝原因与占位快照。拒绝不是一次真实外部调用，
+    # 因此单独使用 external_call_denied，避免混淆 external_call_result 的
+    # 结果计数，也不把运行标记为 exhausted。SQLite 无法修改 CHECK 约束，
+    # 按既有迁移惯例重建表并保留全部行与索引。
+    90: [
+        """
+        CREATE TABLE run_budget_entries_v90 (
+            run_id TEXT NOT NULL REFERENCES run_budget_ledger(run_id),
+            seq INTEGER NOT NULL,
+            account_id TEXT NOT NULL,
+            kind TEXT NOT NULL
+                CHECK (kind IN (
+                    'model_call', 'model_call_result', 'transient_retry',
+                    'external_call', 'external_call_result', 'external_call_denied',
+                    'adjustment_begin',
+                    'adjustment_end', 'exhausted', 'closed', 'compat_created',
+                    'batch_plan', 'batch_started', 'batch_completed', 'batch_failed'
+                )),
+            purpose TEXT,
+            call_key TEXT,
+            attempt INTEGER,
+            outcome_code TEXT,
+            duration_ms INTEGER,
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            detail_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (run_id, seq)
+        )
+        """,
+        """
+        INSERT INTO run_budget_entries_v90 (
+            run_id, seq, account_id, kind, purpose, call_key, attempt,
+            outcome_code, duration_ms, input_tokens, output_tokens,
+            detail_json, created_at
+        )
+        SELECT
+            run_id, seq, account_id, kind, purpose, call_key, attempt,
+            outcome_code, duration_ms, input_tokens, output_tokens,
+            detail_json, created_at
+        FROM run_budget_entries
+        """,
+        "DROP TABLE run_budget_entries",
+        "ALTER TABLE run_budget_entries_v90 RENAME TO run_budget_entries",
+        """
+        CREATE INDEX idx_run_budget_entries_account
+        ON run_budget_entries(account_id, run_id, seq)
+        """,
+        """
+        CREATE UNIQUE INDEX idx_run_budget_entries_retry_once
+        ON run_budget_entries(run_id, call_key, attempt)
+        WHERE kind = 'transient_retry' AND call_key IS NOT NULL
         """,
     ],
 }

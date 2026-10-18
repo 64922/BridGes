@@ -32,11 +32,18 @@ class BrowserRequestTracker:
         self._next_id = 0
         self._decisions: dict[int, queue.Queue[bool]] = {}
         self._pending: dict[int, _PendingRequest] = {}
+        self._context: BrowserContext | None = None
+        self._deadline: float | None = None
 
     def install(self, context: BrowserContext) -> None:
+        self._context = context
         context.route("**/*", self._route)
         context.on("requestfinished", self._request_finished)
         context.on("requestfailed", self._request_failed)
+
+    def set_deadline(self, deadline: float | None) -> None:
+        """设置当前动作的单调截止；等待许可时不会超过它。"""
+        self._deadline = deadline
 
     def decide(self, request_id: int, allowed: bool) -> None:
         with self._lock:
@@ -88,10 +95,13 @@ class BrowserRequestTracker:
         try:
             while not self._closed.is_set():
                 try:
-                    allowed = answer.get(timeout=0.1)
+                    allowed = answer.get_nowait()
                     break
                 except queue.Empty:
-                    continue
+                    pass
+                if self._deadline is not None and time.monotonic() >= self._deadline:
+                    break
+                self._pump_event_loop()
             if not allowed:
                 route.abort("blockedbyclient")
                 return
@@ -105,6 +115,18 @@ class BrowserRequestTracker:
         finally:
             with self._lock:
                 self._decisions.pop(request_id, None)
+
+    def _pump_event_loop(self) -> None:
+        """等待许可时继续派发完成事件，不能让同步路由回调阻塞它们。"""
+        context = self._context
+        page = context.pages[-1] if context is not None and context.pages else None
+        if page is None or page.is_closed():
+            time.sleep(0.01)
+            return
+        try:
+            page.wait_for_timeout(25)
+        except PlaywrightError:
+            time.sleep(0.01)
 
     def _request_finished(self, request: Request) -> None:
         try:

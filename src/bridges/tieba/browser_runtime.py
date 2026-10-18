@@ -165,7 +165,8 @@ class TiebaBrowserRuntime:
                     "tieba_browser_request_guard_failed",
                     "tieba_browser_timeout",
                     "tieba_browser_unavailable",
-                    "tieba_browser_run_budget_exhausted",
+                    "tieba_browser_work_time_exhausted",
+                    "tieba_browser_request_queue_full",
                 }:
                     self._drop_worker(account_id, worker)
                 raise
@@ -377,12 +378,19 @@ class TiebaBrowserRuntime:
                 if request_budget is not None
                 else None
             ),
+            deadline=deadline,
         )
         try:
             while True:
                 checker = getattr(stop_event, "is_set", None)
                 if callable(checker) and checker():
                     raise TiebaBrowserError("tieba_browser_cancelled", "已停止贴吧浏览器读取。")
+                denied = request_ledger.tick()
+                if denied is not None:
+                    raise TiebaBrowserError(
+                        denied,
+                        request_denial_message(denied),
+                    )
                 now = time.monotonic()
                 if auth_wait_started is None and now >= deadline:
                     raise TiebaBrowserError(
@@ -413,6 +421,8 @@ class TiebaBrowserRuntime:
                     ) from None
                 try:
                     request_event = request_ledger.handle(value)
+                except TiebaBrowserError:
+                    raise
                 except Exception:
                     raise TiebaBrowserError(
                         "tieba_browser_request_guard_failed",
@@ -422,7 +432,7 @@ class TiebaBrowserRuntime:
                     if not request_event:
                         error_code = (
                             request_ledger.denial_code
-                            or "tieba_browser_run_budget_exhausted"
+                            or "tieba_browser_run_invalidated"
                         )
                         raise TiebaBrowserError(
                             error_code,
