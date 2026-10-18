@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from threading import Event, Lock
 from time import monotonic
 from typing import Any
@@ -13,59 +14,16 @@ from xml.etree import ElementTree
 import httpx
 
 from bridges.arxiv_mcp.contracts import ArxivPaper
+from bridges.arxiv_mcp.errors import ArxivMcpError
+from bridges.arxiv_mcp.limits import ARXIV_RETRY_AFTER_MAX_SECONDS
 from bridges.arxiv_mcp.manifest import assert_registered_arxiv_url
+from bridges.arxiv_mcp.query import build_search_params
 
 ARXIV_API_ENDPOINT = "https://export.arxiv.org/api/query"
 _ATOM_NS = "http://www.w3.org/2005/Atom"
 _ARXIV_NS = "http://arxiv.org/schemas/atom"
 _ALLOWED_HOSTS = {"arxiv.org", "export.arxiv.org"}
 _ARXIV_ID = re.compile(r"^[^\s?#]+$")
-_QUERY_ARXIV_ID = re.compile(
-    r"^(?:\d{4}\.\d{4,5}(?:v\d+)?|[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)?/\d{7})$"
-)
-_STRUCTURED_FIELD = re.compile(r"(author|title|id|year)\s*:", re.I)
-_YEAR_VALUE = re.compile(r"^(\d{4})(?:\s*[-–—]\s*(\d{4}))?$")
-_QUOTE_CHARS = "\"'“”‘’"
-_QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’"}
-_QUOTE_TRANSLATION = dict.fromkeys(
-    (ord(character) for character in _QUOTE_CHARS), ord(" ")
-)
-_DEFAULT_UPSTREAM_STATUS = {
-    "arxiv_timeout": "timeout",
-    "arxiv_offline": "network",
-    "arxiv_rate_limit": "http_429",
-    "arxiv_permission": "permission",
-    "arxiv_request": "http_4xx",
-    "arxiv_parse": "parse",
-    "arxiv_cancelled": "cancelled",
-    "arxiv_startup": "startup",
-    "arxiv_handshake": "handshake",
-    "arxiv_worker_exit": "worker_exit",
-    "arxiv_internal": "internal",
-    "arxiv_backpressure": "backpressure",
-}
-
-
-class ArxivMcpError(Exception):
-    """论文 MCP 的稳定错误码与用户可见中文提示。"""
-
-    def __init__(
-        self,
-        code: str,
-        message: str,
-        *,
-        permission: bool = False,
-        upstream_status: str | None = None,
-        retryable: bool | None = None,
-    ) -> None:
-        self.code = code
-        self.message = message
-        self.permission = permission
-        self.upstream_status = upstream_status or _DEFAULT_UPSTREAM_STATUS.get(code)
-        self.retryable = (
-            retryable if retryable is not None else code != "arxiv_cancelled"
-        )
-        super().__init__(message)
 
 
 class ArxivMcpClient:
@@ -126,7 +84,7 @@ class ArxivMcpClient:
         try:
             assert_registered_arxiv_url(ARXIV_API_ENDPOINT)
             try:
-                params = _build_search_params(query, max_results)
+                params = build_search_params(query, max_results)
             except ArxivMcpError as exc:
                 if exc.upstream_status == "local_invariant":
                     self._record_query_invariant_failure()
@@ -164,15 +122,18 @@ class ArxivMcpClient:
         if response.status_code == 429:
             raise ArxivMcpError(
                 "arxiv_rate_limit",
-                "arXiv 请求过于频繁，请稍后重试。",
+                "arXiv 请求过于频繁（HTTP 429），请稍后重试。",
                 upstream_status="http_429",
+                retry_after_seconds=_retry_after_seconds(response),
             )
         if response.status_code in {401, 403}:
             raise ArxivMcpError(
                 "arxiv_permission",
-                "当前网络未允许访问 arXiv，请检查网络权限后重试。",
+                f"arXiv 拒绝访问（HTTP {response.status_code}），"
+                "请检查网络代理或访问权限后重试。",
                 permission=True,
-                upstream_status="http_4xx_permission",
+                upstream_status=f"http_{response.status_code}",
+                retryable=True,
             )
 
         if _user_cancelled(stop_event):
@@ -191,14 +152,25 @@ class ArxivMcpClient:
         if response.status_code >= 500:
             raise ArxivMcpError(
                 "arxiv_offline",
-                "arXiv 暂时不可用，请稍后重试。",
-                upstream_status="http_5xx",
+                f"arXiv 上游暂时不可用（HTTP {response.status_code}），请稍后重试。",
+                upstream_status=f"http_{response.status_code}",
+                retry_after_seconds=_retry_after_seconds(response),
             )
         if response.status_code >= 400:
+            if response.status_code == 400:
+                message = (
+                    "arXiv 未接受本次查询参数（HTTP 400）；"
+                    "本轮未使用该来源，其他来源结果不受影响。"
+                )
+            else:
+                message = (
+                    f"arXiv 返回错误响应（HTTP {response.status_code}）；"
+                    "本轮未使用该来源，其他来源结果不受影响。"
+                )
             raise ArxivMcpError(
                 "arxiv_request",
-                "arXiv 搜索请求未完成，请检查查询条件后重试。",
-                upstream_status="http_4xx",
+                message,
+                upstream_status=f"http_{response.status_code}",
                 retryable=False,
             )
         try:
@@ -218,165 +190,22 @@ class ArxivMcpClient:
             self._query_invariant_failures += 1
 
 
-def _build_search_params(query: str, max_results: int) -> dict[str, str]:
-    """把路由器的约束快照转换为 arXiv API 的结构化查询。"""
-    normalized = " ".join(query.split())
-    matches = _structured_field_matches(normalized)
-    fields: dict[str, str] = {}
-    topic_parts: list[str] = []
-    cursor = 0
-    for index, match in enumerate(matches):
-        topic_parts.append(_strip_quotes(normalized[cursor : match[1]]))
-        limit = matches[index + 1][1] if index + 1 < len(matches) else len(normalized)
-        value_end = _field_value_end(match[0], normalized, match[2], limit)
-        value = _clean_field_value(normalized[match[2] : value_end])
-        if value:
-            fields[match[0]] = value
-        cursor = value_end
-    if matches:
-        topic_parts.append(_strip_quotes(normalized[cursor:]))
+def _retry_after_seconds(response: httpx.Response) -> int | None:
+    """解析有界的 Retry-After（秒数或 HTTP 日期），不信任无上限值。"""
+    raw = (response.headers.get("retry-after") or "").strip()
+    if not raw:
+        return None
+    if raw.isdigit():
+        seconds = int(raw)
     else:
-        # 普通关键词没有结构化字段时仍然是有效的 arXiv all: 查询。
-        topic_parts.append(_strip_quotes(normalized))
-    topic = " ".join(part for part in topic_parts if part).strip()
-
-    params = {
-        "start": "0",
-        "max_results": str(max_results),
-        "sortBy": "submittedDate",
-        "sortOrder": "descending",
-    }
-    if fields.get("id"):
-        id_list = _normalize_id_list(fields["id"])
-        params["id_list"] = id_list
-
-    clauses = [f"all:{token}" for token in topic.split() if token]
-    if fields.get("author"):
-        clauses.append(f'au:"{_quote_value(fields["author"])}"')
-    if fields.get("title"):
-        clauses.append(f'ti:"{_quote_value(fields["title"])}"')
-    if fields.get("year"):
-        year_from, year_to = _parse_year_value(fields["year"])
-        clauses.append(f"submittedDate:[{year_from}01010000 TO {year_to}12312359]")
-    if clauses and any(clause for clause in clauses):
-        params["search_query"] = " AND ".join(clauses)
-    if "search_query" not in params and "id_list" not in params:
-        raise ArxivMcpError(
-            "arxiv_request",
-            "论文搜索主题不能为空，请补充领域或约束。",
-            upstream_status="local_invariant",
-            retryable=False,
-        )
-    return params
-
-
-def _structured_field_matches(
-    normalized: str,
-) -> list[tuple[str, int, int]]:
-    """查找不在引号内的结构化字段，返回字段名、起点和取值起点。"""
-    matches: list[tuple[str, int, int]] = []
-    quote: str | None = None
-    index = 0
-    while index < len(normalized):
-        character = normalized[index]
-        if quote is not None:
-            if character == quote:
-                quote = None
-            index += 1
-            continue
-        if (
-            character in _QUOTE_PAIRS
-            and _can_start_quote(normalized, index)
-            and not (character in "'’" and index > 0 and normalized[index - 1].isalnum())
-        ):
-            quote = _QUOTE_PAIRS[character]
-            index += 1
-            continue
-        if index == 0 or normalized[index - 1].isspace():
-            match = _STRUCTURED_FIELD.match(normalized, index)
-            if match is not None:
-                matches.append((match.group(1).lower(), match.start(), match.end()))
-                index = match.end()
-                continue
-        index += 1
-    return matches
-
-
-def _can_start_quote(value: str, index: int) -> bool:
-    return index == 0 or value[index - 1].isspace() or value[index - 1] in ":(["
-
-
-def _strip_quotes(value: str) -> str:
-    return " ".join(value.translate(_QUOTE_TRANSLATION).split())
-
-
-def _clean_field_value(value: str) -> str:
-    cleaned = _strip_quotes(value)
-    return cleaned.strip(" ,;，。；：:")
-
-
-def _field_value_end(field: str, value: str, value_start: int, limit: int) -> int:
-    remainder = value[value_start:limit]
-    leading = len(remainder) - len(remainder.lstrip())
-    if leading == len(remainder):
-        return limit
-    quote_char = remainder[leading]
-    closing = {'"': '"', "'": "'", "“": "”", "‘": "’"}.get(quote_char)
-    if closing is None:
-        if field == "id":
-            return limit
-        if field == "year":
-            token = re.match(r"\S+", remainder[leading:])
-            if token is not None:
-                return value_start + leading + token.end()
-        return limit
-    closing_offset = remainder.find(closing, leading + 1)
-    if closing_offset != -1:
-        return value_start + closing_offset + 1
-    if field in {"id", "year"}:
-        token = re.match(r"\S+", remainder[leading:])
-        if token is not None:
-            return value_start + leading + token.end()
-    return limit
-
-
-def _quote_value(value: str) -> str:
-    return " ".join(value.replace('"', " ").split()).strip()
-
-
-def _normalize_id_list(value: str) -> str:
-    identifiers = [item.strip() for item in value.split(",")]
-    if not identifiers or any(
-        not item or not _QUERY_ARXIV_ID.fullmatch(item) for item in identifiers
-    ):
-        raise ArxivMcpError(
-            "arxiv_request",
-            "arXiv 标识符无效，请检查 id 约束后重试。",
-            upstream_status="local_invariant",
-            retryable=False,
-        )
-    return ",".join(identifiers)
-
-
-def _parse_year_value(value: str) -> tuple[str, str]:
-    match = _YEAR_VALUE.fullmatch(value)
-    if match is None:
-        raise ArxivMcpError(
-            "arxiv_request",
-            "年份约束无效，请使用 YYYY 或 YYYY-YYYY。",
-            upstream_status="local_invariant",
-            retryable=False,
-        )
-    year_from = int(match.group(1))
-    year_to = int(match.group(2) or match.group(1))
-    if not 1900 <= year_from <= year_to <= 2100:
-        raise ArxivMcpError(
-            "arxiv_request",
-            "年份约束无效，请使用 1900 年以后的有效范围。",
-            upstream_status="local_invariant",
-            retryable=False,
-        )
-    return str(year_from), str(year_to)
+        try:
+            when = parsedate_to_datetime(raw)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=UTC)
+        seconds = int((when - datetime.now(UTC)).total_seconds())
+    return max(0, min(seconds, ARXIV_RETRY_AFTER_MAX_SECONDS))
 
 
 def _parse_atom(body: str) -> list[ArxivPaper]:

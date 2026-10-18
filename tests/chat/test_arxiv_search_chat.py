@@ -9,8 +9,8 @@ from typing import Any
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamChunk
 from bridges.ai.capability_registry import CapabilityRegistry
-from bridges.arxiv_mcp.client import ArxivMcpError
 from bridges.arxiv_mcp.contracts import ArxivPaper
+from bridges.arxiv_mcp.errors import ArxivMcpError
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.repository import ConversationRepository
 from bridges.chat.service import ChatService

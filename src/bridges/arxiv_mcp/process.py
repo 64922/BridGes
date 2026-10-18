@@ -30,8 +30,8 @@ from datetime import datetime
 from typing import Any
 
 from bridges.arxiv_mcp import limits as arxiv_limits
-from bridges.arxiv_mcp.client import ArxivMcpError
 from bridges.arxiv_mcp.contracts import ArxivPaper
+from bridges.arxiv_mcp.errors import ArxivMcpError
 from bridges.arxiv_mcp.worker import HANDSHAKE_VERSION
 
 logger = logging.getLogger("bridges.arxiv_mcp.process")
@@ -545,6 +545,9 @@ runpy.run_module("bridges.arxiv_mcp.worker", run_name="__main__")
                     permission=code == "arxiv_permission",
                     upstream_status=_safe_worker_status(payload.get("upstream_status")),
                     retryable=payload.get("retryable") is not False,
+                    retry_after_seconds=_safe_retry_after(
+                        payload.get("retry_after_seconds")
+                    ),
                 )
             raise ArxivMcpError(
                 "arxiv_parse",
@@ -731,7 +734,11 @@ def _paper_from_payload(payload: Any) -> ArxivPaper:
 
 
 def _safe_worker_status(value: Any) -> str | None:
-    if isinstance(value, str) and value in {
+    if not isinstance(value, str):
+        return None
+    if re.fullmatch(r"http_[1-5]\d\d", value):
+        return value
+    if value in {
         "local_invariant",
         "network",
         "timeout",
@@ -745,6 +752,12 @@ def _safe_worker_status(value: Any) -> str | None:
     }:
         return value
     return None
+
+
+def _safe_retry_after(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return max(0, min(value, arxiv_limits.ARXIV_RETRY_AFTER_MAX_SECONDS))
 
 
 def _user_cancelled(stop_event: threading.Event | None) -> bool:

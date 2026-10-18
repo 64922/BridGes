@@ -10,8 +10,11 @@ from threading import Event
 import httpx
 import pytest
 
-from bridges.arxiv_mcp.client import ArxivMcpClient, ArxivMcpError
+from bridges.arxiv_mcp.cache import ArxivResultCache
+from bridges.arxiv_mcp.client import ArxivMcpClient
 from bridges.arxiv_mcp.contracts import ArxivPaper, ArxivSearchStatus
+from bridges.arxiv_mcp.errors import ArxivMcpError
+from bridges.arxiv_mcp.guard import ArxivCooldown, ArxivThrottle
 from bridges.arxiv_mcp.manifest import assert_registered_arxiv_url, builtin_arxiv_manifest
 from bridges.arxiv_mcp.service import ArxivQueryPlanner, ArxivSearchPlan, ArxivSearchService
 from bridges.contracts.chat import ChatMode
@@ -247,11 +250,14 @@ def test_client_preserves_structured_route_constraints_in_arxiv_query() -> None:
 @pytest.mark.parametrize(
     ("status_code", "body", "expected_code", "expected_status", "expected_retryable"),
     [
-        (401, "", "arxiv_permission", "http_4xx_permission", True),
-        (403, "", "arxiv_permission", "http_4xx_permission", True),
+        (400, "", "arxiv_request", "http_400", False),
+        (401, "", "arxiv_permission", "http_401", True),
+        (403, "", "arxiv_permission", "http_403", True),
+        (404, "", "arxiv_request", "http_404", False),
+        (422, "", "arxiv_request", "http_422", False),
         (429, "", "arxiv_rate_limit", "http_429", True),
-        (404, "", "arxiv_request", "http_4xx", False),
-        (503, "", "arxiv_offline", "http_5xx", True),
+        (500, "", "arxiv_offline", "http_500", True),
+        (503, "", "arxiv_offline", "http_503", True),
         (200, "not xml", "arxiv_parse", "parse", True),
     ],
 )
@@ -276,6 +282,294 @@ def test_client_maps_rate_limit_and_corrupt_response(
     assert exc_info.value.code == expected_code
     assert exc_info.value.upstream_status == expected_status
     assert exc_info.value.retryable is expected_retryable
+
+
+def test_client_preserves_explicit_arxiv_field_query_expressions() -> None:
+    """模型规划的 ``all:"phrase" AND all:"phrase"`` 必须原样到达 arXiv。
+
+    回归：旧实现把 ``all:`` 当普通词，拼成 ``all:all:`` 并使 arXiv 返回
+    HTTP 400；这不是上游临时故障，而是本地请求构造缺陷。
+    """
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    papers = client.search('all:"machine learning" AND all:"introduction"', max_results=2)
+
+    assert len(papers) == 1
+    params = dict(requests[0].url.params.multi_items())
+    assert params["search_query"] == 'all:"machine learning" AND all:"introduction"'
+    assert params["max_results"] == "2"
+
+
+def test_client_preserves_mixed_constraints_in_expression() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    client.search(
+        'all:"machine learning" AND author:Ada Lovelace year:2020-2024'
+    )
+
+    params = dict(requests[0].url.params.multi_items())
+    assert params["search_query"] == (
+        'all:"machine learning" AND au:"Ada Lovelace" '
+        "AND submittedDate:[202001010000 TO 202412312359]"
+    )
+
+
+def test_client_compiles_grouped_expression_without_reprefixing_all() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    client.search('(all:"machine learning")')
+
+    params = dict(requests[0].url.params.multi_items())
+    assert params["search_query"] == '( all:"machine learning" )'
+
+
+def test_client_preserves_official_arxiv_fields() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    client.search('co:"thanks" AND rn:"MIT-1" AND jr:"Journal"')
+
+    params = dict(requests[0].url.params.multi_items())
+    assert params["search_query"] == (
+        'co:"thanks" AND rn:"MIT-1" AND jr:"Journal"'
+    )
+
+
+def test_client_keeps_lowercase_boolean_inside_expression_as_term() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    client.search('all:"machine learning" or all:"deep learning"')
+
+    params = dict(requests[0].url.params.multi_items())
+    assert params["search_query"] == (
+        'all:"machine learning" AND all:or AND all:"deep learning"'
+    )
+
+
+def test_client_rejects_unsupported_date_boolean_combination() -> None:
+    client = ArxivMcpClient(
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200))
+        )
+    )
+
+    for query in (
+        'all:"machine learning" OR '
+        "submittedDate:[202001010000 TO 202412312359]",
+        'submittedDate:[202001010000 TO 202412312359] OR '
+        'all:"machine learning"',
+    ):
+        with pytest.raises(ArxivMcpError) as exc_info:
+            client.search(query)
+
+        assert exc_info.value.code == "arxiv_request"
+        assert exc_info.value.upstream_status == "local_invariant"
+
+
+def test_client_preserves_submitted_date_constraint_with_expression() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    client.search(
+        '(all:"machine learning" AND all:"introduction") '
+        "AND submittedDate:[202001010000 TO 202412312359]"
+    )
+
+    params = dict(requests[0].url.params.multi_items())
+    assert params["search_query"] == (
+        '( all:"machine learning" AND all:"introduction" ) '
+        "AND submittedDate:[202001010000 TO 202412312359]"
+    )
+
+
+def test_client_keeps_lowercase_natural_language_boolean_as_terms() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    client.search("cats or dogs")
+
+    params = dict(requests[0].url.params.multi_items())
+    assert params["search_query"] == "all:cats AND all:or AND all:dogs"
+
+
+def test_client_honors_bounded_retry_after_header_on_rate_limit() -> None:
+    client = ArxivMcpClient(
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    429, text="", headers={"Retry-After": "7"}
+                )
+            )
+        )
+    )
+
+    with pytest.raises(ArxivMcpError) as exc_info:
+        client.search("公开主题")
+
+    assert exc_info.value.code == "arxiv_rate_limit"
+    assert exc_info.value.upstream_status == "http_429"
+    assert exc_info.value.retry_after_seconds == 7
+
+
+def test_client_keeps_zero_retry_after_distinct_from_no_header() -> None:
+    client = ArxivMcpClient(
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    429, text="", headers={"Retry-After": "0"}
+                )
+            )
+        )
+    )
+
+    with pytest.raises(ArxivMcpError) as exc_info:
+        client.search("公开主题")
+
+    assert exc_info.value.retry_after_seconds == 0
+
+
+def test_client_never_echoes_upstream_response_body_in_errors() -> None:
+    secret = "upstream-body-secret-9f3c"
+    client = ArxivMcpClient(
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(500, text=secret)
+            )
+        )
+    )
+
+    with pytest.raises(ArxivMcpError) as exc_info:
+        client.search("公开主题")
+
+    assert secret not in str(exc_info.value)
+    assert secret not in exc_info.value.message
+
+
+def test_service_propagates_exact_http_status_to_projection() -> None:
+    class _RejectedClient:
+        def search(
+            self,
+            query: str,
+            *,
+            max_results: int = 5,
+            stop_event: Event | None = None,
+        ) -> list[ArxivPaper]:
+            raise ArxivMcpError(
+                "arxiv_request",
+                "arXiv 未接受本次查询参数（HTTP 400）；本轮未使用该来源。",
+                upstream_status="http_400",
+                retryable=False,
+            )
+
+    projection = ArxivSearchService(client=_RejectedClient()).search(
+        "acct-1", ArxivSearchPlan(True, "公开主题", "用户明确要求搜索论文")
+    )
+
+    assert projection is not None
+    assert projection.status == ArxivSearchStatus.ERROR
+    assert projection.upstream_status == "http_400"
+    assert projection.can_retry is False
+    assert "HTTP 400" in (projection.error_message or "")
+
+
+def test_service_respects_retry_after_instead_of_retrying_immediately() -> None:
+    class _RetryAfterClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def search(
+            self,
+            query: str,
+            *,
+            max_results: int = 5,
+            stop_event: Event | None = None,
+        ) -> list[ArxivPaper]:
+            del query, max_results, stop_event
+            self.calls += 1
+            raise ArxivMcpError(
+                "arxiv_offline",
+                "arXiv 上游暂时不可用（HTTP 503），请稍后重试。",
+                upstream_status="http_503",
+                retryable=True,
+                retry_after_seconds=7,
+            )
+
+    def clock() -> float:
+        return 100.0
+
+    client = _RetryAfterClient()
+    service = ArxivSearchService(
+        client=client,
+        cache=ArxivResultCache(enabled=False),
+        throttle=ArxivThrottle(enabled=False),
+        cooldown=ArxivCooldown(cooldown_seconds=1, clock=clock),
+    )
+    plan = ArxivSearchPlan(True, "公开主题", "用户明确要求搜索论文")
+
+    first = service.search("acct-1", plan)
+    assert first is not None
+    assert first.attempt_count == 1
+    assert first.retry_after_seconds == 7
+    assert client.calls == 1
+
+    rejected = service.search("acct-1", plan)
+    assert rejected is not None
+    assert rejected.attempt_count == 0
+    assert rejected.retry_after_seconds == 7
+    assert client.calls == 1
 
 
 @pytest.mark.parametrize(

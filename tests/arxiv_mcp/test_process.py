@@ -13,7 +13,7 @@ import sys
 
 import pytest
 
-from bridges.arxiv_mcp.client import ArxivMcpError
+from bridges.arxiv_mcp.errors import ArxivMcpError
 from bridges.arxiv_mcp.process import ArxivMcpProcessClient
 
 #: worker 在真实流程中先输出 ready 握手行，再输出搜索结果行。
@@ -44,6 +44,17 @@ _ERROR_RESPONSE_LINE = json.dumps(
     },
     ensure_ascii=False,
 ) + "\n"
+_FINE_GRAINED_ERROR_RESPONSE_LINE = json.dumps(
+    {
+        "ok": False,
+        "code": "arxiv_request",
+        "message": "arXiv 未接受本次查询参数（HTTP 400）。",
+        "upstream_status": "http_400",
+        "retryable": False,
+        "retry_after_seconds": 4,
+    },
+    ensure_ascii=False,
+) + "\n"
 
 
 class _FakeProcess:
@@ -71,6 +82,11 @@ class _ErrorProcess(_FakeProcess):
     def __init__(self) -> None:
         super().__init__()
         self.stdout = io.StringIO(_READY_LINE + _ERROR_RESPONSE_LINE)
+
+class _FineGrainedErrorProcess(_FakeProcess):
+    def __init__(self) -> None:
+        super().__init__()
+        self.stdout = io.StringIO(_READY_LINE + _FINE_GRAINED_ERROR_RESPONSE_LINE)
 
 def test_process_uses_only_fixed_worker_and_clean_environment(monkeypatch) -> None:
     calls: dict[str, object] = {}
@@ -121,6 +137,28 @@ def test_process_preserves_worker_error_category_and_retryability(monkeypatch) -
     assert exc_info.value.code == "arxiv_offline"
     assert exc_info.value.upstream_status == "http_5xx"
     assert exc_info.value.retryable is True
+
+
+def test_process_preserves_fine_grained_http_status_and_retry_after(
+    monkeypatch,
+) -> None:
+    process = _FineGrainedErrorProcess()
+    monkeypatch.setattr(
+        "bridges.arxiv_mcp.process.subprocess.Popen",
+        lambda command, **kwargs: process,
+    )
+    client = ArxivMcpProcessClient(python_executable="fixed-python")
+
+    try:
+        with pytest.raises(ArxivMcpError) as exc_info:
+            client.search("公开主题")
+    finally:
+        client.close()
+
+    assert exc_info.value.code == "arxiv_request"
+    assert exc_info.value.upstream_status == "http_400"
+    assert exc_info.value.retryable is False
+    assert exc_info.value.retry_after_seconds == 4
 
 
 def test_warmup_spawns_and_handshakes_resident_worker_once(monkeypatch) -> None:

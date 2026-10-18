@@ -12,8 +12,8 @@ from time import monotonic
 from typing import Any
 
 from bridges.ai.adapters import AdapterResult, StubQwenAdapter
-from bridges.arxiv_mcp.client import ArxivMcpError
 from bridges.arxiv_mcp.contracts import ArxivPaper
+from bridges.arxiv_mcp.errors import ArxivMcpError
 from bridges.contracts.ai import CapabilityRecord
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.web_search.client import WebSearchError

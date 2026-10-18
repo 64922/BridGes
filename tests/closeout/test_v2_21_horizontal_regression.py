@@ -226,7 +226,7 @@ def test_failed_key_probe_keeps_previous_credential(monkeypatch: pytest.MonkeyPa
 
 class _UnavailableArxivClient:
     def search(self, query: str, *, max_results: int = 5, stop_event: Any | None = None) -> Any:
-        from bridges.arxiv_mcp.client import ArxivMcpError
+        from bridges.arxiv_mcp.errors import ArxivMcpError
 
         raise ArxivMcpError("arxiv_unavailable", "上游暂不可用")
 

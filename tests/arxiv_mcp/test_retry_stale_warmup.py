@@ -16,8 +16,9 @@ import pytest
 
 from bridges.arxiv_mcp import limits as arxiv_limits
 from bridges.arxiv_mcp.cache import ArxivResultCache
-from bridges.arxiv_mcp.client import ArxivMcpClient, ArxivMcpError
+from bridges.arxiv_mcp.client import ArxivMcpClient
 from bridges.arxiv_mcp.contracts import ArxivPaper, ArxivSearchStatus
+from bridges.arxiv_mcp.errors import ArxivMcpError
 from bridges.arxiv_mcp.guard import ArxivCooldown, ArxivThrottle
 from bridges.arxiv_mcp.service import ArxivSearchPlan, ArxivSearchService
 

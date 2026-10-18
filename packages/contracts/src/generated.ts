@@ -7584,7 +7584,7 @@ export interface components {
             error_message?: string | null;
             /**
              * Upstream Status
-             * @description 脱敏的上游状态类别，例如 http_4xx、http_5xx 或 parse。
+             * @description 脱敏的精确上游状态，例如 http_400、http_429、http_5xx 或 parse。
              */
             upstream_status?: string | null;
             /**
@@ -7613,7 +7613,7 @@ export interface components {
             stale: boolean;
             /**
              * Retry After Seconds
-             * @description 上游冷却剩余秒数（429/超时冷却期内的拒绝携带；到期前重试不打上游）。
+             * @description 上游退避剩余秒数：429/超时/5xx 终态或服务器返回 Retry-After 时携带，冷却期内的重试不请求上游。
              */
             retry_after_seconds?: number | null;
             /**
