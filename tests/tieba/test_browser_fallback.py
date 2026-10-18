@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from typing import Any
 
+import pytest
+
 from bridges.contracts.modules import ModuleQueryStatus
 from bridges.tieba.browser import BrowserTiebaSearch
 from bridges.tieba.browser_runtime import (
@@ -71,6 +73,31 @@ def test_unverified_auth_state_does_not_fall_back_or_request_manual_continue() -
     )
 
     assert result.record.error_code == "tieba_browser_auth_unverified"
+    assert result.record.retryable is False
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "tieba_browser_auth_status_unknown",
+        "tieba_browser_collection_restricted",
+    ],
+)
+def test_unknown_auth_or_restricted_collection_never_falls_back(code: str) -> None:
+    class Failure:
+        def request(self, *args: Any, **kwargs: Any) -> Any:
+            raise TiebaBrowserError(code, "认证或采集状态未确认")
+
+    class MustNotFallback:
+        def search_public(self, *args: Any, **kwargs: Any) -> SearchOutcome:
+            raise AssertionError("认证/采集状态未确认时不能回退成普通公开搜索成功")
+
+    result = BrowserTiebaSearch(Failure(), MustNotFallback()).search_public(  # type: ignore[arg-type]
+        "alice", query="site:tieba.baidu.com/p/ 华东交通大学吧 宿舍", reason="测试"
+    )
+
+    assert result.record.status is ModuleQueryStatus.ERROR
+    assert result.record.error_code == code
     assert result.record.retryable is False
 
 

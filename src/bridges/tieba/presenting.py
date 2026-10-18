@@ -115,10 +115,11 @@ def render_clarification_content(analysis: TiebaQuestionAnalysis) -> str:
 def render_waiting_auth_content(projection: TiebaResearchProjection) -> str:
     pending = projection.pending
     question = pending.question if pending is not None else "请完成专用贴吧会话的登录或安全验证。"
+    recovery = "" if "继续" in question else "完成后回复“继续”即可接着原话题；"
     return (
         f"{TARGET_FORUM_NAME}信息搜集已暂停，尚未完成本轮采集。\n\n"
         f"{question}\n\n"
-        "完成后回复“继续”即可接着原话题；人工等待不计入本任务的五分钟工作预算。"
+        f"{recovery}人工等待不计入本任务的五分钟工作预算。"
     )
 
 

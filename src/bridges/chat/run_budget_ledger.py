@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from bridges.chat.run_budget_ledger_batches import _RunBudgetLedgerBatches
 from bridges.chat.run_budget_ledger_calls import _RunBudgetLedgerCalls
 from bridges.chat.run_budget_ledger_types import (
@@ -33,6 +35,32 @@ class RunBudgetLedgerRepository(_RunBudgetLedgerCalls, _RunBudgetLedgerBatches):
 
     def _execution_process_token(self) -> str:
         return _EXECUTION_PROCESS
+
+    def record_manual_auth_wait(
+        self,
+        *,
+        account_id: str,
+        run_id: str,
+        wait_ms: int,
+        now: datetime,
+    ) -> None:
+        """人工认证等待只延长截止，不占外部调用并发位或计数。"""
+        wait_ms = max(0, int(wait_ms))
+        if wait_ms <= 0:
+            return
+        self._mutate(
+            account_id,
+            run_id,
+            now,
+            kind="external_call_result",
+            call_key=f"manual-auth-wait:{now.isoformat()}",
+            outcome_code="manual_auth_wait",
+            counter_updates={},
+            gate=lambda _snapshot: True,
+            extra_detail_values={"excluded_wait_ms": wait_ms},
+            deadline_extension_ms=wait_ms,
+            allow_closed=True,
+        )
 
 
 __all__ = [

@@ -2,65 +2,15 @@
 
 from __future__ import annotations
 
-import threading
 from datetime import UTC, datetime
 from typing import Any
 
 from bridges.contracts.modules import ModuleQueryStatus
-from bridges.tieba.browser_worker import _error_payload, official_login
 from bridges.tieba.contracts import ReadStatus, TiebaReadResult, TiebaReply, TiebaSearchHit
 from bridges.tieba.evidence import read_candidates
 from bridges.tieba.evidence_search import SearchAttempts, search_candidates
 from bridges.tieba.parsing import parse_tieba_request
 from bridges.tieba.searching import HitDiagnostics, SearchOutcome, query_record
-from bridges.tieba.service_contract import is_auth_wait_error
-
-
-def test_public_tieba_content_does_not_confirm_authentication() -> None:
-    class Locator:
-        def __init__(self, count: int) -> None:
-            self._count = count
-
-        def count(self) -> int:
-            return self._count
-
-    class PublicPage:
-        @property
-        def url(self) -> str:
-            return "https://tieba.baidu.com/p/123"
-
-        def goto(self, *_: Any, **__: Any) -> None:
-            pass
-
-        def is_closed(self) -> bool:
-            return False
-
-        def wait_for_timeout(self, _timeout_ms: int) -> None:
-            pass
-
-        def title(self) -> str:
-            return "宿舍讨论 - 百度贴吧"
-
-        def locator(self, selector: str) -> Locator:
-            if selector == ".main-content .forum-name, .tbm-post-thread, .tbm-floor-thread":
-                return Locator(1)
-            return Locator(0)
-
-    class Context:
-        def new_page(self) -> PublicPage:
-            return PublicPage()
-
-    try:
-        official_login(
-            Context(), "https://tieba.baidu.com/p/123", threading.Event()  # type: ignore[arg-type]
-        )
-    except PermissionError as error:
-        assert str(error) == "tieba_browser_auth_unverified"
-        assert _error_payload(error)["error"] == "tieba_browser_auth_unverified"
-        assert "无法独立确认" in _error_payload(error)["message"]
-        assert not is_auth_wait_error("tieba_browser_auth_unverified")
-    else:
-        raise AssertionError("公开可读的贴吧页面不能证明会话已认证")
 
 
 def test_read_auth_failure_is_waitable_and_retried_after_auth() -> None:

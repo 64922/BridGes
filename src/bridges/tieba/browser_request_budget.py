@@ -8,7 +8,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import queue as queue_module
 import time
 from collections import deque
 from collections.abc import Callable
@@ -110,6 +112,8 @@ class BrowserRequestBudget:
             return self._denial_code
         block_reason = self._request_block_reason()
         if block_reason is not None:
+            self._block(block_reason)
+            self._deny_all_pending(block_reason)
             self._deny_all_waiting(block_reason)
             return self._denial_code
         if self._waiting:
@@ -122,6 +126,30 @@ class BrowserRequestBudget:
                 return self._denial_code
             self._grant_waiting()
         return self._denial_code if self._terminal else None
+
+    def deny_queued(self, output: Any) -> None:
+        """终止动作前拒绝已到达但尚未消费的请求，避免 worker 等决策。"""
+        while True:
+            try:
+                line = output.get_nowait()
+            except queue_module.Empty:
+                return
+            if line is None:
+                return
+            try:
+                value = json.loads(line)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(value, dict):
+                continue
+            if value.get("browser_request") == "started":
+                self._send(
+                    {
+                        "type": "request_decision",
+                        "request_id": int(value.get("request_id", -1)),
+                        "allowed": False,
+                    }
+                )
 
     def _started(self, value: dict[str, Any]) -> bool | None:
         request_id = int(value.get("request_id", -1))
@@ -222,6 +250,19 @@ class BrowserRequestBudget:
             }
         )
 
+    def _block(self, code: str) -> None:
+        """没有在途请求时也要记录守卫/停止原因并终止本次动作。"""
+        if self._budget is not None and self._denial_code != code:
+            decision = self._stats_decision(code)
+            self._budget.record_external_call_denial(
+                None,
+                purpose=None,
+                decision=decision,
+                denial_code=code,
+            )
+        self._denial_code = code
+        self._terminal = True
+
     def _deny_now(
         self,
         request_id: int,
@@ -256,6 +297,19 @@ class BrowserRequestBudget:
                 "allowed": False,
             }
         )
+
+    def _deny_all_pending(self, code: str) -> None:
+        """在途请求也必须收到拒绝，否则 worker 会一直等待路由决策。"""
+        for request_id in list(self._pending):
+            self._send(
+                {
+                    "type": "request_decision",
+                    "request_id": request_id,
+                    "allowed": False,
+                }
+            )
+        self._denial_code = code
+        self._terminal = True
 
     def _deny_all_waiting(self, code: str) -> None:
         while self._waiting:

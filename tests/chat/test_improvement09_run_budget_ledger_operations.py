@@ -84,6 +84,23 @@ def test_external_auth_wait_extends_deadline_without_resetting_counters(repo: An
     assert repo.list_entries("acc-1", "run-1")[-1].detail["excluded_wait_ms"] == 9_500
 
 
+def test_manual_auth_wait_extends_deadline_without_counting_an_external_call(
+    repo: Any,
+) -> None:
+    before = _freeze_normal(repo)
+    repo.record_manual_auth_wait(
+        account_id="acc-1",
+        run_id="run-1",
+        wait_ms=12_000,
+        now=_NOW,
+    )
+    after = repo.load("acc-1", "run-1")
+    assert after is not None
+    assert after.plan.deadline_at == before.plan.deadline_at + timedelta(milliseconds=12_000)
+    assert after.external_calls_used == before.external_calls_used
+    assert repo.list_entries("acc-1", "run-1")[-1].detail["excluded_wait_ms"] == 12_000
+
+
 def test_structural_fix_and_vendor_retry_share_one_round(repo: Any) -> None:
     """结构修复（调整轮）与供应商重试消耗同一账本，不重置任何计数。"""
     _freeze_normal(repo)
