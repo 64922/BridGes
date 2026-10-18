@@ -9,12 +9,13 @@ import { WebSearchCard } from "@/components/bridges/WebSearchCard";
 import { ArxivPaperSearchCard } from "@/components/bridges/ArxivPaperSearchCard";
 import { CareerPlanCard } from "@/components/bridges/chat/CareerPlanCard";
 import { GithubProjectsCard } from "@/components/bridges/chat/GithubProjectsCard";
-import { ImageTaskCard } from "@/components/bridges/chat/ImageTaskCard";
+import { ImageMedia } from "@/components/bridges/chat/ImageMedia";
 import { LearningResourcesCard } from "@/components/bridges/chat/LearningResourcesCard";
 import { ModuleSuggestionCard } from "@/components/bridges/chat/ModuleSuggestionCard";
-import { VideoTaskCard } from "@/components/bridges/chat/VideoTaskCard";
+import { VideoMedia } from "@/components/bridges/chat/VideoMedia";
 import { CAREER_INTENT_KEYWORDS, CAREER_INTENT_PREFIXES } from "@/lib/chat-tools";
 import type { ChatModuleId } from "@/lib/api";
+import type { ChatMediaTarget } from "@/lib/chat-media";
 
 import type { ChatMessageView } from "@/lib/chat-message-view";
 
@@ -142,26 +143,62 @@ export function MediaTaskCards({
   message,
   conversationId,
   onRefreshMessages,
+  onOpenMedia,
 }: {
   message: ChatMessageView;
   conversationId?: string;
   onRefreshMessages?: () => void;
+  onOpenMedia?: (
+    messageId: string,
+    target: ChatMediaTarget,
+    trigger: HTMLButtonElement
+  ) => void;
 }) {
   if (!conversationId || message.status === "streaming") return null;
   return (
     <>
       {message.image && (
-        <ImageTaskCard
+        <ImageMedia
           conversationId={conversationId}
           task={message.image}
-          onSucceeded={onRefreshMessages}
+          onRefreshMessages={onRefreshMessages}
+          onOpenPreview={
+            onOpenMedia && message.image.asset_id
+              ? (trigger) =>
+                  onOpenMedia(
+                    message.id,
+                    {
+                      kind: "image",
+                      taskId: message.image!.task_id,
+                      assetId: message.image!.asset_id as string,
+                      resultVersionId: message.image!.result_version_id ?? null,
+                    },
+                    trigger
+                  )
+              : undefined
+          }
         />
       )}
       {message.video && (
-        <VideoTaskCard
+        <VideoMedia
           conversationId={conversationId}
           task={message.video}
-          onSucceeded={onRefreshMessages}
+          onRefreshMessages={onRefreshMessages}
+          onOpenPreview={
+            onOpenMedia && message.video.asset_id
+              ? (trigger) =>
+                  onOpenMedia(
+                    message.id,
+                    {
+                      kind: "video",
+                      taskId: message.video!.task_id,
+                      assetId: message.video!.asset_id as string,
+                      resultVersionId: null,
+                    },
+                    trigger
+                  )
+              : undefined
+          }
         />
       )}
     </>

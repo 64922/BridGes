@@ -1,0 +1,252 @@
+/* 右侧媒体详情面板：与附件/引用面板共享视觉骨架。
+   内容按任务与资产身份重挂载；关闭、切换会话或账户卸载时
+   中止读取并释放 object URL 与播放器。 */
+
+.panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: clamp(20rem, 36vw, 34rem);
+  min-width: 0;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  border-left: 1px solid var(--color-border);
+  background-color: var(--color-bg-secondary);
+  outline: none;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-bg-primary);
+}
+
+.titleGroup {
+  min-width: 0;
+}
+
+.kicker {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: var(--line-height-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--target-size);
+  height: var(--target-size);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background-color: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+.closeButton:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+.meta {
+  flex-shrink: 0;
+  margin: 0;
+  padding: var(--space-3) var(--space-5) 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.statusRow {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-5) var(--space-3);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  overscroll-behavior: contain;
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 100%;
+}
+
+.statusLine {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  color: var(--color-status-error);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-relaxed);
+}
+
+.note {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-relaxed);
+  overflow-wrap: anywhere;
+}
+
+.sectionTitle {
+  margin: 0 0 var(--space-1);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.retryButton,
+.downloadLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--target-size);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-accent-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.retryButton {
+  color: var(--color-status-error);
+  border-color: currentColor;
+}
+
+.retryButton:focus-visible,
+.downloadLink:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+.downloadRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+}
+
+.video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 28rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg);
+}
+
+.versionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.versionButton {
+  min-height: var(--target-size);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full, 999px);
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+.versionButton[aria-pressed="true"] {
+  border-color: var(--color-accent-primary);
+  background-color: var(--color-accent-primary-soft);
+}
+
+.versionButton:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 1px;
+}
+
+.caption {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-relaxed);
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1280px) {
+  .panel {
+    width: 20rem;
+  }
+}
+
+@media (max-height: 720px) {
+  .header,
+  .body {
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
+  }
+}

@@ -9,6 +9,7 @@ import type {
   TiebaPostProjection,
   TiebaSummaryCitation,
 } from "@/lib/api";
+import type { ChatMediaTarget } from "@/lib/chat-media";
 
 import { AssistantMessage } from "./message/AssistantMessage";
 import { UserMessage } from "./message/UserMessage";
@@ -56,6 +57,12 @@ interface MessageListProps {
     route: CommuteRouteProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 打开该条消息的真实媒体详情面板 */
+  onOpenMedia?: (
+    messageId: string,
+    target: ChatMediaTarget,
+    trigger: HTMLButtonElement
+  ) => void;
 }
 
 /**
@@ -76,6 +83,7 @@ export function MessageList({
   onOpenAttachment,
   onOpenTiebaEvidence,
   onOpenCommuteDetails,
+  onOpenMedia,
 }: MessageListProps) {
   return (
     <ol
@@ -105,6 +113,7 @@ export function MessageList({
               onOpenPaper={onOpenPaper}
               onOpenCommuteDetails={onOpenCommuteDetails}
               onOpenTiebaEvidence={onOpenTiebaEvidence}
+              onOpenMedia={onOpenMedia}
             />
           )}
         </li>

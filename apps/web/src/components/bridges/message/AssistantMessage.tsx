@@ -12,6 +12,7 @@ import type {
   TiebaPostProjection,
   TiebaSummaryCitation,
 } from "@/lib/api";
+import type { ChatMediaTarget } from "@/lib/chat-media";
 
 import { AssistantActions } from "./AssistantActions";
 import { AttemptHistory } from "./AttemptHistory";
@@ -34,6 +35,7 @@ export function AssistantMessage({
   onOpenPaper,
   onOpenCommuteDetails,
   onOpenTiebaEvidence,
+  onOpenMedia,
 }: {
   message: ChatMessageView;
   conversationId?: string;
@@ -63,6 +65,12 @@ export function AssistantMessage({
     messageId: string,
     citation: TiebaSummaryCitation,
     post: TiebaPostProjection | null,
+    trigger: HTMLButtonElement
+  ) => void;
+  /** 在右侧打开该条消息的真实图片或视频详情 */
+  onOpenMedia?: (
+    messageId: string,
+    target: ChatMediaTarget,
     trigger: HTMLButtonElement
   ) => void;
 }) {
@@ -126,6 +134,13 @@ export function AssistantMessage({
           }
         />
 
+        <MediaTaskCards
+          message={message}
+          conversationId={conversationId}
+          onRefreshMessages={onRefreshMessages}
+          onOpenMedia={onOpenMedia}
+        />
+
         <CommuteAnswer
           message={message}
           conversationId={conversationId}
@@ -152,12 +167,6 @@ export function AssistantMessage({
         <DeliveryStatus message={message} onRetry={onRetry} />
 
         <AssistantActions message={message} onRetry={onRetry} />
-
-        <MediaTaskCards
-          message={message}
-          conversationId={conversationId}
-          onRefreshMessages={onRefreshMessages}
-        />
       </div>
     </article>
   );

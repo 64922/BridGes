@@ -69,6 +69,24 @@ export function imageVersionUrl(
   return download ? `${base}?download=1` : base;
 }
 
+/**
+ * 读取指定版本图片字节（账户授权校验由服务端完成）。
+ * 供右侧预览以 object URL 展示，调用方负责中止请求与释放 URL。
+ */
+export async function fetchImageVersionContent(
+  conversationId: string,
+  assetId: string,
+  versionId: string,
+  signal?: AbortSignal
+): Promise<Response> {
+  const res = await fetch(
+    imageVersionUrl(conversationId, assetId, versionId),
+    { credentials: "same-origin", signal }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res;
+}
+
 // ---------------------------------------------------------------------------
 // Issue 32：文生视频（任务操作面 + 资产操作面；Wan 固定绑定）
 // ---------------------------------------------------------------------------
@@ -110,4 +128,21 @@ export function videoUrl(
 ): string {
   const base = `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-assets/${encodeURIComponent(assetId)}/video`;
   return download ? `${base}?download=1` : base;
+}
+
+/**
+ * 读取视频字节（账户授权校验由服务端完成）。
+ * 供右侧预览以 object URL 展示，调用方负责中止请求与释放 URL。
+ */
+export async function fetchVideoContent(
+  conversationId: string,
+  assetId: string,
+  signal?: AbortSignal
+): Promise<Response> {
+  const res = await fetch(videoUrl(conversationId, assetId), {
+    credentials: "same-origin",
+    signal,
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res;
 }
