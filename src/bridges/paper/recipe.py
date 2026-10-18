@@ -43,8 +43,8 @@ NODE_VERIFY = "paper.verify"
 PAPER_RECIPE_ID = "paper-search"
 
 
-# 新意图与语义证据合同不能复用旧词表路径的持久化产物。
-PAPER_RECIPE_VERSION = "paper-search-recipe-v3"
+# 语义证据使用稳定概念标识；旧显示名精确匹配路径的产物不得复用。
+PAPER_RECIPE_VERSION = "paper-search-recipe-v4"
 
 
 PAPER_NODE_LABELS: dict[str, str] = {
@@ -60,10 +60,10 @@ PAPER_NODE_LABELS: dict[str, str] = {
 
 
 PAPER_CAPABILITY_VERSIONS: dict[str, str] = {
-    "paper.parse_request": "paper-parse-v2",
+    "paper.parse_request": "paper-parse-v3",
     "paper.plan_queries": "paper-plan-v2",
     "paper.search_sources": "paper-search-v2",
-    "paper.screen_candidates": "paper-screen-v2",
+    "paper.screen_candidates": "paper-screen-v3",
     "paper.read_evidence": "paper-read-v1",
     "paper.enrich_metadata": "paper-enrich-v1",
     "paper.evaluate_selection": "paper-evaluate-v1",

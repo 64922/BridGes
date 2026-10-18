@@ -23,6 +23,13 @@ from typing import Any, Protocol
 from bridges.paper.candidate_codec import candidate_payload as candidate_payload
 from bridges.paper.contracts import PaperTermAnalysis
 from bridges.paper.ranking import matched_keywords, primary_keyword
+from bridges.paper.semantic_evidence import (
+    concept_requirements,
+    increment_reason_count,
+    merge_reason_counts,
+    semantic_reason_summary,
+    validate_semantic_evidence,
+)
 from bridges.paper.sources import PaperCandidate
 
 #: 匹配强度：直接命中 / 语义（扩展）相关 / 未确认。
@@ -97,6 +104,7 @@ class ScreenOutcome:
     hard_condition_blocked: str | None = None
     notes: list[str] = field(default_factory=list)
     judge_used: bool = False
+    semantic_rejection_counts: dict[str, int] = field(default_factory=dict)
 
 
 
@@ -123,6 +131,7 @@ def screen_candidates(
     source_rejected = 0
     specified_rejected = 0
     semantic_unverified = 0
+    semantic_rejection_counts: dict[str, int] = {}
     judges_in_batch = judge is not None and hasattr(judge, "judge_many")
     batch: Mapping[str, Mapping[str, Any]] = {}
     if judges_in_batch and candidates:
@@ -190,25 +199,33 @@ def screen_candidates(
             except Exception:  # noqa: BLE001 - 角色失败不阻断确定性证据匹配
                 judge_result = None
         if analysis.concepts and judge is not None:
-            semantic_evidence = _judge_evidence(judge_result or {}, candidate)
-            requirements = {item.concept for item in analysis.concepts}
-            semantic_evidence = [
-                item for item in semantic_evidence if item["requirement"] in requirements
+            validation = validate_semantic_evidence(
+                judge_result, candidate, concept_requirements(analysis)
+            )
+            merge_reason_counts(semantic_rejection_counts, validation.reason_counts)
+            if validation.relevant is False:
+                excluded.append(ExcludedCandidate(candidate, EXCLUDED_JUDGE))
+                context_rejected += 1
+                continue
+            if validation.reason is not None:
+                semantic_unverified += 1
+                if not validation.reason_counts:
+                    increment_reason_count(semantic_rejection_counts, validation.reason)
+                excluded.append(ExcludedCandidate(candidate, validation.reason))
+                continue
+            matched = [
+                {**item, "strength": STRENGTH_SYNONYM} for item in validation.evidence
             ]
-            if judge_result is None or not isinstance(judge_result.get("relevant"), bool):
-                semantic_unverified += 1
-                excluded.append(ExcludedCandidate(candidate, "semantic_evaluation_unavailable"))
-                continue
-            if judge_result.get("relevant") and not semantic_evidence:
-                semantic_unverified += 1
-                excluded.append(ExcludedCandidate(candidate, "semantic_evidence_unverified"))
-                continue
-            matched = semantic_evidence
         if judge_result is not None and judge_result.get("relevant") is False:
             excluded.append(ExcludedCandidate(candidate, EXCLUDED_JUDGE))
             context_rejected += 1
             continue
-        if not matched and judge_result is not None and judge_result.get("relevant"):
+        if (
+            not analysis.concepts
+            and not matched
+            and judge_result is not None
+            and judge_result.get("relevant") is True
+        ):
             matched = _judge_evidence(judge_result, candidate)
         if not matched:
             reason = (
@@ -252,8 +269,10 @@ def screen_candidates(
 
     notes: list[str] = []
     if semantic_unverified:
+        detail = semantic_reason_summary(semantic_rejection_counts)
         notes.append(
-            f"{semantic_unverified} 篇候选未完成语义与原文证据核验，未作为已核验推荐交付；可重试。"
+            f"{semantic_unverified} 篇候选未完成语义与原文证据核验，未作为已核验推荐交付；"
+            f"{detail}。可重试。"
         )
     if year_filtered:
         notes.append(f"已按年份条件过滤：排除 {year_filtered} 篇范围外的论文，未放宽年份。")
@@ -283,6 +302,7 @@ def screen_candidates(
             hard_condition_blocked=blocked,
             notes=notes,
             judge_used=judge_used,
+            semantic_rejection_counts=dict(semantic_rejection_counts),
         )
     if specified_rejected:
         notes.append(f"已按指定论文条件过滤：排除 {specified_rejected} 篇不匹配的候选。")
@@ -296,6 +316,7 @@ def screen_candidates(
         excluded=excluded,
         notes=notes,
         judge_used=judge_used,
+        semantic_rejection_counts=dict(semantic_rejection_counts),
     )
 
 
@@ -424,25 +445,13 @@ def _snippet(text: str, needle: str, *, limit: int = 160) -> str:
 def _judge_evidence(
     judge_result: Mapping[str, Any], candidate: PaperCandidate
 ) -> list[dict[str, str]]:
-    evidence: list[dict[str, str]] = []
-    for item in judge_result.get("evidence") or ():
-        if not isinstance(item, Mapping):
-            continue
-        requirement = str(item.get("requirement") or "").strip()
-        source = str(item.get("source") or "abstract").strip()
-        quote = str(item.get("quote") or "").strip()[:160]
-        source_text = {"title": candidate.title, "abstract": candidate.abstract}.get(source)
-        if not requirement or not quote or source_text is None or quote not in source_text:
-            continue
-        evidence.append(
-            {
-                "requirement": requirement,
-                "source": source,
-                "quote": quote,
-                "strength": STRENGTH_SYNONYM,
-            }
-        )
-    return evidence
+    """非概念映射路径（旧解析）仍按来源与逐字引文校验，不默认来源字段。"""
+    validation = validate_semantic_evidence(
+        judge_result, candidate, (), require_mapped_requirement=False
+    )
+    return [
+        {**item, "strength": STRENGTH_SYNONYM} for item in validation.evidence
+    ]
 
 
 def _unconfirmed_for(

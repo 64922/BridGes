@@ -99,8 +99,8 @@ class _Source:
 class _Judge:
     def judge_many(self, _analysis: Any, candidates: Any) -> Any:
         return {candidate.candidate_id: {"relevant": True, "evidence": [
-                    {"requirement": "深度学习", "source": "title", "quote": "Deep learning"},
-                    {"requirement": "轴承故障诊断", "source": "title",
+                    {"requirement": "c1", "source": "title", "quote": "Deep learning"},
+                    {"requirement": "c2", "source": "title",
                      "quote": "bearing fault diagnosis"},
                 ]}
                 for candidate in candidates}
