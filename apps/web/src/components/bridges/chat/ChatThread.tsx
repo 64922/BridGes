@@ -13,6 +13,7 @@ import type {
   TiebaPostProjection,
   TiebaSummaryCitation,
 } from "@/lib/api";
+import type { ChatMediaTarget } from "@/lib/chat-media";
 
 import styles from "./chat.module.css";
 
@@ -58,6 +59,12 @@ interface ChatThreadProps {
     route: CommuteRouteProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 打开该条消息的真实媒体详情面板 */
+  onOpenMedia?: (
+    messageId: string,
+    target: ChatMediaTarget,
+    trigger: HTMLButtonElement
+  ) => void;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
   announcement?: string | null;
 }
@@ -82,6 +89,7 @@ export function ChatThread({
   onOpenAttachment,
   onOpenTiebaEvidence,
   onOpenCommuteDetails,
+  onOpenMedia,
   announcement,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -124,6 +132,7 @@ export function ChatThread({
           onOpenAttachment={onOpenAttachment}
           onOpenTiebaEvidence={onOpenTiebaEvidence}
           onOpenCommuteDetails={onOpenCommuteDetails}
+          onOpenMedia={onOpenMedia}
         />
       </div>
       <p className="sc-visually-hidden" role="status" aria-live="polite">

@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 
 import { Icon } from "@/components/design-system/Icon";
 import type { ChatMessageView } from "@/lib/chat-message-view";
+import { IMAGE_STATUS_LABELS, VIDEO_STATUS_LABELS } from "@/lib/media-status";
 
 import { ContextNoteDetails } from "./ContextNoteDetails";
 
@@ -157,6 +158,35 @@ function ProcessList({
   );
 }
 
+function MediaTaskSection({
+  mediaTask,
+}: {
+  mediaTask: { kind: string; status: string; prompt: string } | null;
+}) {
+  if (!mediaTask) return null;
+  return (
+    <div data-testid="public-process-media">
+      <p
+        style={{
+          margin: 0,
+          marginBottom: "var(--space-1)",
+          fontWeight: 600,
+          fontSize: "var(--text-xs)",
+          color: "var(--color-text-tertiary)",
+        }}
+      >
+        媒体任务
+      </p>
+      <p style={{ margin: 0 }}>
+        {mediaTask.kind}生成 · {mediaTask.status} · {mediaTask.prompt}
+      </p>
+      <p style={{ margin: 0, color: "var(--color-text-tertiary)", fontSize: "var(--text-xs)" }}>
+        媒体任务在后台独立进行；状态与结果在正文旁就近显示。
+      </p>
+    </div>
+  );
+}
+
 export function PublicProcess({
   message,
   conversationId,
@@ -170,11 +200,25 @@ export function PublicProcess({
   const streaming = message.status === "streaming";
   const thinking = message.thinking;
   const tools = publicTools(thinking?.tools ?? []);
+  const mediaTask = message.image
+    ? {
+        kind: "图片",
+        status: IMAGE_STATUS_LABELS[message.image.status],
+        prompt: message.image.prompt,
+      }
+    : message.video
+      ? {
+          kind: "视频",
+          status: VIDEO_STATUS_LABELS[message.video.status],
+          prompt: message.video.prompt,
+        }
+      : null;
   const hasThinkingDetails =
     (thinking?.steps.length ?? 0) > 0 ||
     (thinking?.evidence.length ?? 0) > 0 ||
     tools.length > 0 ||
-    (thinking?.quality.length ?? 0) > 0;
+    (thinking?.quality.length ?? 0) > 0 ||
+    mediaTask != null;
 
   return (
     <section
@@ -254,6 +298,7 @@ export function PublicProcess({
               <ProcessList title="质量检查" items={thinking.quality} />
             </>
           )}
+          <MediaTaskSection mediaTask={mediaTask} />
           <ContextNoteDetails
             note={message.contextNote}
             streaming={streaming}

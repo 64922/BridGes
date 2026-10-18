@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { ContextNoteProjection } from "@/lib/api";
+import type { ContextNoteProjection, ImageTaskProjection } from "@/lib/api";
 import type { ChatMessageView } from "@/lib/chat-message-view";
 
 import { PublicProcess, publicProcessLabel } from "./PublicProcess";
@@ -258,5 +258,37 @@ describe("单行公开过程（工单 06）", () => {
         })
       )
     ).toBe("正在生成回答…");
+  });
+
+  it("媒体任务的真实状态进入统一过程入口", () => {
+    const image: ImageTaskProjection = {
+      task_id: "image-1",
+      attempt_number: 1,
+      kind: "generate",
+      prompt: "一座桥的素描",
+      status: "queued",
+      error_code: null,
+      error_message: null,
+      retryable: false,
+      asset_id: null,
+      result_version_id: null,
+      deleted: false,
+      synthetic: true,
+      created_at: "2026-10-18T00:00:00Z",
+      updated_at: "2026-10-18T00:00:00Z",
+    };
+    render(
+      <PublicProcess
+        conversationId="conversation-1"
+        message={assistant({ image })}
+      />
+    );
+
+    expand();
+    const media = screen.getByTestId("public-process-media");
+    expect(media.textContent).toContain("图片生成 · 排队中");
+    expect(media.textContent).toContain("一座桥的素描");
+    expect(media.textContent).toContain("后台独立进行");
+    expect(screen.queryByRole("button", { name: /重试/ })).toBeNull();
   });
 });
