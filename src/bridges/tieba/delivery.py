@@ -180,10 +180,11 @@ class TiebaResultDelivery:
                 TIEBA_TOTAL_BUDGET_MS if remaining_budget_ms is None else remaining_budget_ms,
             ),
         )
+        question = _auth_wait_question(projection)
         pending = ModuleWaitState(
             module_id=TIEBA_MODULE_ID,
             kind=WAIT_KIND_AUTH,
-            question="已打开当前账户专用的百度贴吧登录或安全验证页面。完成后在聊天中说“继续”，我会接着原话题检索。",
+            question=question,
             origin_message_id=assistant_message_id,
             context=context,
             created_at=now,
@@ -351,6 +352,31 @@ class TiebaResultDelivery:
             final_content=content or None,
             tieba_research=projection.model_dump(mode="json"),
         )
+
+
+def _auth_wait_question(projection: TiebaResearchProjection) -> str:
+    """保留真实等待原因（登录或安全验证），并给出可执行的恢复方式。"""
+    messages = [
+        record.error_message
+        for record in projection.queries
+        if is_auth_wait_error(record.error_code) and record.error_message
+    ]
+    messages.extend(
+        post.read_error_message
+        for post in projection.confirmed_posts
+        if is_auth_wait_error(post.read_error_code) and post.read_error_message
+    )
+    messages.extend(
+        link.unconfirmed_reason
+        for link in projection.candidate_links
+        if is_auth_wait_error(link.read_error_code) and link.unconfirmed_reason
+    )
+    question = next((message for message in messages if message), "")
+    if not question:
+        question = "请在当前账户专用的贴吧会话中完成登录或安全验证。"
+    if "继续" not in question:
+        question += " 任务已保留；完成后在聊天中说“继续”，我会接着原话题检索。"
+    return question
 
 
 def _delivery_artifact(result: KernelResult) -> Any:

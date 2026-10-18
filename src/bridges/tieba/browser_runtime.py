@@ -17,24 +17,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from bridges.runtime.lock import LOCK_FILENAME, DataDirectoryLock, RuntimeLockError
-from bridges.tieba.browser_request_budget import (
-    BrowserRequestBudget,
-    request_denial_message,
-)
+from bridges.tieba.browser_errors import TiebaBrowserError
+from bridges.tieba.browser_receive import receive_result
 
 if TYPE_CHECKING:
     from bridges.tieba.budget import TiebaBudget
 
 ACCOUNT_DELETION_MARKER = ".account-deleting"
-
-
-class TiebaBrowserError(RuntimeError):
-    """只携带稳定错误码，不回显上游页面或浏览器内部日志。"""
-
-    def __init__(self, code: str, message: str, *, excluded_wait_ms: int = 0) -> None:
-        super().__init__(message)
-        self.code = code
-        self.excluded_wait_ms = max(0, excluded_wait_ms)
 
 
 @dataclass(eq=False)
@@ -366,103 +355,14 @@ class TiebaBrowserRuntime:
         request_budget: TiebaBudget | None = None,
         request_guard: Callable[[], str | None] | None = None,
     ) -> dict[str, Any]:
-        auth_wait_started: float | None = None
-        auth_wait_total = 0.0
-        request_ledger = BrowserRequestBudget(
-            request_budget,
-            lambda value: self._send(worker, value),
+        return receive_result(
+            worker,
             stop_event=stop_event,
-            request_guard=request_guard
-            or (
-                request_budget.request_block_reason
-                if request_budget is not None
-                else None
-            ),
             deadline=deadline,
+            request_budget=request_budget,
+            request_guard=request_guard,
+            send=lambda value: self._send(worker, value),
         )
-        try:
-            while True:
-                checker = getattr(stop_event, "is_set", None)
-                if callable(checker) and checker():
-                    raise TiebaBrowserError("tieba_browser_cancelled", "已停止贴吧浏览器读取。")
-                denied = request_ledger.tick()
-                if denied is not None:
-                    raise TiebaBrowserError(
-                        denied,
-                        request_denial_message(denied),
-                    )
-                now = time.monotonic()
-                if auth_wait_started is None and now >= deadline:
-                    raise TiebaBrowserError(
-                        "tieba_browser_timeout", "贴吧浏览器读取超时，请稍后重试。"
-                    )
-                if auth_wait_started is not None and now - auth_wait_started >= 600:
-                    auth_wait_total += now - auth_wait_started
-                    raise TiebaBrowserError(
-                        "tieba_browser_auth_interrupted",
-                        "登录或验证等待超时；任务已保留，请完成后说“继续”。",
-                        excluded_wait_ms=int(auth_wait_total * 1000),
-                    )
-                try:
-                    line = worker.output.get(timeout=0.1)
-                except queue.Empty:
-                    continue
-                if line is None:
-                    raise TiebaBrowserError(
-                        "tieba_browser_unavailable", "专用浏览器未返回可读取内容。"
-                    )
-                try:
-                    value = json.loads(line)
-                    if not isinstance(value, dict):
-                        raise ValueError
-                except (ValueError, TypeError):
-                    raise TiebaBrowserError(
-                        "tieba_browser_unavailable", "专用浏览器未返回可读取内容。"
-                    ) from None
-                try:
-                    request_event = request_ledger.handle(value)
-                except TiebaBrowserError:
-                    raise
-                except Exception:
-                    raise TiebaBrowserError(
-                        "tieba_browser_request_guard_failed",
-                        request_denial_message("tieba_browser_request_guard_failed"),
-                    ) from None
-                if request_event is not None:
-                    if not request_event:
-                        error_code = (
-                            request_ledger.denial_code
-                            or "tieba_browser_run_invalidated"
-                        )
-                        raise TiebaBrowserError(
-                            error_code,
-                            request_denial_message(error_code),
-                        )
-                    continue
-                if value.get("error"):
-                    if auth_wait_started is not None:
-                        auth_wait_total += time.monotonic() - auth_wait_started
-                        value["excluded_wait_ms"] = int(auth_wait_total * 1000)
-                    raise TiebaBrowserError(
-                        str(value["error"]),
-                        str(value["message"]),
-                        excluded_wait_ms=int(value.get("excluded_wait_ms") or 0),
-                    )
-                if value.get("waiting_for_auth"):
-                    if auth_wait_started is None:
-                        auth_wait_started = time.monotonic()
-                    continue
-                if request_ledger.has_pending:
-                    request_ledger.finish_pending("browser_request_incomplete")
-                if auth_wait_started is not None:
-                    waited = time.monotonic() - auth_wait_started
-                    auth_wait_total += waited
-                    deadline += waited
-                    value["excluded_wait_ms"] = int(auth_wait_total * 1000)
-                return value
-        finally:
-            if request_ledger.has_pending:
-                request_ledger.finish_pending("browser_action_interrupted")
 
     def _drop_worker(self, account_id: str, worker: _BrowserWorker) -> None:
         with self._lock:

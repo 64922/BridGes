@@ -14,6 +14,16 @@ from playwright.sync_api import BrowserContext, Page, sync_playwright
 from playwright.sync_api import TimeoutError as BrowserTimeoutError
 
 from bridges.runtime.lock import DataDirectoryLock, RuntimeLockError
+from bridges.tieba.browser_auth import (
+    AUTH_INTERRUPTED,
+    AUTH_REQUIRED,
+    AUTH_STATUS_UNKNOWN,
+    COLLECTION_RESTRICTED,
+    AuthSession,
+    AuthWaitError,
+    auth_required,
+    request_timeout_ms,
+)
 from bridges.tieba.browser_dom import SEARCH_DOM, THREAD_DOM
 from bridges.tieba.browser_requests import BrowserRequestTracker
 from bridges.tieba.browser_runtime import account_profile_is_fenced
@@ -22,29 +32,6 @@ from bridges.tieba.lexicon import TARGET_FORUM_URL
 
 def emit(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False), flush=True)
-
-
-def auth_required(page: Page) -> str | None:
-    if "百度安全验证" in page.title() or page.locator("#captcha, .pass-sms-wrap").count():
-        return "verification"
-    if page.locator(".login-guide-placeholder").count():
-        return "login"
-    return None
-
-
-def _request_timeout_ms(
-    closed: threading.Event,
-    deadline: float | None,
-    maximum_ms: int,
-) -> int:
-    if closed.is_set():
-        raise InterruptedError("tieba_browser_cancelled")
-    if deadline is None:
-        return maximum_ms
-    remaining_ms = int((deadline - time.monotonic()) * 1000)
-    if remaining_ms <= 0:
-        raise BrowserTimeoutError("贴吧浏览器运行预算已耗尽。")
-    return min(maximum_ms, remaining_ms)
 
 
 def wait_for_thread_page_or_auth(
@@ -58,46 +45,17 @@ def wait_for_thread_page_or_auth(
             '.pb-content-wrap, .login-guide-placeholder, #captcha, .pass-sms-wrap'
         ) ||
         /百度安全验证/.test(document.title)""",
-        timeout=_request_timeout_ms(closed, deadline, 9000),
+        timeout=request_timeout_ms(closed, deadline, 9000),
     )
     return auth_required(page)
-
-
-def official_login(
-    context: BrowserContext,
-    return_url: str,
-    closed: threading.Event,
-    deadline: float | None = None,
-) -> Page:
-    login = context.new_page()
-    login.goto(
-        "https://passport.baidu.com/v2/?" + urlencode({"login": "", "tpl": "tb", "u": return_url}),
-        wait_until="domcontentloaded",
-        timeout=_request_timeout_ms(closed, deadline, 18000),
-    )
-    emit({"waiting_for_auth": True})
-    until = time.monotonic() + 600
-    while not closed.is_set() and time.monotonic() < until:
-        if login.is_closed():
-            raise PermissionError("tieba_browser_auth_interrupted")
-        login.wait_for_timeout(400)
-        if urlparse(login.url).hostname == "tieba.baidu.com":
-            reason = auth_required(login)
-            has_content = login.locator(
-                ".main-content .forum-name, .tbm-post-thread, .tbm-floor-thread"
-            ).count()
-            if reason is None and (has_content or "没有找到" in login.locator("body").inner_text()):
-                raise PermissionError("tieba_browser_auth_unverified")
-    if closed.is_set():
-        raise InterruptedError("tieba_browser_cancelled")
-    raise PermissionError("tieba_browser_auth_interrupted")
 
 
 def search(
     page: Page,
     terms: str,
     closed: threading.Event,
-    deadline: float | None = None,
+    deadline: float | None,
+    auth: AuthSession,
 ) -> list[dict[str, object]]:
     parsed = urlparse(TARGET_FORUM_URL)
     base = f"{parsed.scheme}://{parsed.netloc}/f/search/res?"
@@ -105,10 +63,11 @@ def search(
     for tab in ("1", "2"):
         params = {"kw": "华东交通大学", "qw": terms[:80], "ie": "utf-8", "tab": tab}
         target = base + urlencode(params)
+        current_deadline = auth.deadline if auth.deadline is not None else deadline
         page.goto(
             target,
             wait_until="domcontentloaded",
-            timeout=_request_timeout_ms(closed, deadline, 18000),
+            timeout=request_timeout_ms(closed, current_deadline, 18000),
         )
         page.wait_for_function(
             """() => document.querySelector('.tbm-post-thread, .tbm-floor-thread, .thread-new3') ||
@@ -116,20 +75,22 @@ def search(
             document.querySelector('#captcha, .pass-sms-wrap') ||
             /没有找到|暂无.*结果|百度安全验证/.test(document.body.innerText) ||
             /百度安全验证/.test(document.title)""",
-            timeout=_request_timeout_ms(closed, deadline, 9000),
+            timeout=request_timeout_ms(closed, current_deadline, 9000),
         )
         reason = auth_required(page)
         if reason:
-            auth_started = time.monotonic()
-            page = official_login(page.context, target, closed, deadline)
-            if deadline is not None:
-                deadline += time.monotonic() - auth_started
+            page = auth.recover(page, reason=reason, target_url=target)
+            current_deadline = auth.deadline if auth.deadline is not None else deadline
             page.goto(
                 target,
                 wait_until="domcontentloaded",
-                timeout=_request_timeout_ms(closed, deadline, 18000),
+                timeout=request_timeout_ms(closed, current_deadline, 18000),
             )
-            page.wait_for_timeout(min(700, _request_timeout_ms(closed, deadline, 700)))
+            page.wait_for_timeout(
+                min(700, request_timeout_ms(closed, current_deadline, 700))
+            )
+            if auth_required(page):
+                raise AuthWaitError(COLLECTION_RESTRICTED, reason="collection")
         for hit in page.evaluate(SEARCH_DOM, tab):
             found.setdefault(str(hit["url"]), hit)
     return list(found.values())
@@ -204,7 +165,7 @@ def expand_thread_nested_replies(
             break
         prior_count = page.locator(".pb-lzl-item").count()
         try:
-            timeout_ms = _request_timeout_ms(
+            timeout_ms = request_timeout_ms(
                 closed, deadline, min(800, max(1, int((remaining - 0.1) * 1000)))
             )
             control.click(timeout=timeout_ms)
@@ -234,28 +195,30 @@ def read_thread(
     url: str,
     scroll_rounds_limit: int,
     closed: threading.Event,
-    deadline: float | None = None,
+    auth: AuthSession,
 ) -> dict[str, object]:
     parsed = urlparse(url)
     if parsed.hostname != "tieba.baidu.com" or not parsed.path.startswith("/p/"):
         raise ValueError("只允许读取贴吧帖子")
+    deadline = auth.deadline
     page.goto(
         url,
         wait_until="domcontentloaded",
-        timeout=_request_timeout_ms(closed, deadline, 16000),
+        timeout=request_timeout_ms(closed, deadline, 16000),
     )
-    if wait_for_thread_page_or_auth(page, closed, deadline):
-        auth_started = time.monotonic()
-        page = official_login(page.context, url, closed, deadline)
-        if deadline is not None:
-            deadline += time.monotonic() - auth_started
+    reason = wait_for_thread_page_or_auth(page, closed, deadline)
+    if reason:
+        page = auth.recover(page, reason=reason, target_url=url)
+        deadline = auth.deadline
         page.goto(
             url,
             wait_until="domcontentloaded",
-            timeout=_request_timeout_ms(closed, deadline, 16000),
+            timeout=request_timeout_ms(closed, deadline, 16000),
         )
+        if wait_for_thread_page_or_auth(page, closed, deadline):
+            raise AuthWaitError(COLLECTION_RESTRICTED, reason="collection")
     page.wait_for_selector(
-        ".pb-content-wrap", timeout=_request_timeout_ms(closed, deadline, 9000)
+        ".pb-content-wrap", timeout=request_timeout_ms(closed, deadline, 9000)
     )
     limit = max(1, min(int(scroll_rounds_limit or 1), 8))
     scroll_rounds = scroll_thread_replies(page, limit, closed, deadline)
@@ -275,14 +238,22 @@ def _run_action(
     page: Page,
     payload: dict[str, object],
     closed: threading.Event,
-) -> tuple[dict[str, object], Page]:
+    request_tracker: BrowserRequestTracker,
+) -> tuple[dict[str, object], Page, float | None]:
     page.set_default_timeout(8000)
     action = payload.get("action")
     raw_deadline = payload.get("deadline_monotonic")
     deadline = float(raw_deadline) if isinstance(raw_deadline, (float, int)) else None
+    auth = AuthSession(
+        closed=closed,
+        deadline=deadline,
+        emit=emit,
+        deadline_changed=request_tracker.set_deadline,
+    )
+    page = auth.ensure(page)
     if action == "search":
         result: dict[str, object] = {
-            "hits": search(page, str(payload["terms"]), closed, deadline)
+            "hits": search(page, str(payload["terms"]), closed, auth.deadline, auth)
         }
     elif action == "read":
         raw_scroll_limit = payload.get("scroll_rounds_limit")
@@ -292,11 +263,11 @@ def _run_action(
             str(payload["url"]),
             scroll_limit,
             closed,
-            deadline,
+            auth,
         )
     else:
         raise ValueError("不支持的动作")
-    return result, (context.pages[-1] if context.pages else context.new_page())
+    return result, page, auth.deadline
 
 
 def _error_payload(error: Exception) -> dict[str, str]:
@@ -307,16 +278,37 @@ def _error_payload(error: Exception) -> dict[str, str]:
         }
     if isinstance(error, PermissionError):
         code = str(error)
+        reason = getattr(error, "reason", None)
         if code not in {
-            "tieba_browser_auth_interrupted",
+            AUTH_REQUIRED,
+            AUTH_INTERRUPTED,
+            AUTH_STATUS_UNKNOWN,
+            COLLECTION_RESTRICTED,
             "tieba_browser_auth_unverified",
         }:
-            code = "tieba_browser_auth_required"
-        message = (
-            "贴吧页面可读，但无法独立确认专用会话的认证状态；本轮未继续采集。"
-            if code == "tieba_browser_auth_unverified"
-            else "专用贴吧登录或验证未完成，请在打开的官方页面完成后说“继续”。"
-        )
+            code = AUTH_STATUS_UNKNOWN
+        if code == "tieba_browser_auth_unverified":
+            message = "贴吧页面可读，但无法独立确认专用会话的认证状态；本轮未继续采集。"
+        elif code == AUTH_STATUS_UNKNOWN:
+            message = (
+                "无法确认专用贴吧会话的登录状态（网络或接口异常）；"
+                "本轮没有打开登录页，请稍后重试。"
+            )
+        elif code == COLLECTION_RESTRICTED:
+            message = (
+                "专用贴吧会话已登录，但当前采集入口仍被限制；"
+                "本轮未取得新内容，请稍后重试。"
+            )
+        elif code == AUTH_INTERRUPTED and reason == "verification":
+            message = (
+                "贴吧安全验证等待已中断；任务已保留，"
+                "请在聊天中说“继续”重试。"
+            )
+        else:
+            message = (
+                "贴吧登录等待已中断；任务已保留，"
+                "请在聊天中说“继续”重试。"
+            )
         return {
             "error": code,
             "message": message,
@@ -406,8 +398,10 @@ def main() -> None:
                     )
                     request_tracker.set_deadline(deadline)
                     try:
-                        result, page = _run_action(context, page, payload, closed)
-                        request_tracker.wait_until_idle(context, deadline)
+                        result, page, effective_deadline = _run_action(
+                            context, page, payload, closed, request_tracker
+                        )
+                        request_tracker.wait_until_idle(context, effective_deadline)
                         emit(result)
                     except Exception as error:  # 每个请求独立失败，保留本账户浏览器上下文
                         emit(_error_payload(error))

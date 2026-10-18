@@ -27,6 +27,13 @@ def chrome_page() -> Iterator[Page]:
         yield page
 
 
+class _NoAuth:
+    deadline = None
+
+    def recover(self, *_: object, **__: object) -> None:
+        raise AssertionError("公开 DOM 测试不应触发认证恢复")
+
+
 def test_new_thread_cards_preserve_title_abstract_forum_and_background_link(
     chrome_page: Page,
 ) -> None:
@@ -70,7 +77,7 @@ def test_search_waits_for_new_cards_and_retains_old_reply_layout(chrome_page: Pa
         route.fulfill(status=200, content_type="text/html; charset=utf-8", body=body)
 
     chrome_page.route("**/*", serve)
-    hits = search(chrome_page, "宿舍", threading.Event())
+    hits = search(chrome_page, "宿舍", threading.Event(), None, _NoAuth())  # type: ignore[arg-type]
     assert [hit["title"] for hit in hits] == ["新卡片", "旧回复标题"]
     assert hits[1]["matched_reply"] == "只在回复中出现的宿舍说法"
     assert hits[1]["discovery_type"] == "reply"
@@ -91,7 +98,7 @@ def test_search_stops_before_next_page_navigation_after_cancellation(chrome_page
 
     chrome_page.route("**/*", serve)
     with pytest.raises(InterruptedError, match="tieba_browser_cancelled"):
-        search(chrome_page, "宿舍", stopped)
+        search(chrome_page, "宿舍", stopped, None, _NoAuth())  # type: ignore[arg-type]
 
     assert len(navigations) == 1
     assert "tab=1" in navigations[0]
@@ -101,7 +108,13 @@ def test_search_does_not_navigate_after_deadline(chrome_page: Page) -> None:
     deadline = time.monotonic() - 1
 
     with pytest.raises(BrowserTimeoutError):
-        search(chrome_page, "宿舍", threading.Event(), deadline=deadline)
+        search(
+            chrome_page,
+            "宿舍",
+            threading.Event(),
+            deadline,
+            _NoAuth(),  # type: ignore[arg-type]
+        )
 
     assert chrome_page.url == "about:blank"
 

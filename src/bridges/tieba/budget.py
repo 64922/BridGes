@@ -209,6 +209,21 @@ class TiebaBudget:
             remaining_ms,
         )
 
+    def record_manual_wait(self, wait_ms: int) -> None:
+        """人工登录/验证等待不计入五分钟工作预算，也不重置已用计数。"""
+        wait_ms = max(0, int(wait_ms))
+        if wait_ms <= 0:
+            return
+        self._work_deadline += timedelta(milliseconds=wait_ms)
+        if self.model_budget is not None:
+            self.model_budget.exclude_wait(wait_ms)
+        self._ledger.record_manual_auth_wait(
+            account_id=self._account_id,
+            run_id=self._run_id,
+            wait_ms=wait_ms,
+            now=datetime.now(UTC),
+        )
+
     def next_call_key(self, prefix: str) -> str:
         return self._keys.next(prefix)
 
