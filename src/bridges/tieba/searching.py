@@ -18,6 +18,7 @@ from typing import Protocol
 
 from bridges.contracts.modules import ModuleQueryRecord, ModuleQueryStatus
 from bridges.tieba.contracts import (
+    TiebaQueryRound,
     TiebaQuestionAnalysis,
     TiebaRejectedCandidate,
     TiebaSearchHit,
@@ -104,25 +105,70 @@ class TiebaSearchPort(Protocol):
     ) -> SearchOutcome: ...
 
 
-def plan_queries(analysis: TiebaQuestionAnalysis) -> tuple[str, ...]:
-    """生成有界的原词、常用说法与放宽查询；每条仍固定在目标贴吧。"""
+#: 查询计划里只起装饰作用的词：去重时与来源前缀一起忽略。
+_DECORATIVE_QUERY_WORDS: frozenset[str] = frozenset({"贴吧", "吧", "吧里", "帖子", "贴子"})
+
+#: 计划查询的固定来源前缀（与浏览器参数校验共用）。
+QUERY_SCOPE_PREFIX = ("site:tieba.baidu.com/p/", TARGET_FORUM_NAME)
+
+PRIMARY_QUERY_GOAL = "原词查询"
+SYNONYM_QUERY_GOAL = "常用说法查询"
+RELATED_QUERY_GOAL = "相关说法查询"
+RELAXED_QUERY_GOAL = "备用放宽词查询"
+
+
+def execution_terms(query: str) -> str:
+    """返回真正用于吧内检索的最小词：去掉来源前缀与装饰词。
+
+    这是查询计划的去重键，也是浏览器实际发送的 ``terms``。公共索引路径仍会
+    发送带固定来源的完整 ``query``；两条路径共享同一组对比词。
+    """
+    words = query.split()
+    if tuple(words[:2]) != QUERY_SCOPE_PREFIX:
+        return " ".join(words)[:80]
+    expressions = [
+        "国庆" if word == "国庆节" else word
+        for word in words[2 : MAX_QUERY_TERMS + 2]
+        if word not in _DECORATIVE_QUERY_WORDS
+    ]
+    return " ".join(expressions)[:80]
+
+
+def plan_query_rounds(analysis: TiebaQuestionAnalysis) -> tuple[TiebaQueryRound, ...]:
+    """生成有界的原词、常用说法与放宽查询，并按真实执行词去重。
+
+    「宿舍」与「宿舍 贴吧」在吧内是同一句话，只执行一次；备用放宽词只有在
+    真正改变检索表达时才进入计划，零结果后的调整因此不会被装饰词骗过。
+    """
     terms = list(analysis.topic_terms)[:MAX_QUERY_TERMS]
     if not terms:
         return ()
     scope = [f"site:{TIEBA_HOST}/p/", TARGET_FORUM_NAME]
-    primary = " ".join([*scope, *terms])
-    queries = [primary]
-    alternatives = _topic_alternatives(terms)
-    for alternative in alternatives:
-        query = " ".join([*scope, *alternative])
-        if query not in queries:
-            queries.append(query)
+    rounds: list[TiebaQueryRound] = []
+    seen: set[str] = set()
+
+    def add(goal: str, query_terms: list[str]) -> None:
+        query = " ".join([*scope, *query_terms])
+        expression = execution_terms(query)
+        if not expression or expression in seen:
+            return
+        seen.add(expression)
+        rounds.append(TiebaQueryRound(goal=goal, query=query, execution_terms=expression))
+
+    add(PRIMARY_QUERY_GOAL, terms)
+    for index, alternative in enumerate(_topic_alternatives(terms)):
+        add(SYNONYM_QUERY_GOAL if index == 0 else RELATED_QUERY_GOAL, alternative)
     # 最后才放宽泛化词；地点、事件和明确的原始主题条件仍保留。
-    relaxed_terms = ["国庆" if term == "国庆节" else term for term in relaxed_topic_terms(terms)]
-    relaxed = " ".join([*scope, *relaxed_terms, "贴吧"])
-    if relaxed not in queries:
-        queries.append(relaxed)
-    return tuple(queries[:4])
+    relaxed_terms = [
+        "国庆" if term == "国庆节" else term for term in relaxed_topic_terms(terms)
+    ]
+    add(RELAXED_QUERY_GOAL, [*relaxed_terms, "贴吧"])
+    return tuple(rounds[:4])
+
+
+def plan_queries(analysis: TiebaQuestionAnalysis) -> tuple[str, ...]:
+    """生成有界的原词、常用说法与放宽查询；每条仍固定在目标贴吧。"""
+    return tuple(item.query for item in plan_query_rounds(analysis))
 
 
 def _topic_alternatives(terms: list[str]) -> list[list[str]]:

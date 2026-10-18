@@ -12,6 +12,7 @@ from bridges.tieba.contracts import (
     TiebaEvidenceRoute,
     TiebaOfficialCheck,
     TiebaPostProjection,
+    TiebaQueryRound,
     TiebaQuestionAnalysis,
     TiebaRejectedCandidate,
     TiebaResearchProjection,
@@ -46,6 +47,7 @@ def build_projection(
     reads: ReadOutcome | None = None,
     official_blocked_reason: str | None = None,
     plan_rationale: str | None = None,
+    query_rounds: Sequence[TiebaQueryRound] = (),
     source_priority: Sequence[TiebaEvidenceRoute] = (),
     parallel_evidence: bool = False,
 ) -> TiebaResearchProjection:
@@ -91,6 +93,7 @@ def build_projection(
         place_or_event=list(analysis.place_or_event),
         question_kind=analysis.question_kind,
         campus_terms=list(analysis.campus_terms),
+        query_rounds=list(query_rounds),
         source_priority=list(source_priority),
         parallel_evidence=parallel_evidence,
         plan_rationale=plan_rationale,

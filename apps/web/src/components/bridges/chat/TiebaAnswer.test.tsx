@@ -285,6 +285,36 @@ describe("贴吧回答正文与依据（工单 10）", () => {
     );
   });
 
+  it("展示每轮检索目标与实际执行词，执行词不含动作词", () => {
+    render(
+      <TiebaAnswer
+        research={tiebaResearch({
+          status: "empty",
+          topic_terms: ["宿舍"],
+          query_rounds: [
+            {
+              goal: "原词查询",
+              query: "site:tieba.baidu.com/p/ 华东交通大学吧 宿舍",
+              execution_terms: "宿舍",
+            },
+            {
+              goal: "常用说法查询",
+              query: "site:tieba.baidu.com/p/ 华东交通大学吧 寝室",
+              execution_terms: "寝室",
+            },
+          ],
+          empty_reason: "本轮检索没有返回可确认属于「华东交通大学吧」的公开帖子。",
+        })}
+        streaming={false}
+      />
+    );
+
+    const plan = screen.getByTestId("tieba-query-plan-rounds").textContent ?? "";
+    expect(plan).toContain("原词查询：宿舍");
+    expect(plan).toContain("常用说法查询：寝室");
+    expect(plan).not.toContain("获取");
+  });
+
   it("历史失败只在没有回合恢复投影时提供整轮重跑入口", () => {
     const onRetry = vi.fn();
     render(

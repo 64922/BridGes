@@ -57,6 +57,7 @@ export function TiebaEvidenceDetails({
   const sections = research.sections ?? [];
   const notes = research.evidence_boundary ?? [];
   const terms = research.topic_terms ?? [];
+  const rounds = research.query_rounds ?? [];
   const timeFilter = research.time_filter;
   const partialPosts = posts.filter((post) => unreadReason(post) !== null);
   const applicableOfficial = official.filter(officialIsApplicable);
@@ -263,6 +264,32 @@ export function TiebaEvidenceDetails({
           >
             {posts.map((post) => (
               <PostRow key={post.thread_id ?? post.url} post={post} />
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {rounds.length > 0 && (
+        <details data-testid="tieba-query-plan">
+          <summary style={{ cursor: "pointer", minHeight: "var(--target-size)" }}>
+            检索计划（每轮目标与实际检索词）
+          </summary>
+          <ul
+            data-testid="tieba-query-plan-rounds"
+            style={{
+              margin: 0,
+              paddingLeft: "var(--space-5)",
+              listStyle: "disc",
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-1)",
+              fontSize: "var(--text-xs)",
+            }}
+          >
+            {rounds.map((round, index) => (
+              <li key={`${round.goal}-${index}`}>
+                {round.goal}：{round.execution_terms}
+              </li>
             ))}
           </ul>
         </details>

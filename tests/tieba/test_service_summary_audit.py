@@ -13,6 +13,7 @@ from bridges.contracts.ai import ModelCallResult, ModelCallStatus, ModelRunLock
 from bridges.contracts.modules import ModuleQueryStatus
 from bridges.storage.database import BridgesDatabase
 from bridges.tieba.contracts import ReadStatus, TiebaReadResult, TiebaReply, TiebaSearchHit
+from bridges.tieba.recipe import TIEBA_RECIPE_VERSION
 from bridges.tieba.searching import SearchOutcome, query_record
 from bridges.tieba.service import TiebaResearchService
 from bridges.tieba.service_contract import TiebaModuleError
@@ -146,7 +147,9 @@ def test_service_persists_every_attempt_only_for_current_identity(
         else:
             assert len(locks) == gateway.calls == 3
             assert message.tieba_research["summary"] == "一条宿舍经历提到有空调。"
-            assert all(lock.call_contract.recipe_version == "tieba-recipe-v6" for lock in locks)
+            assert all(
+                lock.call_contract.recipe_version == TIEBA_RECIPE_VERSION for lock in locks
+            )
             assert [lock.business_refs[0].attempt_ordinal for lock in locks] == [1, 2, 3]
             assert all(lock.business_refs[0].object_id == ASSISTANT for lock in locks)
         assert not SqliteModelRunLockRecorder(database).list_locks_by_run("other", RUN)

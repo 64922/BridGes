@@ -111,6 +111,7 @@ class TiebaSynthesisNodes:
             reads=reads,
             official_blocked_reason=plan.official_blocked_reason,
             plan_rationale=plan.rationale,
+            query_rounds=plan.query_rounds,
             source_priority=list(plan.source_priority),
             parallel_evidence=plan.parallel_evidence,
         )

@@ -137,6 +137,9 @@ def render_result_content(projection: TiebaResearchProjection) -> str:
         lines.append(f"· 点名校区：{'、'.join(projection.campus_terms)}")
     if projection.plan_rationale:
         lines.append(f"· 取证范围：{projection.plan_rationale}")
+    plan_line = _query_plan_line(projection)
+    if plan_line:
+        lines.append(f"· 检索计划：{plan_line}")
     if projection.official_blocked_reason:
         lines.append(f"· 来源限制：{projection.official_blocked_reason}")
     lines.append(f"· 时间条件：{projection.time_filter.note}")
@@ -199,6 +202,9 @@ def render_empty_content(projection: TiebaResearchProjection) -> str:
     ]
     if projection.plan_rationale:
         lines.append(f"· 取证范围：{projection.plan_rationale}")
+    plan_line = _query_plan_line(projection)
+    if plan_line:
+        lines.append(f"· 检索计划：{plan_line}")
     if projection.official_blocked_reason:
         lines.append(f"· 来源限制：{projection.official_blocked_reason}")
     if projection.empty_reason:
@@ -231,6 +237,13 @@ def render_stopped_content(projection: TiebaResearchProjection) -> str:
     lines.append("")
     lines.append("已停止：本轮没有继续读取页面，可以在同一会话里重试。")
     return "\n".join(lines).rstrip()
+
+
+def _query_plan_line(projection: TiebaResearchProjection) -> str:
+    """每轮检索目标与真实执行词（与浏览器参数、检索记录同源）。"""
+    return "；".join(
+        f"{item.goal}「{item.execution_terms}」" for item in projection.query_rounds
+    )
 
 
 def _candidate_link_lines(projection: TiebaResearchProjection) -> list[str]:
