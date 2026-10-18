@@ -119,7 +119,8 @@ def test_paper_prompt_dispatches_module_and_scrubs_private_text(tmp_path: Path) 
     assert user.module_id is None
     assert assistant.route.module_id == "paper"
     assert assistant.route is not None and assistant.route.is_paper_search
-    assert assistant.arxiv_search is not None
+    # 论文模块自行提交 paper_search 投影；启动占位不再预写 arXiv 恢复卡。
+    assert assistant.arxiv_search is None
     events = list(
         service.stream_generation(
             "alice",

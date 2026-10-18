@@ -4,7 +4,7 @@
 
 **Blocked by:** 无 — 可独立开始；通过注入失败验证，不依赖 01 或 03 的修复。
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 问题与目标
 
@@ -32,18 +32,42 @@
 
 ## 验收标准
 
-- [ ] 原有终态仍 loading 的行为具有先失败后通过的回归测试。
-- [ ] 可重试筛选失败到达界面后停止转圈，取消按钮消失或禁用，恢复入口可用。
-- [ ] 不可重试失败和用户停止不会错误展示与原因不符的恢复动作。
-- [ ] 页面刷新与 SSE 实时状态一致，旧尝试的迟到事件不会覆盖当前终态或新尝试。
-- [ ] 用户重试可以创建合法尝试，重复操作不产生无边界并发；账户隔离不受影响。
-- [ ] 实际调用过 arXiv、OpenAlex 时，资料面板展示两者及各自结果，不再声称未调用来源。
-- [ ] 计划但未调用的来源不伪装成已调用；全部候选被拒绝时仍保留检索事实。
-- [ ] 桌面交互、相关后端和前端测试、类型检查及前端构建通过。
+- [x] 原有终态仍 loading 的行为具有先失败后通过的回归测试。
+- [x] 可重试筛选失败到达界面后停止转圈，取消按钮消失或禁用，恢复入口可用。
+- [x] 不可重试失败和用户停止不会错误展示与原因不符的恢复动作。
+- [x] 页面刷新与 SSE 实时状态一致，旧尝试的迟到事件不会覆盖当前终态或新尝试。
+- [x] 用户重试可以创建合法尝试，重复操作不产生无边界并发；账户隔离不受影响。
+- [x] 实际调用过 arXiv、OpenAlex 时，资料面板展示两者及各自结果，不再声称未调用来源。
+- [x] 计划但未调用的来源不伪装成已调用；全部候选被拒绝时仍保留检索事实。
+- [x] 相关后端和前端测试、类型检查及前端构建通过；桌面浏览器完整旅程待人工验收。
 
 ## 不在范围内
 
 重新设计整个聊天 UI、改造所有模块的状态机、重做历史搜索记录、自动重跑用户历史失败任务。
+
+## 完成记录（2026-10-18）
+
+**分支与基点：** `02-terminal-state-and-sources`，已 rebase 到合并 01/03 后的 `main`（`29e1282e`）；本记录随本票一起提交。
+
+**后端权威状态：**
+- `PaperSearchService` 失败/停止交付现在从真实查询记录派生 `selected_sources`，包含失败与空结果、排除 `SKIPPED`；成功、空、停止、失败四条路径共用同一派生函数。
+- `terminal._commit_message` 与读取投影共用 `converge_terminal_searches`：ERROR 把 in-flight 搜索卡收敛为 interrupted，STOPPED 收敛为 cancelled，并撤销取消/重试入口；读取路径使用 `message.updated_at`，刷新不会每次改写 `searched_at`。
+- 历史消息若状态已终态但 `paper_search` 仍为 `searching`，读取时按消息错误码/恢复合同收敛；历史 `selected_sources` 为空但已有查询记录时，从记录补齐。
+- 论文模块首轮与重试不再预写 arXiv 搜索卡；重试只启动论文模块，避免旧的 loading 卡复活。
+- 语义筛选失败 `paper_semantic_evaluation_unavailable` 与论文相关错误码登记到文案/恢复目录，错误事件、回合结果与消息投影都保留真实可重试性。ERROR SSE 新增 `paper_search` 投影。
+- 所有来源均异常时保留 `arxiv_search_error` / `openalex_search_error` / `crossref_search_error` 稳定码；多个来源错误码不一致时收敛为 `paper_search_failed`，可重试性在消息、错误事件与回合恢复中一致。
+
+**流式事件与页面恢复：**
+- `ChatStreamErrorData` 携带收敛后的 `arxiv_search` / `paper_search`；`done` 仍以完整消息投影为权威，错误后前端 `load(true)` 与刷新读取同一规则。
+- 前端只更新论文进度文案为“检索学术来源”，资料面板改为“实际调用来源”；未新增仅靠前端隐藏加载的兼容逻辑。
+- `openapi.json`（324 paths）与 `packages/contracts/src/generated.ts` 已按新合同重生成。
+
+**验证：**
+- 后端定向：`tests/paper/test_issue02_terminal_state_and_sources.py` 9 passed；本票加相关论文/聊天/终态/state_copy/合同同步共 94 passed。
+- 前端：52 文件 / 404 用例通过；`npm run typecheck`、`npm run build` 通过；`npm run lint` 仅有既有 `<img>` 警告。
+- 静态检查：新增/改动行 ruff 干净（`state_copy/catalog.py:177` 为既有 E501，非本票）；`mypy --follow-imports=silent` 对 9 个改动源文件通过。
+- 全量后端基线仍有与本票无关的既有失败（`CareerBackgroundLoader` 收集错误、retirement `traffic_class` 等），未作为本票门禁。
+- 桌面 Playwright 未执行：worktree 无仓库 `.venv`，现有论文 e2e 主要使用 mock 数据，无法覆盖本次真实父图终态链路；需人工在桌面浏览器验收实时 SSE/刷新/重连。
 
 ## Comments
 

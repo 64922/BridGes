@@ -56,7 +56,7 @@ def test_body_intent_paper_request_dispatches_and_searches(tmp_path: Path) -> No
     assert assistant.route.is_paper_search
     assert assistant.route.route_source == "body_intent"
     assert assistant.route.web_search_allowed is False
-    assert assistant.arxiv_search is not None
+    assert assistant.arxiv_search is None
     assert service.message_projection("other-account", assistant.message_id) is None
 
     events = list(

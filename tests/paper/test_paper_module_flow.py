@@ -149,8 +149,10 @@ class _FakePaperSource:
         error_message: str | None = None,
         retryable: bool = False,
         stop_on_search: bool = False,
+        source: str = "arxiv",
     ) -> None:
         self.candidates = candidates or []
+        self.source = source
         self.status = status
         self.error_code = error_code
         self.error_message = error_message
@@ -175,7 +177,7 @@ class _FakePaperSource:
             query=query,
             candidates=self.candidates[:max_results],
             record=ModuleQueryRecord(
-                source="arxiv",
+                source=self.source,
                 query=query,
                 status=self.status,
                 evidence_count=len(self.candidates[:max_results]),

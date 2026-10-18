@@ -10931,6 +10931,8 @@ export interface components {
             web_search?: components["schemas"]["WebSearchProjection"] | null;
             /** @description 失败或取消时的 arXiv 论文搜索状态。 */
             arxiv_search?: components["schemas"]["ArxivSearchProjection"] | null;
+            /** @description 失败或取消时的论文模块状态。 */
+            paper_search?: components["schemas"]["PaperSearchProjection"] | null;
             /** @description 失败或取消时的学习模式教学卡片状态。 */
             teaching?: components["schemas"]["TeachingTurnProjection"] | null;
         };
@@ -21827,7 +21829,7 @@ export interface components {
             research_question: string;
             /**
              * Selected Sources
-             * @description 本轮实际启用的来源。
+             * @description 本轮实际调用过的来源（含失败与空结果，不含未执行/跳过）。
              */
             selected_sources?: string[];
             /**

@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING, Any
 from bridges.contracts.chat import ChatMessageStatus
 from bridges.contracts.modules import ModuleQueryRecord, ModuleWaitState
 from bridges.kernel.contracts import KernelResult
-from bridges.paper.contracts import PaperQueryPlan, PaperSearchProjection, PaperSearchStatus
+from bridges.paper.contracts import (
+    PaperQueryPlan,
+    PaperSearchProjection,
+    PaperSearchStatus,
+    selected_sources,
+)
 from bridges.paper.delivery_types import (
     PAPER_MODULE_ID,
     WAIT_KIND_CLARIFICATION,
@@ -43,6 +48,11 @@ def _prepare_empty(self: PaperSearchService, result: KernelResult) -> _PreparedD
     plan = _plan(result.artifact(NODE_PLAN), analysis)
     notes = _notes(result)
     now = self._clock()
+    records = [
+        *_records(result.artifact(NODE_SEARCH)),
+        *_records(result.artifact(NODE_SCREEN)),
+        *_records(result.artifact(NODE_ENRICH)),
+    ]
     projection = PaperSearchProjection(
         status=PaperSearchStatus.EMPTY,
         original_phrase=analysis.original_phrase,
@@ -50,17 +60,10 @@ def _prepare_empty(self: PaperSearchService, result: KernelResult) -> _PreparedD
         expansions=list(analysis.expansions),
         confidence=analysis.confidence,
         context_label=analysis.context_label,
-        queries=[
-            *_records(result.artifact(NODE_SEARCH)),
-            *_records(result.artifact(NODE_SCREEN)),
-            *_records(result.artifact(NODE_ENRICH)),
-        ],
+        queries=records,
         final_query=plan.query,
         research_question=analysis.research_question,
-        selected_sources=list(dict.fromkeys(
-            item.source for item in _records(result.artifact(NODE_SEARCH))
-            if item.query and item.status.value != "skipped"
-        )),
+        selected_sources=selected_sources(records),
         condition_sources=analysis.condition_sources,
         requested_count=plan.target_count,
         artifacts=_artifact_refs(result),
@@ -161,6 +164,7 @@ def _prepare_stopped(
         final_query=plan.query,
         condition_sources=analysis.condition_sources,
         queries=queries,
+        selected_sources=selected_sources(queries),
         artifacts=_artifact_refs(result),
         evidence_notes=["用户停止了本轮检索，未生成的步骤不会补做。"],
         searched_at=now,
@@ -224,6 +228,7 @@ def _failure_projection(
         context_label=analysis.context_label,
         final_query=plan.query if plan is not None else "",
         queries=records,
+        selected_sources=selected_sources(records),
         condition_sources=analysis.condition_sources,
         artifacts=_artifact_refs(result),
         searched_at=self._clock(),

@@ -63,10 +63,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from bridges.chat.search_state import converge_terminal_searches
 from bridges.chat.turn import (
     CHAT_MODE,
-    cancelled_arxiv_search,
-    cancelled_web_search,
     done_thinking,
     error_is_retryable,
     failed_thinking,
@@ -458,6 +457,7 @@ class GenerationTerminal:
             duration_ms=final.duration_ms if final is not None else None,
             web_search=final.web_search if final is not None else None,
             arxiv_search=final.arxiv_search if final is not None else None,
+            paper_search=final.paper_search if final is not None else None,
             teaching=final.teaching if final is not None else None,
         ).model_dump(mode="json")
 
@@ -513,11 +513,20 @@ class GenerationTerminal:
             thinking = failed_thinking(
                 thinking, outcome.error_code or INTERNAL_ERROR_CODE
             )
+            web_search, arxiv_search = converge_terminal_searches(
+                message.web_search,
+                message.arxiv_search,
+                datetime.now(UTC),
+                cancelled=False,
+            )
         elif outcome.status == ChatMessageStatus.STOPPED:
             thinking = stopped_thinking(thinking)
-            now = datetime.now(UTC)
-            web_search = cancelled_web_search(message.web_search, now)
-            arxiv_search = cancelled_arxiv_search(message.arxiv_search, now)
+            web_search, arxiv_search = converge_terminal_searches(
+                message.web_search,
+                message.arxiv_search,
+                datetime.now(UTC),
+                cancelled=True,
+            )
             stopped_teaching = stopped_teaching_projection(message.teaching)
             teaching = (
                 stopped_teaching.model_dump(mode="json")

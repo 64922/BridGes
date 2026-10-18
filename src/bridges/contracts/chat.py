@@ -1202,6 +1202,9 @@ class ChatStreamErrorData(BaseModel):
     arxiv_search: ArxivSearchProjection | None = Field(
         default=None, description="失败或取消时的 arXiv 论文搜索状态。"
     )
+    paper_search: PaperSearchProjection | None = Field(
+        default=None, description="失败或取消时的论文模块状态。"
+    )
     teaching: TeachingTurnProjection | None = Field(
         default=None, description="失败或取消时的学习模式教学卡片状态。"
     )

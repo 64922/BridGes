@@ -104,11 +104,17 @@ def render_result_content(
 ) -> str:
     """成功结果的正文：查询词、阅读顺序、每篇链接与理由、证据边界。"""
     lines: list[str] = []
-    source_names = _source_names(projection.selected_sources or [plan.source])
     term_note = ""
     if analysis.original_phrase and analysis.original_phrase != plan.query:
         term_note = f"（原始术语：{analysis.original_phrase}）"
-    lines.append(f"已按论文模块检索 {source_names}{term_note}，主要查询概念：{plan.query}。")
+    if projection.selected_sources:
+        source_names = _source_names(projection.selected_sources)
+        lines.append(
+            f"已按论文模块检索 {source_names}{term_note}，"
+            f"主要查询概念：{plan.query}。"
+        )
+    else:
+        lines.append(f"本轮未实际调用论文来源，查询概念：{plan.query}。")
     if analysis.context_label:
         lines.append(f"语境：{analysis.context_label}。")
     lines.append("")
@@ -161,8 +167,15 @@ def render_empty_content(
     sources: list[str] | None = None,
 ) -> str:
     del analysis
+    if sources:
+        header = (
+            f"已按论文模块检索 {_source_names(sources)}，"
+            f"主要查询概念：{plan.query}。"
+        )
+    else:
+        header = f"本轮未实际调用论文来源，查询概念：{plan.query}。"
     lines = [
-        f"已按论文模块检索 {_source_names(sources or [plan.source])}，主要查询概念：{plan.query}。",
+        header,
         "本轮没有返回可推荐的论文，我不会用记忆补造条目。",
     ]
     lines.extend(f"- {note}" for note in notes)

@@ -18,6 +18,7 @@ from bridges.paper.contracts import (
     PaperRecommendation,
     PaperSearchProjection,
     PaperSearchStatus,
+    selected_sources,
 )
 from bridges.paper.delivery_commit import _summarize
 from bridges.paper.delivery_states import (
@@ -29,7 +30,14 @@ from bridges.paper.delivery_states import (
 )
 from bridges.paper.delivery_types import PaperModuleError, PaperSupersededError, _PreparedDelivery
 from bridges.paper.presenting import render_result_content
-from bridges.paper.projection import _abstracts, _analysis, _artifact_refs, _notes, _plan, _records
+from bridges.paper.projection import (
+    _abstracts,
+    _analysis,
+    _artifact_refs,
+    _notes,
+    _plan,
+    _records,
+)
 from bridges.paper.ranking import cover_original_phrase
 from bridges.paper.recipe import (
     NODE_ENRICH,
@@ -185,11 +193,7 @@ def _prepare_success(
             for item in evaluate.payload.get("citation_edges") or ()
         ],
         research_question=analysis.research_question,
-        selected_sources=list(dict.fromkeys(
-            item.source
-            for item in search_records
-            if item.query and item.status.value != "skipped"
-        )),
+        selected_sources=selected_sources([*search_records, *enrich_records]),
         condition_sources=analysis.condition_sources,
         selected=[
             PaperIdentity.model_validate(item)
