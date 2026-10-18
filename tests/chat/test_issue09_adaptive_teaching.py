@@ -265,6 +265,7 @@ def test_verified_record_changes_actual_teaching_and_stays_visible(
             # 用户可见依据：只展示真实生效的采用记录与调整方向。
             adoptions = detail["study_record_adoptions"]
             assert len(adoptions) == 1
+            assert adoptions[0]["assistant_message_id"] == assistant_message_id
             entry = adoptions[0]["entries"][0]
             assert entry["record_id"] == record_id
             assert entry["adjustments"] == ["transfer_application", "recheck"]

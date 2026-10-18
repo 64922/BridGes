@@ -60,10 +60,19 @@ const record = {
       answer_message_id: "m-user-2",
       feedback_message_id: "m-assistant-2",
       occurred_at: NOW,
+      source_available: true,
+      source_note: "",
     },
   ],
   created_at: NOW,
   updated_at: NOW,
+  record_version: 1,
+  state: "active",
+  user_note: "",
+  corrected_at: null,
+  superseded_verdict: null,
+  superseded_performance: "",
+  source_available: true,
 };
 
 function conversation(tasks: unknown[], records: unknown[]) {
@@ -163,6 +172,7 @@ test("学习详情展示待核验与真实状态，成功后给出表现与依�
   });
 
   await page.goto("/chat/diagnosis-test");
+  await page.getByTestId("study-details-open").click();
   const panel = page.locator('[aria-label="学习档案"]');
   await expect(panel).toBeVisible();
   await expect(panel.getByText("核验状态")).toBeVisible();
@@ -200,6 +210,7 @@ test("学习详情展示待核验与真实状态，成功后给出表现与依�
 
   // 刷新后保持：档案与核验状态来自持久化投影。
   await page.reload();
+  await page.getByTestId("study-details-open").click();
   const refreshed = page.locator('[aria-label="学习档案"]');
   await expect(
     refreshed.getByText(/（概率论 · 理解事件关系）：独立完成/),

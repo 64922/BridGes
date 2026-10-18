@@ -25664,6 +25664,12 @@ export interface components {
              */
             uncertainty_note: string;
             /**
+             * Assistant Message Id
+             * @description 实际采用该学情的助手消息标识；用于把依据归到真实回合。
+             * @default
+             */
+            assistant_message_id: string;
+            /**
              * Created At
              * Format: date-time
              * @description 采用发生时间。
@@ -25732,6 +25738,12 @@ export interface components {
              * @default false
              */
             released: boolean;
+            /**
+             * Assistant Message Id
+             * @description 承载该控制结果的助手消息标识；用于把状态归到真实回合。
+             * @default
+             */
+            assistant_message_id: string;
             /**
              * Created At
              * Format: date-time

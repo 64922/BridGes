@@ -97,4 +97,8 @@ class StudyAdoptionProjection(BaseModel):
     uncertainty_note: str = Field(
         default="", description="相关但待进一步验证的学情说明。"
     )
+    assistant_message_id: str = Field(
+        default="",
+        description="实际采用该学情的助手消息标识；用于把依据归到真实回合。",
+    )
     created_at: datetime = Field(description="采用发生时间。")

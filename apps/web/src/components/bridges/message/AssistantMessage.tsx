@@ -3,6 +3,7 @@
 import { BrandLogo } from "@/components/bridges/BrandLogo";
 import { CommuteAnswer } from "@/components/bridges/chat/CommuteAnswer";
 import { PaperDetailsEntry } from "@/components/bridges/chat/PaperDetailsEntry";
+import { StudyTurnStatus } from "@/components/bridges/chat/StudyTurnStatus";
 import { RetrievalCard } from "@/components/bridges/RetrievalCard";
 import type {
   ChatModuleId,
@@ -34,6 +35,9 @@ export function AssistantMessage({
   onOpenPaper,
   onOpenCommuteDetails,
   onOpenTiebaEvidence,
+  onOpenStudyDetails,
+  busy = false,
+  onRetryDiagnosis,
 }: {
   message: ChatMessageView;
   conversationId?: string;
@@ -65,6 +69,9 @@ export function AssistantMessage({
     post: TiebaPostProjection | null,
     trigger: HTMLButtonElement
   ) => void;
+  onOpenStudyDetails?: (trigger: HTMLButtonElement) => void;
+  busy?: boolean;
+  onRetryDiagnosis?: (taskId: string) => Promise<void>;
 }) {
   const paperSearch = message.paperSearch ?? null;
   return (
@@ -125,6 +132,15 @@ export function AssistantMessage({
               : undefined
           }
         />
+
+        {message.studyTurn && onOpenStudyDetails && (
+          <StudyTurnStatus
+            state={message.studyTurn}
+            busy={busy}
+            onRetryDiagnosis={onRetryDiagnosis}
+            onOpenDetails={onOpenStudyDetails}
+          />
+        )}
 
         <CommuteAnswer
           message={message}

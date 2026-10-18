@@ -286,6 +286,7 @@ class StudyAdaptationService:
                     invalid_reason=str(row["invalid_reason"]),
                     entries=entries,
                     uncertainty_note=str(row["uncertainty_note"]),
+                    assistant_message_id=str(row["assistant_message_id"]),
                     created_at=_parse_time(str(row["created_at"])),
                 )
             )

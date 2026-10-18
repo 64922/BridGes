@@ -1,13 +1,13 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { StudyProgress } from "./StudyProgress";
+import { StudyDetailsContent } from "./StudyDetailsContent";
 
 afterEach(cleanup);
 
 describe("学习阶段与页级证据", () => {
   it("新学习进展展示主题而不显示书页阶段条", () => {
-    render(<StudyProgress studyLocalProgress={{
+    render(<StudyDetailsContent studyLocalProgress={{
       topic: "互斥与独立",
       knowledge_context: "两个事件不能同时发生。",
       current_focus: "互斥是不是独立？",
@@ -23,7 +23,7 @@ describe("学习阶段与页级证据", () => {
   });
 
   it("展示当前待答问题与实际帮助状态", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       studyLocalProgress={{
         topic: "互斥与独立",
         knowledge_context: "两个事件不能同时发生。",
@@ -53,7 +53,7 @@ describe("学习阶段与页级证据", () => {
   });
 
   it("资料失效的待答问题提示将按未验证处理，不按旧依据判定", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       studyLocalProgress={{
         topic: "线性函数",
         knowledge_context: "照片里的推导。",
@@ -80,7 +80,7 @@ describe("学习阶段与页级证据", () => {
   });
 
   it("旧状态显示只读说明并保留可解释阶段", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       study={{ subsection_id: "s", stage: "tutoring", state_version: 4 }}
       historyStatus={{
         status: "legacy",
@@ -93,7 +93,7 @@ describe("学习阶段与页级证据", () => {
   });
 
   it("未知状态版本显示说明，不虚构学习阶段", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       historyStatus={{
         status: "unsupported",
         version: 5,
@@ -105,7 +105,7 @@ describe("学习阶段与页级证据", () => {
   });
 
   it("已删除材料的内容明确标记为历史识别记录", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       study={{
         subsection_id: "s", stage: "tutoring", state_version: 4,
         materials: [{ object_id: "photo-1", status: "deleted" }],
@@ -122,12 +122,12 @@ describe("学习阶段与页级证据", () => {
   });
 
   it("旧记录只读展示当前阶段，不提供启动五阶段的操作", () => {
-    const { rerender } = render(<StudyProgress study={{ subsection_id: "s", stage: "review",
+    const { rerender } = render(<StudyDetailsContent study={{ subsection_id: "s", stage: "review",
       state_version: 4 }} busy />);
     expect(screen.getByText("复盘").getAttribute("aria-current")).toBe("step");
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByText(/按原始记录只读展示的历史/)).toBeTruthy();
-    rerender(<StudyProgress study={{ subsection_id: "s", stage: "tutoring", state_version: 4,
+    rerender(<StudyDetailsContent study={{ subsection_id: "s", stage: "tutoring", state_version: 4,
       review: { complete: false, needs_replan: false,
         scope_version_id: "", protocol_version: "study-review-v1" } }} />);
     expect(screen.queryByRole("button")).toBeNull();
@@ -135,7 +135,7 @@ describe("学习阶段与页级证据", () => {
 
   it("刷新后展示等待位置和用户补录来源，阶段不可点击", () => {
     render(
-      <StudyProgress
+      <StudyDetailsContent
         study={{
           subsection_id: "section-1",
           stage: "awaiting_pages",
@@ -179,7 +179,7 @@ describe("学习阶段与页级证据", () => {
   });
 
   it("页序等待展示书上页码，不误报为模糊补拍", () => {
-    render(<StudyProgress study={{
+    render(<StudyDetailsContent study={{
       subsection_id: "section-1", stage: "awaiting_pages", state_version: 4,
       wait_reason: "page_order",
       pages: [{ ordinal: 1, object_id: "photo-1", content_hash: "hash", model_id: "test",
@@ -191,7 +191,7 @@ describe("学习阶段与页级证据", () => {
   });
 
   it("追加页未确认时保留辅导阶段，并明确不属于已确认范围", () => {
-    render(<StudyProgress study={{
+    render(<StudyDetailsContent study={{
       subsection_id: "section-1", stage: "tutoring", state_version: 4, pages: [],
       page_update: { wait_reason: "unclear_page", pages: [{
         ordinal: 2, object_id: "new-photo", content_hash: "new", model_id: "test",
@@ -205,7 +205,7 @@ describe("学习阶段与页级证据", () => {
   });
 
   it("总结阶段分述四段并逐条给出题目判定与书页依据", () => {
-    render(<StudyProgress study={{
+    render(<StudyDetailsContent study={{
       subsection_id: "section-1", stage: "summary", state_version: 4,
       pages: [{ ordinal: 1, object_id: "photo-1", content_hash: "hash", model_id: "test",
         page_number: 12, same_section: true, replaced_object_ids: [], unclear: [],
@@ -249,7 +249,7 @@ describe("学习阶段与页级证据", () => {
   });
 
   it("全部答对时待补段只陈述实际判定，不宣称有漏洞", () => {
-    render(<StudyProgress study={{
+    render(<StudyDetailsContent study={{
       subsection_id: "section-1", stage: "summary", state_version: 4, pages: [],
       review: { complete: true, needs_replan: false,
         scope_version_id: "", protocol_version: "study-review-v1", questions: [
@@ -297,7 +297,7 @@ describe("系统性目标与学习路线", () => {
   };
 
   it("顶部展示目标与当前知识点，路线按需展开且不宣称已掌握", () => {
-    render(<StudyProgress studyGoal={goal} />);
+    render(<StudyDetailsContent studyGoal={goal} />);
 
     expect(screen.getByText(`目标：${goal.statement}`)).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("当前知识点：矩阵与矩阵乘法");
@@ -311,7 +311,7 @@ describe("系统性目标与学习路线", () => {
   });
 
   it("尚未形成路线时如实说明，不虚构知识点", () => {
-    render(<StudyProgress studyGoal={{ ...goal, route: null }} />);
+    render(<StudyDetailsContent studyGoal={{ ...goal, route: null }} />);
 
     expect(screen.getByText(`目标：${goal.statement}`)).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("学习路线尚未形成");
@@ -329,12 +329,12 @@ describe("系统性目标与学习路线", () => {
       updated_at: "2026-10-13T00:00:00Z",
     };
     const { unmount } = render(
-      <StudyProgress studyGoal={goal} studyLocalProgress={localProgress} />,
+      <StudyDetailsContent studyGoal={goal} studyLocalProgress={localProgress} />,
     );
     expect(screen.getByText("当前关注：继续讲矩阵乘法")).toBeTruthy();
     expect(screen.queryByText("正在学习：线性代数")).toBeNull();
     unmount();
-    render(<StudyProgress studyGoal={goal} studyLocalProgress={localProgress} />);
+    render(<StudyDetailsContent studyGoal={goal} studyLocalProgress={localProgress} />);
     expect(screen.getByText(`目标：${goal.statement}`)).toBeTruthy();
     expect(screen.getByText("当前关注：继续讲矩阵乘法")).toBeTruthy();
   });
@@ -354,7 +354,7 @@ describe("Issue 04 学习控制、暂停与阶段小结", () => {
 
   it("暂停状态如实展示可继续位置与保留问题，小结按需展开", () => {
     render(
-      <StudyProgress
+      <StudyDetailsContent
         studyLocalProgress={localProgress}
         studyPause={{
           pause_id: "pause-1",
@@ -388,13 +388,14 @@ describe("Issue 04 学习控制、暂停与阶段小结", () => {
 
   it("跳过与直接讲解标注保持未验证，解除等待时提示可以继续", () => {
     const { rerender } = render(
-      <StudyProgress
+      <StudyDetailsContent
         studyLocalProgress={localProgress}
         studyLastControl={{
           control_id: "control-1",
           kind: "full_explanation",
           question,
           released: true,
+          assistant_message_id: "assistant-2",
           created_at: "2026-10-14T00:00:00Z",
         }}
       />,
@@ -406,13 +407,14 @@ describe("Issue 04 学习控制、暂停与阶段小结", () => {
     expect(status.textContent).toContain("可以继续下一步");
 
     rerender(
-      <StudyProgress
+      <StudyDetailsContent
         studyLocalProgress={localProgress}
         studyLastControl={{
           control_id: "control-2",
           kind: "skip",
           question,
           released: false,
+          assistant_message_id: "assistant-2",
           created_at: "2026-10-14T00:00:00Z",
         }}
       />,
@@ -424,7 +426,7 @@ describe("Issue 04 学习控制、暂停与阶段小结", () => {
 
   it("小结未完整交付时如实标注 partial 并提示重试", () => {
     render(
-      <StudyProgress
+      <StudyDetailsContent
         studyLocalProgress={localProgress}
         studySummary={{
           summary_id: "summary-2",
@@ -445,7 +447,7 @@ describe("Issue 04 学习控制、暂停与阶段小结", () => {
   });
 
   it("没有控制状态时不虚构暂停或小结", () => {
-    render(<StudyProgress studyLocalProgress={localProgress} />);
+    render(<StudyDetailsContent studyLocalProgress={localProgress} />);
 
     expect(screen.queryByLabelText("暂停状态")).toBeNull();
     expect(screen.queryByLabelText("跳过状态")).toBeNull();
@@ -484,7 +486,7 @@ describe("Issue 08 目标通知与暂停状态", () => {
   };
 
   it("恢复通知由权威事件派生，展示在目标顶部", () => {
-    render(<StudyProgress studyGoal={goal} studyGoalNotice={restoredNotice} />);
+    render(<StudyDetailsContent studyGoal={goal} studyGoalNotice={restoredNotice} />);
 
     expect(screen.getByLabelText("目标通知").textContent).toContain("已恢复学习目标");
     expect(screen.getByText(`目标：${goal.statement}`)).toBeTruthy();
@@ -492,7 +494,7 @@ describe("Issue 08 目标通知与暂停状态", () => {
 
   it("目标被其他会话暂停时如实展示恢复方式，不虚构已恢复", () => {
     render(
-      <StudyProgress
+      <StudyDetailsContent
         studyGoal={{ ...goal, status: "paused" as const }}
       />,
     );
@@ -505,7 +507,7 @@ describe("Issue 08 目标通知与暂停状态", () => {
 
   it("冲突通知在局部进展视图同样可见，与消息交付分开呈现", () => {
     render(
-      <StudyProgress
+      <StudyDetailsContent
         studyLocalProgress={localProgress}
         studyGoalNotice={{
           kind: "conflict" as never,
@@ -520,7 +522,7 @@ describe("Issue 08 目标通知与暂停状态", () => {
   });
 
   it("没有通知时不渲染任何目标状态行", () => {
-    render(<StudyProgress studyLocalProgress={localProgress} />);
+    render(<StudyDetailsContent studyLocalProgress={localProgress} />);
 
     expect(screen.queryByLabelText("目标通知")).toBeNull();
     expect(screen.queryByLabelText("目标暂停状态")).toBeNull();
@@ -577,7 +579,7 @@ describe("后台核验与学习档案", () => {
   };
 
   it("展示待核验真实状态与档案判断，不渲染百分比或能力标签", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       studyLocalProgress={{
         topic: "互斥与独立",
         knowledge_context: "两个事件不能同时发生。",
@@ -606,7 +608,7 @@ describe("后台核验与学习档案", () => {
 
   it("失败任务可手动重试，来源失效如实标注", async () => {
     const onRetry = vi.fn(async () => {});
-    render(<StudyProgress
+    render(<StudyDetailsContent
       studyLocalProgress={{
         topic: "互斥与独立",
         knowledge_context: "两个事件不能同时发生。",
@@ -633,7 +635,7 @@ describe("后台核验与学习档案", () => {
   });
 
   it("冲突证据标注待进一步验证，不伪造成单一结论", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       studyLocalProgress={{
         topic: "互斥与独立",
         knowledge_context: "两个事件不能同时发生。",
@@ -651,7 +653,7 @@ describe("后台核验与学习档案", () => {
   });
 
   it("没有任务与档案时不渲染学习档案面板", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       studyLocalProgress={{
         topic: "互斥与独立",
         knowledge_context: "两个事件不能同时发生。",
@@ -680,7 +682,7 @@ describe("后台核验与学习档案", () => {
 
   it("纠正按记录版本提交用户自评，成功后关闭编辑", async () => {
     const onCorrect = vi.fn(async () => true);
-    render(<StudyProgress
+    render(<StudyDetailsContent
       studyLocalProgress={localProgress}
       studyLearningRecord={[record]}
       onCorrectRecord={onCorrect}
@@ -700,7 +702,7 @@ describe("后台核验与学习档案", () => {
 
   it("纠正失败保留输入草稿不清空", async () => {
     const onCorrect = vi.fn(async () => false);
-    render(<StudyProgress
+    render(<StudyDetailsContent
       studyLocalProgress={localProgress}
       studyLearningRecord={[record]}
       onCorrectRecord={onCorrect}
@@ -717,7 +719,7 @@ describe("后台核验与学习档案", () => {
   });
 
   it("纠正态展示自评、被取代的原结论与并存提示", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       studyLocalProgress={localProgress}
       studyLearningRecord={[{
         ...record,
@@ -743,7 +745,7 @@ describe("后台核验与学习档案", () => {
     const onDelete = vi.fn(async () => {});
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     try {
-      render(<StudyProgress
+      render(<StudyDetailsContent
         studyLocalProgress={localProgress}
         studyLearningRecord={[record]}
         onDeleteRecord={onDelete}
@@ -762,7 +764,7 @@ describe("后台核验与学习档案", () => {
     const onDelete = vi.fn(async () => {});
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     try {
-      render(<StudyProgress
+      render(<StudyDetailsContent
         studyLocalProgress={localProgress}
         studyLearningRecord={[record]}
         onDeleteRecord={onDelete}
@@ -778,7 +780,7 @@ describe("后台核验与学习档案", () => {
   });
 
   it("来源不可读的证据与记录如实标注，不伪造引文", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       studyLocalProgress={localProgress}
       studyLearningRecord={[{
         ...record,
@@ -823,7 +825,7 @@ describe("按学情调整教法的可见依据", () => {
   };
 
   it("展示真实生效的采用学情与调整方向", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       studyLocalProgress={adoptionProgress}
       studyRecordAdoptions={[{
         adoption_id: "sa-1",
@@ -833,6 +835,7 @@ describe("按学情调整教法的可见依据", () => {
         status: "applied",
         invalid_reason: "",
         uncertainty_note: "",
+        assistant_message_id: "assistant-2",
         created_at: "2026-10-14T00:00:00Z",
         entries: [{
           record_id: "lr-1",
@@ -855,7 +858,7 @@ describe("按学情调整教法的可见依据", () => {
   });
 
   it("没有生效采用时不显示依据区域", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       studyLocalProgress={adoptionProgress}
       studyRecordAdoptions={[]}
     />);
@@ -892,7 +895,7 @@ describe("旧记录只读与主动续学", () => {
   it("旧流程历史只读呈现，主动续学按用户点击读取并提交选择", async () => {
     const onLoadOptions = vi.fn();
     const onSubmit = vi.fn(async () => true);
-    const { rerender } = render(<StudyProgress
+    const { rerender } = render(<StudyDetailsContent
       study={legacyStudy}
       restart={{ options: null, optionsLoading: false, optionsError: null,
         submitting: false, submitError: null, removedNotes: [],
@@ -902,7 +905,7 @@ describe("旧记录只读与主动续学", () => {
     expect(onLoadOptions).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "主动续学" }));
     expect(onLoadOptions).toHaveBeenCalledTimes(1);
-    rerender(<StudyProgress
+    rerender(<StudyDetailsContent
       study={legacyStudy}
       restart={{ options, optionsLoading: false, optionsError: null,
         submitting: false, submitError: null, removedNotes: [],
@@ -920,7 +923,7 @@ describe("旧记录只读与主动续学", () => {
 
   it("没有所选材料时必须补充说明，且没有可沿用项时不显示创建动作", () => {
     const onLoadOptions = vi.fn();
-    render(<StudyProgress
+    render(<StudyDetailsContent
       study={legacyStudy}
       restart={{ options: { ...options, materials: [] }, optionsLoading: false,
         optionsError: null, submitting: false, submitError: null, removedNotes: [],
@@ -936,7 +939,7 @@ describe("旧记录只读与主动续学", () => {
   });
 
   it("没有可续学目标与材料时如实说明，不伪造创建入口", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       historyStatus={{ status: "legacy", version: 3,
         message: "此学习记录采用旧格式（版本 3）；已按原记录只读展示。" }}
       restart={{ options: { conversation_id: "old-1", can_restart: false,
@@ -951,7 +954,7 @@ describe("旧记录只读与主动续学", () => {
   });
 
   it("提交失败如实提示并逐项列出已移除的失效选择", () => {
-    render(<StudyProgress
+    render(<StudyDetailsContent
       study={legacyStudy}
       restart={{ options: { ...options, materials: [] }, optionsLoading: false,
         optionsError: null, submitting: false,

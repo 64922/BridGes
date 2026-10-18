@@ -352,6 +352,8 @@ for (const viewport of VIEWPORTS) {
         "done",
         { timeout: 90_000 }
       );
+      await expect(page.getByTestId("study-status-bar")).toBeVisible({ timeout: 60_000 });
+      await page.getByTestId("study-details-open").click();
       const progress = page.getByRole("region", { name: "局部学习进展" });
       await expect(progress).toBeVisible({ timeout: 60_000 });
       await expect(progress).toContainText("正在学习：");

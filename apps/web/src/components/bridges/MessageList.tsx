@@ -56,6 +56,10 @@ interface MessageListProps {
     route: CommuteRouteProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 工单 12：打开学习详情面板，返回焦点到真实触发按钮。 */
+  onOpenStudyDetails?: (trigger: HTMLButtonElement) => void;
+  busy?: boolean;
+  onRetryDiagnosis?: (taskId: string) => Promise<void>;
 }
 
 /**
@@ -76,6 +80,9 @@ export function MessageList({
   onOpenAttachment,
   onOpenTiebaEvidence,
   onOpenCommuteDetails,
+  onOpenStudyDetails,
+  busy,
+  onRetryDiagnosis,
 }: MessageListProps) {
   return (
     <ol
@@ -105,6 +112,9 @@ export function MessageList({
               onOpenPaper={onOpenPaper}
               onOpenCommuteDetails={onOpenCommuteDetails}
               onOpenTiebaEvidence={onOpenTiebaEvidence}
+              onOpenStudyDetails={onOpenStudyDetails}
+              busy={busy}
+              onRetryDiagnosis={onRetryDiagnosis}
             />
           )}
         </li>

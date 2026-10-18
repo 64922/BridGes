@@ -59,10 +59,12 @@ class StudyControlRepository:
         self, account_id: str, conversation_id: str
     ) -> StudyControlProjection | None:
         row = self._database.scoped(account_id).execute(
-            "SELECT control_id, kind, bound_question, released, created_at"
-            " FROM study_session_controls"
-            " WHERE account_id = ? AND conversation_id = ?"
-            " ORDER BY rowid DESC LIMIT 1",
+            "SELECT c.control_id, c.kind, c.bound_question, c.released,"
+            " c.created_at, r.assistant_message_id AS assistant_message_id"
+            " FROM study_session_controls c"
+            " LEFT JOIN generation_runs r ON r.run_id = c.run_id"
+            " WHERE c.account_id = ? AND c.conversation_id = ?"
+            " ORDER BY c.rowid DESC LIMIT 1",
             (account_id, conversation_id),
         ).fetchone()
         if row is None:
@@ -73,6 +75,7 @@ class StudyControlRepository:
                 kind=StudyControlKind(row["kind"]),
                 question=row["bound_question"],
                 released=bool(row["released"]),
+                assistant_message_id=str(row["assistant_message_id"] or ""),
                 created_at=_parse_time(row["created_at"]),
             )
         except (TypeError, ValueError, ValidationError):

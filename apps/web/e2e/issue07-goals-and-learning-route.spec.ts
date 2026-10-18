@@ -102,6 +102,8 @@ test("顶部显示学习目标与当前知识点，路线按需展开且刷新�
   });
 
   await page.goto("/chat/goal-test");
+  await expect(page.getByTestId("study-details-panel")).toHaveCount(0);
+  await page.getByTestId("study-details-open").click();
   const progress = page.getByRole("region", { name: "学习目标" });
   await expect(
     progress.getByText("目标：我想学线性代数，主要为了理解机器学习里的矩阵"),
@@ -123,6 +125,8 @@ test("顶部显示学习目标与当前知识点，路线按需展开且刷新�
 
   // 刷新后目标、当前知识点与路线版本保持（服务端投影为准）。
   await page.reload();
+  await expect(page.getByTestId("study-details-panel")).toHaveCount(0);
+  await page.getByTestId("study-details-open").click();
   await expect(progress.getByText("当前知识点：矩阵与矩阵乘法")).toBeVisible();
   await expect(progress.getByText("学习路线（版本 2，3 个知识点）")).toBeVisible();
   await page.screenshot({

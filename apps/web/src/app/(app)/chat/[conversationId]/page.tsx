@@ -10,26 +10,17 @@ import { AttachmentViewerPanel } from "@/components/bridges/chat/AttachmentViewe
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { CitationViewerPanel } from "@/components/bridges/chat/CitationViewerPanel";
 import { CommuteDetailPanel } from "@/components/bridges/chat/CommuteDetailPanel";
-import {
-  TiebaEvidencePanel,
-  type TiebaEvidenceSelection,
-} from "@/components/bridges/chat/TiebaEvidencePanel";
+import { TiebaEvidencePanel } from "@/components/bridges/chat/TiebaEvidencePanel";
 import { Composer } from "@/components/bridges/Composer";
 import { PaperDetailsPanel } from "@/components/bridges/chat/PaperDetailsPanel";
-import { StudyProgress } from "@/components/bridges/chat/StudyProgress";
+import { StudyDetailsPanel } from "@/components/bridges/chat/StudyDetailsPanel";
+import { StudyStatusBar } from "@/components/bridges/chat/StudyStatusBar";
 import type { CapabilityAvailability } from "@/components/bridges/chat/capability-availability";
-import type {
-  ChatAttachmentProjection,
-  CitationProjection,
-  CommuteRouteProjection,
-  PaperSearchProjection,
-  TiebaPostProjection,
-  TiebaSummaryCitation,
-} from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { buildThreadMessages } from "@/lib/chat-thread";
 import { composeConversationMessages } from "@/lib/chat-run-view";
+import { buildStudyTurns } from "@/lib/study-presentation";
 import { isIngestionSettled, isPhotoAttachment } from "@/lib/chat-attachments";
 import {
   hasPendingCommuteClarification,
@@ -37,6 +28,7 @@ import {
   type ChatModuleSelectionId,
 } from "@/lib/chat-modules";
 import { useConversationHistory } from "@/lib/use-conversation-history";
+import { useConversationPanels } from "@/lib/use-conversation-panels";
 import { useConversationRun } from "@/lib/use-conversation-run";
 import { useConversationStudy } from "@/lib/use-conversation-study";
 
@@ -47,31 +39,6 @@ import styles from "@/components/bridges/chat/chat.module.css";
  * 不再按账户探测禁用入口——新账户无需任何个人 Qwen 配置即可使用。
  */
 const MEDIA_ALWAYS_AVAILABLE: CapabilityAvailability = { available: true };
-
-interface CitationSelection {
-  conversationId: string;
-  messageId: string;
-  citation: CitationProjection;
-}
-
-interface AttachmentSelection {
-  conversationId: string;
-  messageId: string;
-  attachment: ChatAttachmentProjection;
-}
-
-interface PaperSelection {
-  conversationId: string;
-  messageId: string;
-  search: PaperSearchProjection;
-  paperId: string | null;
-}
-
-interface CommuteDetailSelection {
-  conversationId: string;
-  messageId: string;
-  route: CommuteRouteProjection;
-}
 
 /**
  * 对话页：权威历史、运行控制、学习操作与页面布局的组合。
@@ -115,174 +82,32 @@ export default function ChatConversationPage() {
 
   const [moduleId, setModuleId] = useState<ChatModuleSelectionId | null>(null);
   const resumeModuleCheckedRef = useRef<string | null>(null);
-  const [citationSelection, setCitationSelection] = useState<CitationSelection | null>(null);
-  const citationTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const [attachmentSelection, setAttachmentSelection] = useState<AttachmentSelection | null>(null);
-  const attachmentTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const [paperSelection, setPaperSelection] = useState<PaperSelection | null>(null);
-  const paperTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const [commuteSelection, setCommuteSelection] = useState<CommuteDetailSelection | null>(null);
-  const commuteTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const [tiebaSelection, setTiebaSelection] = useState<TiebaEvidenceSelection | null>(null);
-  const tiebaTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const {
+    activeCitationSelection,
+    activeAttachmentSelection,
+    activePaperSelection,
+    activeCommuteSelection,
+    activeTiebaSelection,
+    studyDetailsOpen,
+    openCitation,
+    closeCitation,
+    openAttachment,
+    closeAttachment,
+    openTiebaEvidence,
+    closeTiebaEvidence,
+    openPaper,
+    selectPaper,
+    closePaper,
+    openCommuteDetails,
+    closeCommuteDetails,
+    openStudyDetails,
+    closeStudyDetails,
+  } = useConversationPanels(conversationId);
 
   useEffect(() => {
     resumeModuleCheckedRef.current = null;
     setModuleId(null);
   }, [conversationId]);
-
-  // 切换会话立即释放旧资料/附件面板与未完成请求；迟到响应不会串到新会话。
-  useEffect(() => {
-    citationTriggerRef.current = null;
-    attachmentTriggerRef.current = null;
-    paperTriggerRef.current = null;
-    commuteTriggerRef.current = null;
-    tiebaTriggerRef.current = null;
-    setCitationSelection(null);
-    setAttachmentSelection(null);
-    setPaperSelection(null);
-    setCommuteSelection(null);
-    setTiebaSelection(null);
-  }, [conversationId]);
-
-  const restorePanelTrigger = useCallback((trigger: HTMLButtonElement | null) => {
-    window.requestAnimationFrame(() => {
-      if (trigger?.isConnected) {
-        trigger.focus({ preventScroll: true });
-        return;
-      }
-      const composer = document.getElementById("composer-input");
-      if (composer instanceof HTMLElement) {
-        composer.focus({ preventScroll: true });
-        return;
-      }
-      document.getElementById(MAIN_CONTENT_ID)?.focus({ preventScroll: true });
-    });
-  }, []);
-
-  const openCitation = useCallback(
-    (messageId: string, citation: CitationProjection, trigger: HTMLButtonElement) => {
-      citationTriggerRef.current = trigger;
-      attachmentTriggerRef.current = null;
-      paperTriggerRef.current = null;
-      commuteTriggerRef.current = null;
-      tiebaTriggerRef.current = null;
-      setAttachmentSelection(null);
-      setPaperSelection(null);
-      setCommuteSelection(null);
-      setTiebaSelection(null);
-      setCitationSelection({ conversationId, messageId, citation });
-    },
-    [conversationId]
-  );
-
-  const closeCitation = useCallback(() => {
-    setCitationSelection(null);
-    const trigger = citationTriggerRef.current;
-    citationTriggerRef.current = null;
-    restorePanelTrigger(trigger);
-  }, [restorePanelTrigger]);
-
-  const openAttachment = useCallback(
-    (messageId: string, attachment: ChatAttachmentProjection, trigger: HTMLButtonElement) => {
-      attachmentTriggerRef.current = trigger;
-      citationTriggerRef.current = null;
-      paperTriggerRef.current = null;
-      commuteTriggerRef.current = null;
-      tiebaTriggerRef.current = null;
-      setCitationSelection(null);
-      setPaperSelection(null);
-      setCommuteSelection(null);
-      setTiebaSelection(null);
-      setAttachmentSelection({ conversationId, messageId, attachment });
-    },
-    [conversationId]
-  );
-
-  const closeAttachment = useCallback(() => {
-    setAttachmentSelection(null);
-    const trigger = attachmentTriggerRef.current;
-    attachmentTriggerRef.current = null;
-    restorePanelTrigger(trigger);
-  }, [restorePanelTrigger]);
-
-  const openTiebaEvidence = useCallback(
-    (
-      messageId: string,
-      citation: TiebaSummaryCitation,
-      post: TiebaPostProjection | null,
-      trigger: HTMLButtonElement
-    ) => {
-      tiebaTriggerRef.current = trigger;
-      citationTriggerRef.current = null;
-      attachmentTriggerRef.current = null;
-      paperTriggerRef.current = null;
-      commuteTriggerRef.current = null;
-      setCitationSelection(null);
-      setAttachmentSelection(null);
-      setPaperSelection(null);
-      setCommuteSelection(null);
-      setTiebaSelection({ conversationId, messageId, citation, post });
-    },
-    [conversationId]
-  );
-
-  const closeTiebaEvidence = useCallback(() => {
-    setTiebaSelection(null);
-    const trigger = tiebaTriggerRef.current;
-    tiebaTriggerRef.current = null;
-    restorePanelTrigger(trigger);
-  }, [restorePanelTrigger]);
-
-  const openPaper = useCallback(
-    (messageId: string, search: PaperSearchProjection, trigger: HTMLButtonElement) => {
-      paperTriggerRef.current = trigger;
-      citationTriggerRef.current = null;
-      attachmentTriggerRef.current = null;
-      commuteTriggerRef.current = null;
-      tiebaTriggerRef.current = null;
-      setCitationSelection(null);
-      setAttachmentSelection(null);
-      setCommuteSelection(null);
-      setTiebaSelection(null);
-      setPaperSelection({ conversationId, messageId, search, paperId: null });
-    },
-    [conversationId]
-  );
-
-  const selectPaper = useCallback((paperId: string | null) => {
-    setPaperSelection((current) => (current ? { ...current, paperId } : current));
-  }, []);
-
-  const closePaper = useCallback(() => {
-    setPaperSelection(null);
-    const trigger = paperTriggerRef.current;
-    paperTriggerRef.current = null;
-    restorePanelTrigger(trigger);
-  }, [restorePanelTrigger]);
-
-  const openCommuteDetails = useCallback(
-    (messageId: string, route: CommuteRouteProjection, trigger: HTMLButtonElement) => {
-      commuteTriggerRef.current = trigger;
-      citationTriggerRef.current = null;
-      attachmentTriggerRef.current = null;
-      paperTriggerRef.current = null;
-      tiebaTriggerRef.current = null;
-      setCitationSelection(null);
-      setAttachmentSelection(null);
-      setPaperSelection(null);
-      setTiebaSelection(null);
-      setCommuteSelection({ conversationId, messageId, route });
-    },
-    [conversationId]
-  );
-
-  const closeCommuteDetails = useCallback(() => {
-    setCommuteSelection(null);
-    const trigger = commuteTriggerRef.current;
-    commuteTriggerRef.current = null;
-    restorePanelTrigger(trigger);
-  }, [restorePanelTrigger]);
 
   // V2 Issue 06：已发送文件附件的解析在后台继续，卡片状态要刷新才会从
   // 「排队解析中」走到「已解析，可引用／解析失败／无法识别正文」。只要还有
@@ -381,17 +206,12 @@ export default function ChatConversationPage() {
     activeRun,
     pendingUser
   );
-  const activeCitationSelection =
-    citationSelection?.conversationId === conversationId ? citationSelection : null;
-  const activeAttachmentSelection =
-    attachmentSelection?.conversationId === conversationId ? attachmentSelection : null;
-  const activePaperSelection =
-    paperSelection?.conversationId === conversationId ? paperSelection : null;
-  const activeCommuteSelection =
-    commuteSelection?.conversationId === conversationId ? commuteSelection : null;
-  const activeTiebaSelection =
-    tiebaSelection?.conversationId === conversationId ? tiebaSelection : null;
-
+  const studyTurns = buildStudyTurns(conversation);
+  const renderedMessages = threadMessages.map((message) => {
+    if (message.role !== "assistant") return message;
+    const studyTurn = studyTurns.get(message.id);
+    return studyTurn ? { ...message, studyTurn } : message;
+  });
   return (
     <AppShell>
       <div className={styles.chatShell}>
@@ -422,28 +242,19 @@ export default function ChatConversationPage() {
           ) : (
             <>
               {conversation?.mode === "study" && (
-                <StudyProgress
+                <StudyStatusBar
                   study={conversation.study}
                   studyLocalProgress={conversation.study_local_progress}
                   studyGoal={conversation.study_goal}
-                  studyGoalNotice={conversation.study_goal_notice}
                   studyPendingCheck={conversation.study_pending_check}
-                  studyLastControl={conversation.study_last_control}
                   studyPause={conversation.study_pause}
-                  studySummary={conversation.study_summary}
                   historyStatus={conversation.study_history_status}
-                  studyDiagnosisTasks={conversation.study_diagnosis_tasks}
-                  studyLearningRecord={conversation.study_learning_record}
-                  studyRecordAdoptions={conversation.study_record_adoptions}
-                  restart={study.restart}
-                  busy={generating}
-                  onRetryDiagnosis={study.retryDiagnosis}
-                  onCorrectRecord={study.correctRecord}
-                  onDeleteRecord={study.deleteRecord}
+                  open={studyDetailsOpen}
+                  onOpen={openStudyDetails}
                 />
               )}
               <ChatThread
-                messages={threadMessages}
+                messages={renderedMessages}
                 onRetry={(messageId) => void retry(messageId)}
                 onStop={() => void stop()}
                 onTeachingSkip={() => skipTeachingQuestion()}
@@ -458,6 +269,9 @@ export default function ChatConversationPage() {
                 onOpenAttachment={openAttachment}
                 onOpenTiebaEvidence={openTiebaEvidence}
                 onOpenCommuteDetails={openCommuteDetails}
+                onOpenStudyDetails={openStudyDetails}
+                busy={generating}
+                onRetryDiagnosis={study.retryDiagnosis}
                 announcement={announcement}
               />
               {sendError && <ChatSendErrorBanner message={sendError} />}
@@ -503,6 +317,28 @@ export default function ChatConversationPage() {
           selection={activeTiebaSelection}
           onClose={closeTiebaEvidence}
         />
+        {studyDetailsOpen && conversation?.mode === "study" && (
+          <StudyDetailsPanel
+            study={conversation.study}
+            studyLocalProgress={conversation.study_local_progress}
+            studyGoal={conversation.study_goal}
+            studyGoalNotice={conversation.study_goal_notice}
+            studyPendingCheck={conversation.study_pending_check}
+            studyLastControl={conversation.study_last_control}
+            studyPause={conversation.study_pause}
+            studySummary={conversation.study_summary}
+            historyStatus={conversation.study_history_status}
+            studyDiagnosisTasks={conversation.study_diagnosis_tasks}
+            studyLearningRecord={conversation.study_learning_record}
+            studyRecordAdoptions={conversation.study_record_adoptions}
+            restart={study.restart}
+            busy={generating}
+            onRetryDiagnosis={study.retryDiagnosis}
+            onCorrectRecord={study.correctRecord}
+            onDeleteRecord={study.deleteRecord}
+            onClose={closeStudyDetails}
+          />
+        )}
       </div>
     </AppShell>
   );

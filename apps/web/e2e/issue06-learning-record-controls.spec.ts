@@ -151,6 +151,7 @@ test("纠正学习记录：查看依据、保存用户自评并保留被取代�
   });
 
   await page.goto("/chat/record-controls-test");
+  await page.getByTestId("study-details-open").click();
   const panel = page.locator('[aria-label="学习档案"]');
   await expect(panel).toBeVisible();
   // 来源不可读的证据如实标注，不伪造引文与核验结论。
@@ -179,6 +180,7 @@ test("纠正学习记录：查看依据、保存用户自评并保留被取代�
 
   // 刷新后保持：纠正态来自持久化投影。
   await page.reload();
+  await page.getByTestId("study-details-open").click();
   const refreshed = page.locator('[aria-label="学习档案"]');
   await expect(
     refreshed.getByText(/用户纠正（自评，未经核验）/),
@@ -229,6 +231,7 @@ test("删除学习记录：确认后撤回，迟到的核验结果不恢复", as
   });
 
   await page.goto("/chat/record-controls-test");
+  await page.getByTestId("study-details-open").click();
   const panel = page.locator('[aria-label="学习档案"]');
   await expect(panel.getByText("已核验的知识点")).toBeVisible();
 
