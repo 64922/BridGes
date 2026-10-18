@@ -15,13 +15,13 @@ from typing import Any, Protocol, cast
 
 from bridges.arxiv_mcp import limits as arxiv_limits
 from bridges.arxiv_mcp.cache import ArxivResultCache
-from bridges.arxiv_mcp.client import ArxivMcpError
 from bridges.arxiv_mcp.contracts import (
     ArxivPaper,
     ArxivPaperProjection,
     ArxivSearchProjection,
     ArxivSearchStatus,
 )
+from bridges.arxiv_mcp.errors import ArxivMcpError
 from bridges.arxiv_mcp.guard import ArxivCooldown, ArxivThrottle
 from bridges.arxiv_mcp.process import ArxivMcpProcessClient
 from bridges.contracts.chat import ChatMode
@@ -356,6 +356,9 @@ class ArxivSearchService:
             except ArxivMcpError as exc:
                 final_error = exc
                 policy = _UPSTREAM_ERROR_POLICY.get(exc.code, frozenset())
+                if exc.retry_after_seconds is not None:
+                    # 服务器明确要求退避：不立即重发，交由冷却按该时长拒绝后续请求。
+                    break
                 if (
                     attempts >= arxiv_limits.ARXIV_MAX_UPSTREAM_ATTEMPTS
                     or "retry" not in policy
@@ -396,9 +399,12 @@ class ArxivSearchService:
                 )
             else:
                 error_policy = _UPSTREAM_ERROR_POLICY.get(error.code, frozenset())
-                if "cooldown" in error_policy:
+                if "cooldown" in error_policy or error.retry_after_seconds is not None:
                     self._cooldown.activate(
-                        error.code, error.message, error.upstream_status
+                        error.code,
+                        error.message,
+                        error.upstream_status,
+                        retry_after_seconds=error.retry_after_seconds,
                     )
                 # Issue 04：陈旧缓存兜底 —— 仅当本次上游调用失败（超时/
                 # 429/网络类）且存在同键 stale 条目时返回并标注；无 stale
@@ -444,6 +450,7 @@ class ArxivSearchService:
                     error_message=error.message,
                     upstream_status=error.upstream_status,
                     can_retry=error.retryable,
+                    retry_after_seconds=error.retry_after_seconds,
                     attempt_count=attempts,
                 )
             self._audit(

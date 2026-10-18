@@ -32,6 +32,10 @@ ARXIV_RETRY_MIN_BUDGET_SECONDS = 5.0
 #: 单次搜索的实际上游请求次数上限（首次 + 至多 1 次自动重发）。
 ARXIV_MAX_UPSTREAM_ATTEMPTS = 2
 
+#: 服务器 ``Retry-After`` 的本地上限（秒）：既尊重上游退避，又避免单次
+#: 响应把进程冷却锁死过久。
+ARXIV_RETRY_AFTER_MAX_SECONDS = 300
+
 #: stale 保留窗口（秒）：缓存条目过期后仍保留 24 小时，仅当本次上游
 #: 调用失败（超时/429/网络类）且存在同键条目时作为陈旧结果兜底。
 ARXIV_STALE_RETENTION_SECONDS = 24 * 60 * 60

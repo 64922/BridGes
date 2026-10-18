@@ -21,6 +21,7 @@ from bridges.arxiv_mcp.client import _user_cancelled
 from bridges.arxiv_mcp.limits import (
     ARXIV_COOLDOWN_SECONDS,
     ARXIV_MIN_REQUEST_INTERVAL_SECONDS,
+    ARXIV_RETRY_AFTER_MAX_SECONDS,
 )
 
 #: 节流等待的短轮询步长（秒）：兼顾取消响应与忙等开销。
@@ -129,12 +130,25 @@ class ArxivCooldown:
             return self._rejections
 
     def activate(
-        self, code: str, message: str, upstream_status: str | None = None
+        self,
+        code: str,
+        message: str,
+        upstream_status: str | None = None,
+        *,
+        retry_after_seconds: int | None = None,
     ) -> None:
-        """429/超时终态后进入冷却（取更晚的到期时刻，延长式）。"""
+        """429/超时终态后进入冷却（取更晚的到期时刻，延长式）。
+
+        服务器明确给出的 ``Retry-After`` 在现有固定冷却之上生效，但有
+        上限（300 秒），避免单个响应把进程锁死过久；未知/负数按固定值。
+        """
         if not self._enabled:
             return
-        until = self._clock() + self._cooldown_seconds
+        seconds = self._cooldown_seconds
+        if retry_after_seconds is not None:
+            requested = max(0, min(retry_after_seconds, ARXIV_RETRY_AFTER_MAX_SECONDS))
+            seconds = max(seconds, float(requested))
+        until = self._clock() + seconds
         with self._lock:
             if self._until is None or until > self._until:
                 self._until = until

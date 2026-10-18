@@ -15,7 +15,8 @@ from dataclasses import asdict
 from inspect import Parameter, signature
 from typing import Any
 
-from bridges.arxiv_mcp.client import ArxivMcpClient, ArxivMcpError
+from bridges.arxiv_mcp.client import ArxivMcpClient
+from bridges.arxiv_mcp.errors import ArxivMcpError
 
 #: 握手协议版本：父进程校验此版本后才接受响应。
 HANDSHAKE_VERSION = 1
@@ -73,6 +74,7 @@ def main() -> None:
                 "message": exc.message,
                 "upstream_status": exc.upstream_status,
                 "retryable": exc.retryable,
+                "retry_after_seconds": exc.retry_after_seconds,
             }
         except (json.JSONDecodeError, TypeError, ValueError):
             payload = {

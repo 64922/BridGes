@@ -178,15 +178,6 @@ def search_node(self: PaperNodeFlow, invocation: NodeInvocation) -> NodeExecutio
             "outcome": None,
         },
     }
-    if all_failed and not merged:
-        error_record = next((item for item in records if item.error_code), records[0])
-        return self._failure(
-            invocation,
-            payload=payload,
-            code=error_record.error_code or "paper_search_failed",
-            message=error_record.error_message or "论文检索失败，请稍后重试。",
-            retryable=error_record.retryable,
-        )
     if outcomes and all(status == ModuleQueryStatus.CANCELLED.value for status in outcomes):
         return self._failure(
             invocation,
@@ -194,5 +185,22 @@ def search_node(self: PaperNodeFlow, invocation: NodeInvocation) -> NodeExecutio
             code="paper_cancelled",
             message="本轮检索已停止。",
             retryable=True,
+        )
+    if all_failed and not merged:
+        error_records = [item for item in records if item.error_code] or records
+        error_codes = {item.error_code for item in error_records}
+        primary = error_records[0]
+        if len(error_codes) == 1 and primary.error_code:
+            code = primary.error_code
+            message = primary.error_message or "论文检索失败，请稍后重试。"
+        else:
+            code = "paper_search_failed"
+            message = "所有学术来源本轮均未完成检索，请稍后重试。"
+        return self._failure(
+            invocation,
+            payload=payload,
+            code=code,
+            message=message,
+            retryable=any(item.retryable for item in records),
         )
     return self._completed(invocation, payload)

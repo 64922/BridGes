@@ -134,6 +134,8 @@ def _record_detail(projection: ArxivSearchProjection) -> str | None:
         notes.append("本次上游调用失败，回退到过期缓存结果（可能不是最新）")
     if projection.attempt_count:
         notes.append(f"上游请求 {projection.attempt_count} 次")
-    if projection.retry_after_seconds:
+    if projection.upstream_status:
+        notes.append(f"上游状态：{projection.upstream_status}")
+    if projection.retry_after_seconds is not None:
         notes.append(f"上游冷却剩余 {projection.retry_after_seconds} 秒")
     return "；".join(notes) if notes else None

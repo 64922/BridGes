@@ -26,7 +26,8 @@ from typing import Any
 import httpx
 from pydantic import SecretStr
 
-from bridges.arxiv_mcp.client import ArxivMcpClient, ArxivMcpError
+from bridges.arxiv_mcp.client import ArxivMcpClient
+from bridges.arxiv_mcp.errors import ArxivMcpError
 from bridges.config import Settings
 from bridges.storage.database import SCHEMA_VERSION
 from bridges.web_search.client import (

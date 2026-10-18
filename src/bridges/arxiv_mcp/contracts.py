@@ -69,7 +69,7 @@ class ArxivSearchProjection(BaseModel):
     error_message: str | None = Field(default=None, description="可操作的中文提示。")
     upstream_status: str | None = Field(
         default=None,
-        description="脱敏的上游状态类别，例如 http_4xx、http_5xx 或 parse。",
+        description="脱敏的精确上游状态，例如 http_400、http_429、http_5xx 或 parse。",
     )
     can_retry: bool = Field(default=False, description="本轮是否可以重试。")
     can_cancel: bool = Field(default=False, description="本轮是否可以取消。")
@@ -82,7 +82,10 @@ class ArxivSearchProjection(BaseModel):
     )
     retry_after_seconds: int | None = Field(
         default=None,
-        description="上游冷却剩余秒数（429/超时冷却期内的拒绝携带；到期前重试不打上游）。",
+        description=(
+            "上游退避剩余秒数：429/超时/5xx 终态或服务器返回 Retry-After 时携带，"
+            "冷却期内的重试不请求上游。"
+        ),
     )
     attempt_count: int = Field(
         default=0, ge=0, description="本次搜索实际上游请求调用次数（缓存命中与冷却拒绝为 0）。"

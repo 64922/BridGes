@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from bridges.arxiv_mcp.client import ArxivMcpError
 from bridges.arxiv_mcp.contracts import ArxivPaper
+from bridges.arxiv_mcp.errors import ArxivMcpError
 from scripts.smoke_arxiv_search import run_smoke
 
 

@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from bridges.arxiv_mcp.client import ArxivMcpError
+from bridges.arxiv_mcp.errors import ArxivMcpError
 from bridges.arxiv_mcp.process import ArxivMcpProcessClient
 
 _TEMPLATE = """\
@@ -32,7 +32,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from bridges.arxiv_mcp.client import ArxivMcpError
+from bridges.arxiv_mcp.errors import ArxivMcpError
 from bridges.arxiv_mcp.contracts import ArxivPaper
 
 SPAWN_MARKER = Path('__SPAWN_MARKER__')
