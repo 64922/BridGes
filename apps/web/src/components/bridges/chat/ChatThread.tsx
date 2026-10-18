@@ -4,7 +4,11 @@ import { useEffect, useRef } from "react";
 
 import { MessageList } from "@/components/bridges/MessageList";
 import type { ChatMessageView } from "@/lib/chat-message-view";
-import type { ChatModuleId, CitationProjection } from "@/lib/api";
+import type {
+  ChatAttachmentProjection,
+  ChatModuleId,
+  CitationProjection,
+} from "@/lib/api";
 
 import styles from "./chat.module.css";
 
@@ -23,6 +27,12 @@ interface ChatThreadProps {
   onOpenCitation?: (
     messageId: string,
     citation: CitationProjection,
+    trigger: HTMLButtonElement
+  ) => void;
+  /** 打开消息附件的右侧预览面板 */
+  onOpenAttachment?: (
+    messageId: string,
+    attachment: ChatAttachmentProjection,
     trigger: HTMLButtonElement
   ) => void;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
@@ -45,6 +55,7 @@ export function ChatThread({
   conversationId,
   onRefreshMessages,
   onOpenCitation,
+  onOpenAttachment,
   announcement,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -83,6 +94,7 @@ export function ChatThread({
           conversationId={conversationId}
           onRefreshMessages={onRefreshMessages}
           onOpenCitation={onOpenCitation}
+          onOpenAttachment={onOpenAttachment}
         />
       </div>
       <p className="sc-visually-hidden" role="status" aria-live="polite">

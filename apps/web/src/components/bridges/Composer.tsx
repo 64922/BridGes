@@ -233,6 +233,7 @@ export function Composer({
         draftErrors={attachments.draftErrors}
         brokenPreviews={attachments.brokenPreviews}
         onDismissError={attachments.dismissDraftError}
+        onRetryUpload={attachments.retryDraftError}
         onMove={attachments.moveDraft}
         onRemove={attachments.removeDraft}
         onPreviewError={attachments.markPreviewBroken}

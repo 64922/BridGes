@@ -1,6 +1,10 @@
 "use client";
 
-import type { ChatModuleId, CitationProjection } from "@/lib/api";
+import type {
+  ChatAttachmentProjection,
+  ChatModuleId,
+  CitationProjection,
+} from "@/lib/api";
 
 import { AssistantMessage } from "./message/AssistantMessage";
 import { UserMessage } from "./message/UserMessage";
@@ -23,6 +27,12 @@ interface MessageListProps {
     citation: CitationProjection,
     trigger: HTMLButtonElement
   ) => void;
+  /** 打开消息附件的右侧预览面板 */
+  onOpenAttachment?: (
+    messageId: string,
+    attachment: ChatAttachmentProjection,
+    trigger: HTMLButtonElement
+  ) => void;
 }
 
 /**
@@ -39,6 +49,7 @@ export function MessageList({
   onUseModuleSuggestion,
   onRefreshMessages,
   onOpenCitation,
+  onOpenAttachment,
 }: MessageListProps) {
   return (
     <ol
@@ -49,7 +60,11 @@ export function MessageList({
       {messages.map((message) => (
         <li key={message.id} id={`msg-${message.id}`}>
           {message.role === "user" ? (
-            <UserMessage message={message} conversationId={conversationId} />
+            <UserMessage
+              message={message}
+              conversationId={conversationId}
+              onOpenAttachment={onOpenAttachment}
+            />
           ) : (
             <AssistantMessage
               message={message}

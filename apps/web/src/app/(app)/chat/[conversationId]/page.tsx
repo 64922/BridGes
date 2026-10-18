@@ -6,12 +6,13 @@ import { useParams, useRouter } from "next/navigation";
 import { StateBlock } from "@/components/bridges/StateBlock";
 import { ChatHeader } from "@/components/bridges/chat/ChatHeader";
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
+import { AttachmentViewerPanel } from "@/components/bridges/chat/AttachmentViewerPanel";
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { CitationViewerPanel } from "@/components/bridges/chat/CitationViewerPanel";
 import { Composer } from "@/components/bridges/Composer";
 import { StudyProgress } from "@/components/bridges/chat/StudyProgress";
 import type { CapabilityAvailability } from "@/components/bridges/chat/capability-availability";
-import type { CitationProjection } from "@/lib/api";
+import type { ChatAttachmentProjection, CitationProjection } from "@/lib/api";
 import { AppShell } from "@/components/layout/AppShell";
 import { MAIN_CONTENT_ID } from "@/components/layout/MainContent";
 import { buildThreadMessages } from "@/lib/chat-thread";
@@ -38,6 +39,12 @@ interface CitationSelection {
   conversationId: string;
   messageId: string;
   citation: CitationProjection;
+}
+
+interface AttachmentSelection {
+  conversationId: string;
+  messageId: string;
+  attachment: ChatAttachmentProjection;
 }
 
 /**
@@ -84,30 +91,23 @@ export default function ChatConversationPage() {
   const resumeModuleCheckedRef = useRef<string | null>(null);
   const [citationSelection, setCitationSelection] = useState<CitationSelection | null>(null);
   const citationTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [attachmentSelection, setAttachmentSelection] = useState<AttachmentSelection | null>(null);
+  const attachmentTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     resumeModuleCheckedRef.current = null;
     setModuleId(null);
   }, [conversationId]);
 
-  // 切换会话立即释放旧资料面板与未完成请求；迟到响应不会串到新会话。
+  // 切换会话立即释放旧资料/附件面板与未完成请求；迟到响应不会串到新会话。
   useEffect(() => {
     citationTriggerRef.current = null;
+    attachmentTriggerRef.current = null;
     setCitationSelection(null);
+    setAttachmentSelection(null);
   }, [conversationId]);
 
-  const openCitation = useCallback(
-    (messageId: string, citation: CitationProjection, trigger: HTMLButtonElement) => {
-      citationTriggerRef.current = trigger;
-      setCitationSelection({ conversationId, messageId, citation });
-    },
-    [conversationId]
-  );
-
-  const closeCitation = useCallback(() => {
-    setCitationSelection(null);
-    const trigger = citationTriggerRef.current;
-    citationTriggerRef.current = null;
+  const restorePanelTrigger = useCallback((trigger: HTMLButtonElement | null) => {
     window.requestAnimationFrame(() => {
       if (trigger?.isConnected) {
         trigger.focus({ preventScroll: true });
@@ -121,6 +121,40 @@ export default function ChatConversationPage() {
       document.getElementById(MAIN_CONTENT_ID)?.focus({ preventScroll: true });
     });
   }, []);
+
+  const openCitation = useCallback(
+    (messageId: string, citation: CitationProjection, trigger: HTMLButtonElement) => {
+      citationTriggerRef.current = trigger;
+      attachmentTriggerRef.current = null;
+      setAttachmentSelection(null);
+      setCitationSelection({ conversationId, messageId, citation });
+    },
+    [conversationId]
+  );
+
+  const closeCitation = useCallback(() => {
+    setCitationSelection(null);
+    const trigger = citationTriggerRef.current;
+    citationTriggerRef.current = null;
+    restorePanelTrigger(trigger);
+  }, [restorePanelTrigger]);
+
+  const openAttachment = useCallback(
+    (messageId: string, attachment: ChatAttachmentProjection, trigger: HTMLButtonElement) => {
+      attachmentTriggerRef.current = trigger;
+      citationTriggerRef.current = null;
+      setCitationSelection(null);
+      setAttachmentSelection({ conversationId, messageId, attachment });
+    },
+    [conversationId]
+  );
+
+  const closeAttachment = useCallback(() => {
+    setAttachmentSelection(null);
+    const trigger = attachmentTriggerRef.current;
+    attachmentTriggerRef.current = null;
+    restorePanelTrigger(trigger);
+  }, [restorePanelTrigger]);
 
   // V2 Issue 06：已发送文件附件的解析在后台继续，卡片状态要刷新才会从
   // 「排队解析中」走到「已解析，可引用／解析失败／无法识别正文」。只要还有
@@ -221,6 +255,8 @@ export default function ChatConversationPage() {
   );
   const activeCitationSelection =
     citationSelection?.conversationId === conversationId ? citationSelection : null;
+  const activeAttachmentSelection =
+    attachmentSelection?.conversationId === conversationId ? attachmentSelection : null;
 
   return (
     <AppShell>
@@ -284,6 +320,7 @@ export default function ChatConversationPage() {
                 conversationId={conversationId}
                 onRefreshMessages={() => void load(true)}
                 onOpenCitation={openCitation}
+                onOpenAttachment={openAttachment}
                 announcement={announcement}
               />
               {sendError && <ChatSendErrorBanner message={sendError} />}
@@ -310,6 +347,11 @@ export default function ChatConversationPage() {
           conversationId={conversationId}
           selection={activeCitationSelection}
           onClose={closeCitation}
+        />
+        <AttachmentViewerPanel
+          conversationId={conversationId}
+          selection={activeAttachmentSelection}
+          onClose={closeAttachment}
         />
       </div>
     </AppShell>

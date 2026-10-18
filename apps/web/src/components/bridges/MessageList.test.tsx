@@ -181,6 +181,69 @@ describe("MessageList 附件卡片（V2 Issue 05/06）", () => {
     expect(screen.getByAltText("用户发送的照片：板书.png")).toBeTruthy();
     expect(screen.queryByTestId("message-file-card")).toBeNull();
   });
+
+  it("同名附件以对象身份区分，不按文件名合并或替换", () => {
+    const onOpenAttachment = vi.fn();
+    render(
+      <MessageList
+        conversationId="conversation-1"
+        messages={[
+          userMessage({
+            attachments: [
+              attachment({ object_id: "obj-first", original_filename: "讲义.pdf" }),
+              attachment({ object_id: "obj-second", original_filename: "讲义.pdf" }),
+            ],
+          }),
+        ]}
+        onOpenAttachment={onOpenAttachment}
+      />
+    );
+
+    expect(screen.getAllByTestId("message-file-card")).toHaveLength(2);
+    fireEvent.click(screen.getByTestId("attachment-open-obj-second"));
+    expect(onOpenAttachment).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({ object_id: "obj-second", original_filename: "讲义.pdf" }),
+      expect.any(HTMLButtonElement)
+    );
+  });
+
+  it("点击附件入口把原消息与对象身份交给预览面板", () => {
+    const onOpenAttachment = vi.fn();
+    render(
+      <MessageList
+        conversationId="conversation-1"
+        messages={[
+          userMessage({
+            attachments: [
+              attachment(),
+              attachment({
+                object_id: "obj-photo",
+                original_filename: "板书.png",
+                media_type: "image/png",
+                ingestion_status: "none",
+              }),
+            ],
+          }),
+        ]}
+        onOpenAttachment={onOpenAttachment}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("attachment-open-obj-file"));
+    expect(onOpenAttachment).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({ object_id: "obj-file" }),
+      expect.any(HTMLButtonElement)
+    );
+
+    fireEvent.click(screen.getByTestId("attachment-open-obj-photo"));
+    expect(onOpenAttachment).toHaveBeenLastCalledWith(
+      "user-1",
+      expect.objectContaining({ object_id: "obj-photo" }),
+      expect.any(HTMLButtonElement)
+    );
+  });
 });
 
 describe("MessageList 模块标识与建议（V2 Issue 11）", () => {
