@@ -1,8 +1,13 @@
 "use client";
 
 import { BrandLogo } from "@/components/bridges/BrandLogo";
+import { PaperDetailsEntry } from "@/components/bridges/chat/PaperDetailsEntry";
 import { RetrievalCard } from "@/components/bridges/RetrievalCard";
-import type { ChatModuleId, CitationProjection } from "@/lib/api";
+import type {
+  ChatModuleId,
+  CitationProjection,
+  PaperSearchProjection,
+} from "@/lib/api";
 
 import { AssistantActions } from "./AssistantActions";
 import { AttemptHistory } from "./AttemptHistory";
@@ -22,6 +27,7 @@ export function AssistantMessage({
   onUseModuleSuggestion,
   onRefreshMessages,
   onOpenCitation,
+  onOpenPaper,
 }: {
   message: ChatMessageView;
   conversationId?: string;
@@ -36,7 +42,13 @@ export function AssistantMessage({
     citation: CitationProjection,
     trigger: HTMLButtonElement
   ) => void;
+  onOpenPaper?: (
+    messageId: string,
+    search: PaperSearchProjection,
+    trigger: HTMLButtonElement
+  ) => void;
 }) {
+  const paperSearch = message.paperSearch ?? null;
   return (
     <article
       data-testid="assistant-message"
@@ -86,6 +98,15 @@ export function AssistantMessage({
         <PublicProcess message={message} conversationId={conversationId} />
 
         <AssistantBody message={message} conversationId={conversationId} />
+
+        {paperSearch && (
+          <div data-testid="paper-answer" data-paper-status={paperSearch.status}>
+            <PaperDetailsEntry
+              search={paperSearch}
+              onOpen={(trigger) => onOpenPaper?.(message.id, paperSearch, trigger)}
+            />
+          </div>
+        )}
 
         <RetrievalCard
           retrieval={message.retrieval ?? null}

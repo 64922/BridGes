@@ -23,7 +23,29 @@ const paperProjection: PaperSearchProjection = {
   research_question: "Transformer 的研究问题",
   queries: [],
   final_query: "transformer",
-  papers: [],
+  papers: [
+    {
+      order: 1,
+      candidate_id: "arxiv:1706.03762",
+      arxiv_id: "1706.03762",
+      title: "Attention Is All You Need",
+      authors: ["Ashish Vaswani"],
+      published_year: 2017,
+      source: "arxiv",
+      sources: ["arxiv"],
+      abs_url: "https://arxiv.org/abs/1706.03762",
+      pdf_url: "https://arxiv.org/pdf/1706.03762",
+      read_scope: "abstract",
+      full_text_available: true,
+      relevance: "direct",
+      research_group: "Transformer 注意力",
+      source_abstract: "We propose the Transformer.",
+      role: "foundation",
+      reason_zh: "奠基工作，先读这一篇。",
+      match_basis: "标题与摘要命中 transformer。",
+      unverified: [],
+    },
+  ],
   requested_count: 3,
   evidence_notes: [],
   pending: null,
@@ -292,7 +314,7 @@ describe("MessageList 模块标识与建议（V2 Issue 11）", () => {
     expect(onUseModuleSuggestion).toHaveBeenCalledWith("assistant-1", "paper");
   });
 
-  it("论文模块结果卡渲染在该条助手消息内", () => {
+  it("论文推荐留在正文，只提供按需资料入口", () => {
     render(
       <MessageList
         conversationId="conversation-1"
@@ -300,7 +322,9 @@ describe("MessageList 模块标识与建议（V2 Issue 11）", () => {
       />
     );
 
-    expect(screen.getByTestId("paper-search-card-success")).toBeTruthy();
+    expect(screen.getByTestId("assistant-body")).toBeTruthy();
+    expect(screen.getByTestId("paper-details-entry")).toBeTruthy();
+    expect(screen.queryByTestId("paper-search-card-success")).toBeNull();
   });
 
   it("资料推荐结果卡渲染在该条助手消息内", () => {
