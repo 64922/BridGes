@@ -73,6 +73,7 @@
 
 - 新增/更新确定性测试：表达式保留、括号分组、混合约束、年份范围、官方 `co/jr/rn` 字段、400/401/403/404/422/429/500/503/损坏 Atom、`Retry-After`（含 `0`）、敏感正文不回显、worker 精确状态透传、服务精确投影、`Retry-After` 不立即重试、仅 arXiv、单源失败、全来源失败、全取消、共享预算、arXiv 失败 + OpenAlex 成功 E2E。
 - `python -m pytest -q tests/arxiv_mcp tests/paper tests/contracts/test_openapi_sync.py tests/chat/test_arxiv_search_chat.py tests/closeout/test_arxiv_worker_reliability.py tests/closeout/test_v2_21_horizontal_regression.py` → `289 passed, 1 skipped`。
+- 合并 `origin/main`（含 01 语义证据契约）后，同一命令 → `310 passed, 1 skipped`；`ruff check` 仍通过。
 - `python -m pytest -q tests/arxiv_mcp/test_client_and_service.py tests/arxiv_mcp/test_process.py tests/paper/test_paper_issue03_arxiv_diagnostics.py` → `69 passed, 1 skipped`。
 - `python -m ruff check src/bridges/arxiv_mcp src/bridges/paper/sources.py src/bridges/paper/nodes_search.py tests/arxiv_mcp tests/paper/test_paper_issue03_arxiv_diagnostics.py` → 通过。
 - `mypy` 未报告本票改动文件的错误；全量 `mypy src` 仍有 141 个既有错误，集中在无关模块。
