@@ -176,6 +176,62 @@ describe("对话运行状态所有者", () => {
     expect(result.current.activeRun?.status).toBe("stopped");
   });
 
+  it("用户停止的 error 事件按停止收敛，不播报生成失败", async () => {
+    vi.mocked(createChatRun).mockResolvedValue(startedResponse());
+    let onEvent: ((event: ChatStreamEvent) => void) | null = null;
+    vi.mocked(subscribeChatRunWithReconnect).mockImplementation(
+      (subscription) =>
+        new Promise<void>((resolve) => {
+          onEvent = subscription.onEvent;
+          subscription.signal.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+        })
+    );
+
+    const { result, unmount } = renderHook(() =>
+      useConversationRun(
+        options(
+          conversation([
+            message({ message_id: "u-1", role: "user", content: "旧问题" }),
+            message({ message_id: "a-1", role: "assistant", status: "done" }),
+          ])
+        )
+      )
+    );
+
+    let sending: Promise<boolean> | null = null;
+    act(() => {
+      sending = result.current.sendMessage("继续");
+    });
+    await waitFor(() =>
+      expect(subscribeChatRunWithReconnect).toHaveBeenCalled()
+    );
+
+    act(() => {
+      onEvent?.(
+        streamEvent({
+          kind: "error",
+          message_id: "a-2",
+          error: { code: "stopped", message: "生成已停止。", retryable: false },
+          thinking: null,
+          duration_ms: 1200,
+          web_search: null,
+          arxiv_search: null,
+          teaching: null,
+        })
+      );
+    });
+    expect(result.current.activeRun?.status).toBe("stopped");
+    expect(result.current.activeRun?.errorText).toBeUndefined();
+    expect(result.current.announcement).toBe("已停止生成");
+
+    await act(async () => {
+      unmount();
+      await sending;
+    });
+  });
+
   it("停止等待期间收到终态事件时不回退正文与错误状态", async () => {
     vi.mocked(createChatRun).mockResolvedValue(startedResponse());
     let onEvent: ((event: ChatStreamEvent) => void) | null = null;
