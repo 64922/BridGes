@@ -51,6 +51,14 @@ def _legacy_parse_key(inputs: RecipeInputs) -> str:
     })
 
 
+def _legacy_capability(version: str) -> str:
+    """上一版语义证据合同的解析/筛选能力版本。"""
+    return {
+        "paper-parse-v3": "paper-parse-v2",
+        "paper-screen-v3": "paper-screen-v2",
+    }.get(version, version)
+
+
 @pytest.mark.parametrize("same_run", [False, True])
 def test_upgrade_invalidates_persisted_legacy_nodes_and_preserves_new_reuse(
     tmp_path: Path, same_run: bool,
@@ -58,15 +66,17 @@ def test_upgrade_invalidates_persisted_legacy_nodes_and_preserves_new_reuse(
     current = build_paper_recipe()
     current = replace(current, nodes=current.nodes[:4])
     legacy = replace(
-        current, recipe_version="paper-search-recipe-v2",
+        current, recipe_version="paper-search-recipe-v3",
         nodes=tuple(
             replace(
-                spec, capability_version=spec.capability_version.replace("-v2", "-v1"),
+                spec, capability_version=_legacy_capability(spec.capability_version),
                 input_key=_legacy_parse_key if index == 0 else spec.input_key,
             )
             for index, spec in enumerate(current.nodes)
         ),
     )
+    assert current.recipe_version != legacy.recipe_version
+    assert current.nodes[3].capability_version != legacy.nodes[3].capability_version
     inputs = RecipeInputs(
         account_id="account", conversation_id="conversation", run_id="old-run",
         user_message_id="user-message", user_content="找轴承故障诊断的论文",

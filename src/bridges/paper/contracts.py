@@ -127,6 +127,10 @@ class PaperConstraints(BaseModel):
 class PaperResearchConcept(BaseModel):
     """研究请求中的概念与可追溯的英文检索表达。"""
 
+    concept_id: str = Field(
+        default="",
+        description="当前分析内由代码分配的唯一稳定标识；模型不生成该标识。",
+    )
     concept: str = Field(description="研究概念的简洁说明。")
     source_phrase: str = Field(description="用户原话或有效任务条件中的原始片段。")
     kind: str = Field(description="object/question/method/application/population/condition。")

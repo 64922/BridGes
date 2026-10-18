@@ -4,7 +4,7 @@
 
 **Blocked by:** 无 — 可独立开始。
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 问题与目标
 
@@ -31,14 +31,14 @@
 
 ## 验收标准
 
-- [ ] 改动前测试能稳定捕获名称精确匹配造成的误拒，记录实际运行结果。
-- [ ] 合法稳定标识与有效原文证据可进入推荐链路，不受显示名称大小写或翻译影响。
-- [ ] 未知标识、错误来源、伪造引文和缺少裁决均不能成为已核验推荐。
-- [ ] 有效候选不会因其他候选核验失败被全部丢弃，未交付部分的原因如实保留。
-- [ ] 全部证据无效时诚实失败，诊断可区分原因；没有降级为未经核验推荐。
-- [ ] 补搜与缓存复用不串联不同研究概念或旧任务版本，模型调用未突破共享预算。
-- [ ] 历史结果仍可读取，新运行不会复用旧合同的核验产物。
-- [ ] 相关行为测试及仓库要求的检查通过；提交中说明历史根因仍存在的证据限制。
+- [x] 改动前测试能稳定捕获名称精确匹配造成的误拒，记录实际运行结果。
+- [x] 合法稳定标识与有效原文证据可进入推荐链路，不受显示名称大小写或翻译影响。
+- [x] 未知标识、错误来源、伪造引文和缺少裁决均不能成为已核验推荐。
+- [x] 有效候选不会因其他候选核验失败被全部丢弃，未交付部分的原因如实保留。
+- [x] 全部证据无效时诚实失败，诊断可区分原因；没有降级为未经核验推荐。
+- [x] 补搜与缓存复用不串联不同研究概念或旧任务版本，模型调用未突破共享预算。
+- [x] 历史结果仍可读取，新运行不会复用旧合同的核验产物。
+- [x] 相关行为测试及仓库要求的检查通过；提交中说明历史根因仍存在的证据限制。
 
 ## 不在范围内
 
@@ -47,4 +47,32 @@
 ## Comments
 
 2026-10-18：用户已确认工单粒度与依赖关系，状态更新为 `ready-for-agent`。完成时追加变更摘要、测试证据和剩余限制，不删除原始诊断事实。
+
+2026-10-18：实现完成，状态更新为 `ready-for-human`。
+
+**改动前红证据**
+- 固定合成候选、`relevant=true` 与标题逐字引文，仅把需求显示名从 `Machine Learning` 改为 `machine learning`，筛选返回 `semantic_evidence_unverified`。失败断言为：`有效标题/摘要证据不应因概念显示名大小写不同而被拒绝：semantic_evidence_unverified`。
+- 该证据只确认显示名精确匹配这一合同缺陷；未取得历史运行中 18 篇的原始模型裁决，不能断言它们全部同因。
+
+**实现摘要**
+- 新增 `src/bridges/paper/semantic_evidence.py`：按当前分析顺序由代码分配 `c1..cN`，构造“标识—显示名称—来源短语—kind”映射；模型提供的标识被忽略，持续化标识缺失或重复时本地补配且保持唯一。标识不进入全局注册表，作用域仍为当前分析/运行。
+- `PaperResearchConcept` 增加 `concept_id`；`intent.py` 在解析去重后分配标识。显示名称继续用于用户可见说明。
+- judge 请求改为显式传递 `requirements[].id/name/source_phrase/kind`；结构化输出把 `requirement` 限定为合法 ID enum，把 `source` 限定为 `title/abstract`。本地校验始终执行，不依赖供应商是否遵守 schema。
+- 筛选逐条复核：缺少裁决/结构错误、未知标识、非法来源、引文无法逐字定位分别计数；同一候选的有效证据保留，无效证据丢弃；模型明确不相关单独归入 `judge_not_relevant`。全部证据无效时仍拒绝，不降级为未核验推荐。
+- screen 产物新增 `semantic_rejection_counts`；用户提示只展示原因类别与条数，不暴露内部 ID 或供应商原始载荷。
+- 裁决缓存键加入 `concept_signature`（标识、kind、来源短语）；仅显示名称变化可复用原裁决，需求映射变化必须重判。补搜新增候选与已有缓存共用同一映射，语义 judge 仍为批量调用（端到端测试确认 judge 只调用一次）。
+- 配方升级为 `paper-search-recipe-v4`，`paper.parse_request` → `paper-parse-v3`，`paper.screen_candidates` → `paper-screen-v3`。旧合同产物因配方/能力版本与输入键不匹配而不会复用；历史结果仍可只读。
+
+**验证证据**
+- `PYTHONIOENCODING=utf-8 C:\Users\33755\anaconda3\envs\agent\python.exe -m pytest tests/paper -q` → `167 passed in 60.34s`。
+- 本票目标文件 → `28 passed`（语义合同、流程、模型验收、配方升级）。
+- `ruff check src/bridges/paper tests/paper/test_paper_semantic_contract.py tests/paper/test_paper_semantic_flow.py tests/paper/test_paper_model_flow_acceptance.py tests/paper/test_paper_recipe_upgrade.py` → `All checks passed`。
+- 针对改动文件的 mypy 仅报告 10 个既有外部错误（`runtime/queue.py`、`contracts/career.py`、`mcp/service.py`、`chat/*`、`video/service.py`、`image/service.py`、`runtime/executor.py`），paper 改动文件无新增错误。
+- 全仓 `pytest -q` 基线不绿：`tests/career_plan/` 因 main 上缺少 `CareerBackgroundLoader` 收集失败，另有大量与本票无关的既有失败；本票不以全仓绿作为通过声明。
+- 新增/更新测试：`test_paper_semantic_contract.py`（显示名大小写与翻译、未知/缺失标识、非法来源、伪造引文、混合证据、显式不相关、代码分配标识、请求映射与 enum、缓存）、`test_paper_semantic_flow.py`（补搜缓存共存、全部无效诚实失败、用户请求到已核验推荐端到端）、`test_paper_recipe_upgrade.py`（v3 旧产物失效与新产物复用）、`test_paper_model_flow_acceptance.py`（验收证据改用 `c1`/`c2`）。
+
+**剩余限制**
+- 历史 18 篇的真实根因仍无法完全证明；本次只复现并修复了显示名精确匹配缺陷，其他拒绝原因已由新增计数区分。
+- 来源仍限定标题/摘要；全文抓取和排名算法不在本票范围。
+- 回滚本分支会恢复旧显示名精确匹配与 v3 配方；已持久化的新产物在回滚后不会被旧配方复用。
 

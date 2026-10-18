@@ -255,6 +255,7 @@ def screen_node(self: PaperNodeFlow, invocation: NodeInvocation) -> NodeExecutio
         "hard_condition_blocked": outcome.hard_condition_blocked,
         "notes": list(outcome.notes),
         "judge_used": outcome.judge_used,
+        "semantic_rejection_counts": dict(outcome.semantic_rejection_counts),
         "records": [_record_payload(item) for item in (*adjustment_records, *citation_records)],
         "citation_edges": citation_edges,
     }
