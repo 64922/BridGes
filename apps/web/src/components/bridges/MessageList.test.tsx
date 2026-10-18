@@ -335,6 +335,11 @@ describe("MessageList 模块标识与建议（V2 Issue 11）", () => {
       />
     );
 
-    expect(screen.getByTestId("resources-card-success")).toBeTruthy();
+    expect(screen.getByTestId("historical-resources")).toBeTruthy();
+    expect(screen.getByTestId("historical-resources-status").textContent).toContain(
+      "已完成"
+    );
+    expect(screen.queryByTestId("resources-card-success")).toBeNull();
+    expect(screen.queryByRole("button", { name: /重试|重新生成|开始/ })).toBeNull();
   });
 });

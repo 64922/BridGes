@@ -36,12 +36,25 @@ export function AttemptHistory({
             {attempt.status === "error" || attempt.status === "stopped" ? (
               <span style={{ color: "var(--color-status-error)" }}>
                 第 {attempt.attemptNumber} 次尝试（
-                {attempt.status === "stopped" ? "已停止" : "失败"}）
-                {attempt.errorMessage ? `：${attempt.errorMessage}` : ""}
+                {attempt.status === "stopped" ? "已停止" : "失败"}）：
+                {attempt.errorMessage ? attempt.errorMessage : ""}
               </span>
             ) : (
               <span>第 {attempt.attemptNumber} 次尝试</span>
             )}
+            {attempt.content ? (
+              <div
+                data-testid={`attempt-content-${attempt.attemptNumber}`}
+                style={{
+                  marginTop: "var(--space-1)",
+                  whiteSpace: "pre-wrap",
+                  overflowWrap: "break-word",
+                  color: "var(--color-text-primary)",
+                }}
+              >
+                {attempt.content}
+              </div>
+            ) : null}
           </li>
         ))}
       </ol>

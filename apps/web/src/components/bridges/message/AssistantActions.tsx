@@ -6,6 +6,7 @@ import { Icon, type IconName } from "@/components/design-system/Icon";
 import { copyTextToClipboard } from "@/lib/clipboard";
 
 import type { ChatMessageView } from "@/lib/chat-message-view";
+import { historicalDeliverableText } from "@/lib/historical-results";
 import { hasRealRetryCommand } from "./DeliveryStatus";
 
 const actionButtonStyle: React.CSSProperties = {
@@ -64,8 +65,9 @@ export function AssistantActions({
   const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">("idle");
   const [feedback, setFeedback] = useState<"good" | "bad" | null>(null);
 
+  const copyText = historicalDeliverableText(message) ?? message.plainText;
   const copy = async () => {
-    const copied = await copyTextToClipboard(message.plainText);
+    const copied = await copyTextToClipboard(copyText);
     setCopyStatus(copied ? "success" : "error");
     window.setTimeout(() => setCopyStatus("idle"), 2000);
   };
@@ -100,7 +102,14 @@ export function AssistantActions({
     >
       <MessageAction
         icon="copy"
-        label={copyStatus === "success" ? "已复制" : "复制"}
+        label={
+          copyText.length === 0
+            ? "没有可复制正文"
+            : copyStatus === "success"
+              ? "已复制"
+              : "复制"
+        }
+        disabled={copyText.length === 0}
         onClick={copy}
       />
       {copyStatus !== "idle" && (

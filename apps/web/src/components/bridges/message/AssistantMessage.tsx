@@ -16,6 +16,7 @@ import type {
 import { AssistantActions } from "./AssistantActions";
 import { AttemptHistory } from "./AttemptHistory";
 import { DeliveryStatus } from "./DeliveryStatus";
+import { HistoricalResults } from "./HistoricalResults";
 import { AssistantBody } from "./MessageBody";
 import { MediaTaskCards, SourceProjectionCards } from "./ProjectionCards";
 import { PublicProcess } from "./PublicProcess";
@@ -125,6 +126,8 @@ export function AssistantMessage({
               : undefined
           }
         />
+
+        <HistoricalResults message={message} />
 
         <CommuteAnswer
           message={message}

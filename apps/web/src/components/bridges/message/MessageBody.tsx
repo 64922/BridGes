@@ -11,6 +11,7 @@ import type {
   TurnResultProjection,
 } from "@/lib/api";
 import type { ChatMessageView } from "@/lib/chat-message-view";
+import { deliveredHumanizerText } from "@/lib/historical-results";
 
 import { MarkdownBody } from "./MarkdownBody";
 
@@ -103,12 +104,15 @@ export function AssistantBody({
   ) => void;
   onRetry?: (id: string) => void;
 }) {
+  const deliveredHumanizer = message.humanizer
+    ? deliveredHumanizerText(message.humanizer)
+    : null;
   const body =
     message.body !== undefined ? (
       <>{message.body}</>
     ) : (
       <MarkdownBody
-        text={message.plainText}
+        text={deliveredHumanizer ?? message.plainText}
         streaming={message.status === "streaming"}
       />
     );
@@ -162,11 +166,11 @@ export function AssistantBody({
     );
   }
 
-  if (message.humanizer?.article?.delivery_status === "failed") {
+  if (message.humanizer && deliveredHumanizer === null) {
     return (
       <MessageErrorAlert
         testId="humanizer-not-delivered"
-        text={message.humanizer.error_message ?? "正文未交付。"}
+        text={message.humanizer.error_message ?? "正文未交付"}
       />
     );
   }

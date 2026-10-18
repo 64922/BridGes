@@ -92,6 +92,7 @@ export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMess
         attemptNumber: attempt.attempt_number,
         status: attempt.status,
         errorMessage: attempt.error_message,
+        content: attempt.content,
       })),
     });
   }

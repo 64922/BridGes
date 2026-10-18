@@ -264,10 +264,10 @@ describe("消息呈现边界（工单 02）", () => {
     expect(screen.queryByTestId("paper-search-card-success")).toBeNull();
     expect(screen.getByTestId("tieba-composite-evidence")).toBeTruthy();
     expect(screen.queryByTestId("tieba-research-card-success")).toBeNull();
-    expect(screen.getByTestId("resources-card-success")).toBeTruthy();
+    expect(screen.getByTestId("historical-resources")).toBeTruthy();
     expect(screen.getByTestId("commute-answer-success")).toBeTruthy();
-    expect(screen.getByTestId("career-plan-card-success")).toBeTruthy();
-    expect(screen.getByTestId("github-projects-card-success")).toBeTruthy();
+    expect(screen.getByTestId("historical-career-plan")).toBeTruthy();
+    expect(screen.getByTestId("historical-github-projects")).toBeTruthy();
     expect(screen.getByTestId("module-suggestion")).toBeTruthy();
     expect(screen.getByTestId("retrieval-citations-card")).toBeTruthy();
     expect(screen.getAllByText("回答正文")).toHaveLength(2);

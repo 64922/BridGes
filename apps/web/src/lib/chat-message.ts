@@ -46,6 +46,8 @@ export interface ChatPreviousAttempt {
   attemptNumber: number;
   status: "done" | "streaming" | "error" | "stopped";
   errorMessage?: string | null;
+  /** 该次尝试已经保存的正文；失败/停止的尝试也保留，不与最新回答混写。 */
+  content?: string;
 }
 
 export interface ChatMessage {

@@ -145,7 +145,7 @@ describe("buildThreadMessages（工单 38）", () => {
     expect(items[0].id).toBe("a-2");
     expect(items[0].attemptNumber).toBe(2);
     expect(items[0].previousAttempts).toEqual([
-      { attemptNumber: 1, status: "error", errorMessage: "旧失败" },
+      { attemptNumber: 1, status: "error", errorMessage: "旧失败", content: "回答正文" },
     ]);
   });
 

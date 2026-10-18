@@ -272,28 +272,19 @@ test.describe("Issue 08 — 正文优先的文章交付界面", () => {
     // 结果卡状态与复制入口可见（折叠状态不影响复制）
     const card = page.getByTestId("humanizer-result-card");
     await expect(card).toBeVisible();
-    await expect(card.getByRole("button", { name: /已交付/ })).toBeVisible();
-    await expect(card.getByRole("button", { name: "复制最终正文" })).toBeVisible();
+    await expect(card.getByRole("status")).toContainText("当时已交付");
+    await expect(card.getByTestId("humanizer-copy-text")).toBeVisible();
     // 审计分区默认折叠
     await expect(page.getByTestId("humanizer-fidelity")).toHaveCount(0);
   });
 
-  test("展开审计：显示保真通过计数，复制只复制最终正文", async ({ page }) => {
+  test("历史审计按需展开：无空分区，复制只复制最终正文", async ({ page }) => {
     await registerAndOpenChat(page, cleanAssistant());
     const card = page.getByTestId("humanizer-result-card");
-    // 折叠时头部已显示「保真通过」计数
-    await expect(card.getByRole("status")).toContainText("保真通过");
-    // 展开
-    await card.getByRole("button", { name: /已交付/ }).click();
-    await expect(card.getByRole("button", { name: /已交付/ })).toHaveAttribute(
-      "aria-expanded",
-      "true"
-    );
-    // 成功无风险：不渲染空审计分区（无空事实核查段）
+    await expect(card.getByRole("status")).toContainText("当时已交付");
     await expect(page.getByTestId("humanizer-fidelity")).toHaveCount(0);
-    // 复制只复制最终正文（不混入审计文案）
     const finalText = "光合作用指的是植物把光能转化为化学能的过程，研究显示这一过程需要叶绿素吸收光子。";
-    const copyButton = card.getByRole("button", { name: "复制最终正文" });
+    const copyButton = card.getByTestId("humanizer-copy-text");
     await copyButton.click();
     await expect(copyButton).toContainText(/已复制|复制失败/, { timeout: 10_000 });
     const copied = await page.evaluate(
@@ -305,18 +296,16 @@ test.describe("Issue 08 — 正文优先的文章交付界面", () => {
   test("硬门失败：正文区域明确「未交付」，不显示违规稿", async ({ page }) => {
     await registerAndOpenChat(page, failedAssistant());
     const thread = page.getByRole("list", { name: "对话消息" });
-    // 正文区域显示「未交付」提示，不展示草稿候选
     await expect(page.getByTestId("humanizer-not-delivered")).toBeVisible();
     await expect(thread.getByText("光合作用……（未交付候选）")).toHaveCount(0);
-    // 结果卡显示「未交付」状态；展开后展示稳定失败原因
     const card = page.getByTestId("humanizer-result-card");
-    await expect(card.getByRole("button", { name: /未交付/ })).toBeVisible();
-    await card.getByRole("button", { name: /未交付/ }).click();
+    await expect(card.getByRole("status")).toContainText("当时未交付正文");
+    await expect(card.getByTestId("humanizer-copy-text")).toBeDisabled();
     await expect(page.getByTestId("humanizer-error-detail")).toContainText(
       "来源保真硬门未通过"
     );
     await expect(page.getByTestId("humanizer-fidelity")).toContainText(
-      "无来源新增 claim"
+      "新增结论没有来源绑定"
     );
   });
 
@@ -324,8 +313,9 @@ test.describe("Issue 08 — 正文优先的文章交付界面", () => {
     await registerAndOpenChat(page, legacyAssistant());
     const card = page.getByTestId("humanizer-result-card");
     await expect(card.getByTestId("humanizer-legacy-badge")).toContainText("旧版结果");
-    await card.getByRole("button", { name: /人味化完成/ }).click();
-    await expect(page.getByTestId("humanizer-fact-check")).toContainText("来源保真检查");
+    await expect(page.getByTestId("humanizer-fact-check")).toContainText(
+      "来源保真检查"
+    );
   });
 
   test("刷新后结果卡恢复，正文不重复插入", async ({ page }) => {

@@ -2,15 +2,10 @@
 
 import { CareerPlanningProcessCard } from "@/components/bridges/CareerPlanningProcessCard";
 import { CareerPlanningResultCard } from "@/components/bridges/CareerPlanningResultCard";
-import { HumanizerProcessCard } from "@/components/bridges/HumanizerProcessCard";
-import { HumanizerResultCard } from "@/components/bridges/HumanizerResultCard";
 import { TeachingCard } from "@/components/bridges/TeachingCard";
 import { WebSearchCard } from "@/components/bridges/WebSearchCard";
 import { ArxivPaperSearchCard } from "@/components/bridges/ArxivPaperSearchCard";
-import { CareerPlanCard } from "@/components/bridges/chat/CareerPlanCard";
-import { GithubProjectsCard } from "@/components/bridges/chat/GithubProjectsCard";
 import { ImageTaskCard } from "@/components/bridges/chat/ImageTaskCard";
-import { LearningResourcesCard } from "@/components/bridges/chat/LearningResourcesCard";
 import { ModuleSuggestionCard } from "@/components/bridges/chat/ModuleSuggestionCard";
 import { VideoTaskCard } from "@/components/bridges/chat/VideoTaskCard";
 import { CAREER_INTENT_KEYWORDS, CAREER_INTENT_PREFIXES } from "@/lib/chat-tools";
@@ -67,24 +62,6 @@ export function SourceProjectionCards({
         onCancel={onStop}
       />
 
-      <CareerPlanCard
-        plan={message.careerPlan ?? null}
-        streaming={streaming}
-        onRetry={() => onRetry?.(message.id)}
-      />
-
-      <GithubProjectsCard
-        projects={message.githubProjects ?? null}
-        streaming={streaming}
-        onRetry={() => onRetry?.(message.id)}
-      />
-
-      <LearningResourcesCard
-        resources={message.learningResources ?? null}
-        streaming={streaming}
-        onRetry={() => onRetry?.(message.id)}
-      />
-
       {!streaming && (
         <ModuleSuggestionCard
           suggestion={message.moduleSuggestion ?? null}
@@ -100,20 +77,6 @@ export function SourceProjectionCards({
         onRetry={() => onRetry?.(message.id)}
         onCancel={onStop}
       />
-
-      {(message.humanizerProcess != null ||
-        (message.humanizer == null &&
-          streaming &&
-          message.skill != null)) && (
-        <HumanizerProcessCard
-          data={message.humanizerProcess ?? null}
-          streaming={streaming}
-        />
-      )}
-
-      {message.humanizer != null && (
-        <HumanizerResultCard result={message.humanizer} />
-      )}
 
       {(message.careerProcess != null ||
         (message.careerPlanning == null &&
