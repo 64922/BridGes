@@ -17,6 +17,7 @@ class ExternalCallReason(StrEnum):
     CONTENDED = "contended"
     GUARD_FAILED = "guard_failed"
     QUEUE_FULL = "queue_full"
+    TIMEOUT = "timeout"
 
 
 @dataclass(frozen=True, slots=True)

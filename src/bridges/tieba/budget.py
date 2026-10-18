@@ -14,10 +14,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from bridges.contracts.modules import ModuleQueryStatus
-from bridges.external_call_decision import (
-    ExternalCallDecision,
-    ExternalCallReason,
-)
+from bridges.external_call_decision import ExternalCallDecision
 from bridges.public_search_budget import (
     bind_outcome_reporter,
     bind_request_tracker,
@@ -166,32 +163,12 @@ class TiebaBudget:
         now: datetime | None = None,
     ) -> ExternalCallDecision:
         """返回带原因的许可；暂时容量不足与终止原因分开。"""
-        moment = now or datetime.now(UTC)
-        decider = getattr(self._ledger, "register_external_call_decision", None)
-        if callable(decider):
-            decision: ExternalCallDecision = decider(
-                account_id=self._account_id,
-                run_id=self._run_id,
-                call_key=call_key,
-                purpose=purpose,
-                now=moment,
-            )
-            return decision
-        allowed = self._ledger.register_external_call(
+        return self._ledger.register_external_call_decision(
             account_id=self._account_id,
             run_id=self._run_id,
             call_key=call_key,
             purpose=purpose,
-            now=moment,
-        )
-        return ExternalCallDecision(
-            allowed=allowed,
-            reason=(
-                ExternalCallReason.ALLOWED.value
-                if allowed
-                else ExternalCallReason.WORK_TIME_EXHAUSTED.value
-            ),
-            remaining_ms=self.remaining_work_ms(moment),
+            now=now or datetime.now(UTC),
         )
 
     def record_external_call_denial(
@@ -204,10 +181,7 @@ class TiebaBudget:
         now: datetime | None = None,
     ) -> None:
         """记录一次终止性拒绝；容量等待不会走到这里。"""
-        recorder = getattr(self._ledger, "record_external_call_denial", None)
-        if not callable(recorder):
-            return
-        recorder(
+        self._ledger.record_external_call_denial(
             account_id=self._account_id,
             run_id=self._run_id,
             call_key=call_key,
@@ -222,10 +196,7 @@ class TiebaBudget:
 
     def external_call_stats(self) -> tuple[int, int, int]:
         """读取当前占位、上限与剩余工作时间；供守卫失败拒绝记录使用。"""
-        loader = getattr(self._ledger, "load", None)
-        if not callable(loader):
-            return (0, 0, self.remaining_work_ms())
-        snapshot = loader(self._account_id, self._run_id)
+        snapshot = self._ledger.load(self._account_id, self._run_id)
         if snapshot is None:
             return (0, 0, 0)
         work_deadline = snapshot.plan.deadline_at - timedelta(

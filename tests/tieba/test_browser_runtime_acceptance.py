@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from bridges.external_call_decision import ExternalCallDecision
 from bridges.tieba.browser import BrowserTiebaSearch
 from bridges.tieba.browser_runtime import TiebaBrowserError, TiebaBrowserRuntime, _BrowserWorker
 from bridges.tieba.budget import TiebaBudget, bind_request_guard
@@ -292,9 +293,20 @@ class _RequestLedger:
         self.registrations: list[dict[str, Any]] = []
         self.results: list[dict[str, Any]] = []
 
-    def register_external_call(self, **values: Any) -> bool:
+    def register_external_call_decision(
+        self, **values: Any
+    ) -> ExternalCallDecision:
         self.registrations.append(values)
-        return self.allowed
+        return ExternalCallDecision(
+            allowed=self.allowed,
+            reason="allowed" if self.allowed else "work_time_exhausted",
+        )
+
+    def record_external_call_denial(self, **_values: Any) -> None:
+        return None
+
+    def load(self, _account_id: str, _run_id: str) -> None:
+        return None
 
     def record_external_call_result(self, **values: Any) -> None:
         self.results.append(values)

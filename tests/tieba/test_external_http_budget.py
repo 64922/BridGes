@@ -11,6 +11,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
+from bridges.external_call_decision import ExternalCallDecision
 from bridges.tieba.budget import (
     BudgetedOfficialReader,
     BudgetedReader,
@@ -33,10 +34,21 @@ class _Ledger:
         self.registered: list[dict[str, object]] = []
         self.released: list[dict[str, object]] = []
 
-    def register_external_call(self, **values: object) -> bool:
+    def register_external_call_decision(
+        self, **values: object
+    ) -> ExternalCallDecision:
         if self.allow_requests:
             self.registered.append(values)
-        return self.allow_requests
+        return ExternalCallDecision(
+            allowed=self.allow_requests,
+            reason="allowed" if self.allow_requests else "work_time_exhausted",
+        )
+
+    def record_external_call_denial(self, **_values: object) -> None:
+        return None
+
+    def load(self, _account_id: str, _run_id: str) -> None:
+        return None
 
     def record_external_call_result(self, **values: object) -> None:
         self.released.append(values)

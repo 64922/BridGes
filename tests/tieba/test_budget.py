@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from bridges.contracts.modules import ModuleQueryStatus
+from bridges.external_call_decision import ExternalCallDecision
 from bridges.tieba.budget import (
     BudgetedOfficialReader,
     BudgetedSearchPort,
@@ -20,8 +21,14 @@ class _Ledger:
     def __init__(self) -> None:
         self.releases: list[dict[str, Any]] = []
 
-    def register_external_call(self, **_values: Any) -> bool:
-        return True
+    def register_external_call_decision(self, **_values: Any) -> ExternalCallDecision:
+        return ExternalCallDecision(allowed=True, reason="allowed")
+
+    def record_external_call_denial(self, **_values: Any) -> None:
+        return None
+
+    def load(self, _account_id: str, _run_id: str) -> None:
+        return None
 
     def record_external_call_result(self, **values: Any) -> None:
         self.releases.append(values)

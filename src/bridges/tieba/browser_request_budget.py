@@ -39,6 +39,7 @@ _DENIAL_MESSAGES = {
     "tieba_browser_request_guard_failed": "请求授权检查失败，未放行新的贴吧请求。",
     "tieba_browser_work_time_exhausted": "本轮剩余贴吧工作预算已耗尽，未发起后续页面请求。",
     "tieba_browser_request_queue_full": "同时等待的贴吧页面请求过多，已停止继续加载。",
+    "tieba_browser_timeout": "贴吧浏览器读取超时，请稍后重试。",
 }
 
 
@@ -51,7 +52,6 @@ class _WaitingRequest:
     request_id: int
     call_key: str
     purpose: str
-    enqueued_at: float
     last_attempt_at: float
     last_decision: ExternalCallDecision
 
@@ -95,10 +95,6 @@ class BrowserRequestBudget:
     def denial_code(self) -> str | None:
         return self._denial_code
 
-    @property
-    def terminal_denial(self) -> bool:
-        return self._terminal
-
     def handle(self, value: dict[str, Any]) -> bool | None:
         event = value.get("browser_request")
         if event == "started":
@@ -119,7 +115,7 @@ class BrowserRequestBudget:
         if self._waiting:
             now = self._clock()
             if self._deadline is not None and now >= self._deadline:
-                self._deny_all_waiting("tieba_browser_work_time_exhausted")
+                self._deny_all_waiting("tieba_browser_timeout")
                 return self._denial_code
             if self._budget_work_time_is_exhausted():
                 self._deny_all_waiting("tieba_browser_work_time_exhausted")
@@ -163,7 +159,6 @@ class BrowserRequestBudget:
                     request_id=request_id,
                     call_key=call_key,
                     purpose=purpose,
-                    enqueued_at=self._clock(),
                     last_attempt_at=self._clock(),
                     last_decision=decision,
                 )
@@ -270,7 +265,6 @@ class BrowserRequestBudget:
                 call_key=waiter.call_key,
                 purpose=waiter.purpose,
                 code=code,
-                decision=waiter.last_decision,
             )
 
     def _decide(self, call_key: str, purpose: str) -> ExternalCallDecision:
@@ -305,6 +299,7 @@ class BrowserRequestBudget:
             "tieba_browser_request_guard_failed": (
                 ExternalCallReason.GUARD_FAILED.value
             ),
+            "tieba_browser_timeout": ExternalCallReason.TIMEOUT.value,
         }.get(code, ExternalCallReason.RUN_INVALIDATED.value)
 
     def _is_waitable(self, decision: ExternalCallDecision) -> bool:
@@ -318,6 +313,7 @@ class BrowserRequestBudget:
             ExternalCallReason.CANCELLED.value: "tieba_browser_cancelled",
             ExternalCallReason.WORK_TIME_EXHAUSTED.value: "tieba_browser_work_time_exhausted",
             ExternalCallReason.RUN_INVALIDATED.value: "tieba_browser_run_invalidated",
+            ExternalCallReason.TIMEOUT.value: "tieba_browser_timeout",
         }.get(decision.reason, "tieba_browser_run_invalidated")
 
     def _budget_work_time_is_exhausted(self) -> bool:
@@ -358,5 +354,4 @@ class BrowserRequestBudget:
                 call_key=waiter.call_key,
                 purpose=waiter.purpose,
                 code="tieba_browser_run_invalidated",
-                decision=waiter.last_decision,
             )

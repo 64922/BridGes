@@ -9,6 +9,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from bridges.chat.run_budget_ledger import (
     RunBudgetLedgerRepository,
     derive_tieba_run_budget_plan,
@@ -198,7 +200,14 @@ def test_cancelled_guard_and_invalidated_reasons_are_distinct(
         assert "remaining_work_ms" in item.detail
 
 
-def test_pending_and_waiting_release_without_leaks_after_cancel(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "outcome",
+    ["browser_action_interrupted", "browser_worker_exited"],
+)
+def test_pending_and_waiting_release_without_leaks_after_termination(
+    tmp_path: Path,
+    outcome: str,
+) -> None:
     _, ledger, budget = _budget(tmp_path)
     sent: list[dict[str, Any]] = []
     scheduler = BrowserRequestBudget(budget, sent.append, deadline=time.monotonic() + 5)
@@ -208,7 +217,7 @@ def test_pending_and_waiting_release_without_leaks_after_cancel(tmp_path: Path) 
     assert scheduler.handle(_started(3)) is None
     assert scheduler.waiting_count == 1
 
-    scheduler.finish_pending("browser_action_interrupted")
+    scheduler.finish_pending(outcome)
 
     assert scheduler.active_count == 0
     assert scheduler.waiting_count == 0
@@ -239,7 +248,7 @@ def test_waiting_expires_at_action_deadline_without_leaking(tmp_path: Path) -> N
     assert scheduler.handle(_started(3)) is None
     time.sleep(0.08)
 
-    assert scheduler.tick() == "tieba_browser_work_time_exhausted"
+    assert scheduler.tick() == "tieba_browser_timeout"
     assert scheduler.waiting_count == 0
     scheduler.finish_pending("browser_action_interrupted")
 
@@ -252,7 +261,9 @@ def test_waiting_expires_at_action_deadline_without_leaking(tmp_path: Path) -> N
         if item.kind == "external_call_denied"
     ]
     assert len(denied) == 1
-    assert denied[0].outcome_code == "work_time_exhausted"
+    assert denied[0].outcome_code == "timeout"
+    assert denied[0].detail["denial_code"] == "tieba_browser_timeout"
+    assert denied[0].detail["remaining_work_ms"] > 0
 
 
 class _SequencedSearch:
@@ -274,13 +285,13 @@ class _SequencedSearch:
             return SearchOutcome(
                 record=query_record(
                     query=query,
-                    status=ModuleQueryStatus.EMPTY,
-                    evidence_count=0,
+                    status=ModuleQueryStatus.SUCCESS,
+                    evidence_count=1,
                 ),
                 hits=(),
                 candidates=(),
                 rejected=(),
-                diagnostics=HitDiagnostics(),
+                diagnostics=HitDiagnostics(raw_hits=1),
             )
         return SearchOutcome(
             record=query_record(
