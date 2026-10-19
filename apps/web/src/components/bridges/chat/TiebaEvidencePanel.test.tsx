@@ -1,7 +1,12 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { TiebaPostProjection, TiebaSummaryCitation } from "@/lib/api";
+import type {
+  TiebaOfficialCheck,
+  TiebaPostProjection,
+  TiebaResearchProjection,
+  TiebaSummaryCitation,
+} from "@/lib/api";
 
 import { TiebaEvidencePanel } from "./TiebaEvidencePanel";
 
@@ -57,10 +62,46 @@ const post: TiebaPostProjection = {
   retrieved_at: "2026-09-25T02:00:02Z",
 };
 
+const officialCheck: TiebaOfficialCheck = {
+  title: "华东交通大学学生住宿费管理办法",
+  url: "https://jwc.ecjtu.edu.cn/info/1004/3042.htm",
+  host: "jwc.ecjtu.edu.cn",
+  fetched_at: "2026-10-19T02:00:02Z",
+  status: "verified",
+  excerpt: "住宿费按学年收取，具体标准按学校规定执行。",
+  matched_terms: ["住宿费", "规定"],
+  applicability: {
+    subject: "jwc.ecjtu.edu.cn（学校官方域名页面）",
+    subject_confirmed: true,
+    campus: null,
+    campus_confirmed: null,
+    purpose_terms: ["住宿费", "规定"],
+    purpose_confirmed: true,
+    date_requirement: null,
+    date_confirmed: null,
+    applicable: true,
+    note: "页面说明了本校或主管部门主体。已定位到相关规定用途。",
+  },
+};
+
+function officialResearch(
+  overrides: Partial<TiebaResearchProjection> = {}
+): TiebaResearchProjection {
+  return {
+    official_checks: [officialCheck],
+    official_check_requested: true,
+    official_unverified_note: null,
+    official_blocked_reason: null,
+    conflicts: [],
+    ...overrides,
+  } as unknown as TiebaResearchProjection;
+}
+
 function renderPanel(
   options: {
     citation?: TiebaSummaryCitation;
     post?: TiebaPostProjection | null;
+    research?: TiebaResearchProjection | null;
   } = {}
 ) {
   const onClose = vi.fn();
@@ -71,6 +112,7 @@ function renderPanel(
         messageId: "a-1",
         citation: options.citation ?? citation,
         post: options.post === undefined ? post : options.post,
+        research: options.research ?? null,
       }}
       onClose={onClose}
     />
@@ -138,6 +180,39 @@ describe("贴吧引用右侧资料面板（工单 10）", () => {
     );
     expect(screen.getByTestId("tieba-evidence-no-replies").textContent).toContain(
       "不能补写回复内容"
+    );
+  });
+
+  it("引用详情同时展示吧友原文与学校官方依据", () => {
+    renderPanel({ research: officialResearch() });
+
+    expect(screen.getByTestId("tieba-evidence-quote").textContent).toContain(
+      "南区六人间"
+    );
+    const official = screen.getByTestId("tieba-evidence-official");
+    expect(official.textContent).toContain("学校官方依据");
+    expect(official.textContent).toContain("华东交通大学学生住宿费管理办法");
+    expect(official.textContent).toContain("住宿费按学年收取");
+    expect(official.textContent).toContain("适用性核对");
+    expect(
+      screen.getByTestId("tieba-official-jwc.ecjtu.edu.cn-excerpt").textContent
+    ).toContain("住宿费按学年收取");
+  });
+
+  it("官网未核实或失败时，引用详情保留说明与贴吧原文", () => {
+    renderPanel({
+      research: officialResearch({
+        official_checks: [],
+        official_unverified_note:
+          "本轮未取得可适用的学校官方原文，官方规定保持未核实；吧友说法不构成官方结论。",
+      }),
+    });
+
+    const official = screen.getByTestId("tieba-evidence-official");
+    expect(official.textContent).toContain("本轮未取得学校官方页面");
+    expect(official.textContent).toContain("官方规定保持未核实");
+    expect(screen.getByTestId("tieba-evidence-quote").textContent).toContain(
+      "南区六人间"
     );
   });
 

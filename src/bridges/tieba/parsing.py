@@ -19,6 +19,7 @@ from bridges.tieba.lexicon import (
     EXPERIENCE_SIGNALS,
     OFFICIAL_TRIGGERS,
     TARGET_FORUM_NAME,
+    VERIFICATION_MARKERS,
     detect_campus_terms,
     detect_experience_signals,
     detect_official_topics,
@@ -84,8 +85,7 @@ def parse_tieba_request(
     experience_signals = detect_experience_signals(original_question, terms)
     # 主题涉及规定不等于请求核实规定；讨论搜集的来源仍默认限定贴吧。
     verification_requested = any(
-        marker in original_question
-        for marker in ("核实", "核验", "查证", "确认", "真伪", "属实", "官网", "官方")
+        marker in original_question for marker in VERIFICATION_MARKERS
     )
     discussion_requested = any(
         marker in original_question for marker in ("讨论", "搜集", "收集", "吐槽", "经历", "评价")
@@ -94,7 +94,13 @@ def parse_tieba_request(
         official_topics if verification_requested or not discussion_requested else [],
         experience_signals,
     )
-    if verification_requested and question_kind is TiebaQuestionKind.EXPERIENCE:
+    # 只有明确要求核实、且问题含规定类名词时才追加官网；否则「核实宿舍
+    # 条件」仍是体验类核实，来源继续限定贴吧。
+    if (
+        verification_requested
+        and official_topics
+        and question_kind is TiebaQuestionKind.EXPERIENCE
+    ):
         question_kind = TiebaQuestionKind.MIXED
 
     analysis = TiebaQuestionAnalysis(

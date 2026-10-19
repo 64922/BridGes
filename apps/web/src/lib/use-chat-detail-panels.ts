@@ -10,6 +10,7 @@ import type {
   CommuteRouteProjection,
   PaperSearchProjection,
   TiebaPostProjection,
+  TiebaResearchProjection,
   TiebaSummaryCitation,
 } from "@/lib/api";
 import type { ChatMediaSelection, ChatMediaTarget } from "@/lib/chat-media";
@@ -172,11 +173,18 @@ export function useChatDetailPanels(conversationId: string) {
       messageId: string,
       citation: TiebaSummaryCitation,
       post: TiebaPostProjection | null,
+      research: TiebaResearchProjection,
       trigger: HTMLButtonElement
     ) => {
       clearOthers("tieba");
       triggerRefs.current.tieba = trigger;
-      setTiebaSelection({ conversationId, messageId, citation, post });
+      setTiebaSelection({
+        conversationId,
+        messageId,
+        citation,
+        post,
+        research,
+      });
     },
     [clearOthers, conversationId]
   );
