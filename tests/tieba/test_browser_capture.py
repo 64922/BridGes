@@ -99,6 +99,9 @@ def test_search_structured_uses_valid_payload_and_ignores_malformed_one() -> Non
             "snippet": "华东交通大学吧\n北区宿舍热水怎么样？",
             "discovery_type": "thread",
             "matched_reply": None,
+            "matched_reply_id": None,
+            "matched_author": None,
+            "search_page": 1,
         }
     ]
 

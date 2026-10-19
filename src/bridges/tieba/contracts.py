@@ -15,6 +15,15 @@ from pydantic import BaseModel, Field
 from bridges.contracts.modules import ModuleQueryRecord, ModuleWaitState
 from bridges.tieba.lexicon import TARGET_FORUM_NAME
 from bridges.tieba.run_metadata import TiebaRunMetadata
+from bridges.tieba.search_contracts import (
+    TiebaSearchDiscovery as TiebaSearchDiscovery,
+)
+from bridges.tieba.search_contracts import (
+    TiebaSearchHit as TiebaSearchHit,
+)
+from bridges.tieba.search_contracts import (
+    TiebaSearchScope as TiebaSearchScope,
+)
 
 
 class TiebaResearchStatus(StrEnum):
@@ -140,22 +149,6 @@ class TiebaEvidencePlan(BaseModel):
         default_factory=list, description="官方路径的有界查询词（受限时为省略）。"
     )
     rationale: str = Field(default="", description="为什么这样安排来源顺序的中文说明。")
-
-
-class TiebaSearchHit(BaseModel):
-    """允许的搜索服务返回的候选（尚未确认真属目标贴吧）。"""
-
-    url: str = Field(description="候选帖链接。")
-    title: str = Field(description="搜索服务给出的标题（未核实页面）。")
-    snippet: str = Field(default="", description="搜索摘要（只作排除他吧的证据使用）。")
-    thread_id: str | None = Field(default=None, description="帖子 ID；非帖子链接为 None。")
-    source: str = Field(default="tavily", description="候选实际发现来源。")
-    discovery_type: str = Field(
-        default="thread", description="从主题搜索或回复搜索发现。"
-    )
-    matched_reply: str | None = Field(
-        default=None, description="回复搜索结果中的实际命中片段；仅用于发现候选。"
-    )
 
 
 class TiebaRejectedCandidate(BaseModel):
@@ -304,6 +297,9 @@ class TiebaPostProjection(BaseModel):
     read_error_message: str | None = Field(
         default=None, description="未取得内容时的中文原因说明。"
     )
+    discoveries: list[TiebaSearchDiscovery] = Field(
+        default_factory=list, description="该帖在搜索阶段的发现路径。"
+    )
     retrieved_at: datetime = Field(description="读取时间。")
 
 
@@ -318,6 +314,9 @@ class TiebaCandidateLink(BaseModel):
     )
     read_error_code: str | None = Field(
         default=None, description="页面读取失败分类码；用于认证续接与故障说明。"
+    )
+    discoveries: list[TiebaSearchDiscovery] = Field(
+        default_factory=list, description="该帖在搜索阶段的发现路径。"
     )
 
 
@@ -446,6 +445,9 @@ class TiebaResearchProjection(BaseModel):
     time_filter: TiebaTimeFilter = Field(description="时间条件的执行状态。")
     queries: list[ModuleQueryRecord] = Field(
         default_factory=list, description="每次外部调用的统一记录（查询词/条数/时间/错误）。"
+    )
+    search_scope: list[TiebaSearchScope] = Field(
+        default_factory=list, description="每个搜索页签实际读取的页范围与停止原因。"
     )
     forum: str = Field(default=TARGET_FORUM_NAME, description="目标贴吧名称。")
     confirmed_posts: list[TiebaPostProjection] = Field(

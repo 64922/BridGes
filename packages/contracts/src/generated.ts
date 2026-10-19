@@ -28815,6 +28815,11 @@ export interface components {
              * @description 页面读取失败分类码；用于认证续接与故障说明。
              */
             read_error_code?: string | null;
+            /**
+             * Discoveries
+             * @description 该帖在搜索阶段的发现路径。
+             */
+            discoveries?: components["schemas"]["TiebaSearchDiscovery"][];
         };
         /**
          * TiebaConflict
@@ -29119,6 +29124,11 @@ export interface components {
              */
             read_error_message?: string | null;
             /**
+             * Discoveries
+             * @description 该帖在搜索阶段的发现路径。
+             */
+            discoveries?: components["schemas"]["TiebaSearchDiscovery"][];
+            /**
              * Retrieved At
              * Format: date-time
              * @description 读取时间。
@@ -29296,6 +29306,11 @@ export interface components {
              */
             queries?: components["schemas"]["ModuleQueryRecord"][];
             /**
+             * Search Scope
+             * @description 每个搜索页签实际读取的页范围与停止原因。
+             */
+            search_scope?: components["schemas"]["TiebaSearchScope"][];
+            /**
              * Forum
              * @description 目标贴吧名称。
              * @default 华东交通大学吧
@@ -29460,6 +29475,12 @@ export interface components {
              */
             search_request_count: number;
             /**
+             * Search Page Count
+             * @description 实际读取的搜索页数（含主题与回复）。
+             * @default 0
+             */
+            search_page_count: number;
+            /**
              * Read Request Count
              * @description 帖子读取请求数。
              * @default 0
@@ -29499,6 +29520,105 @@ export interface components {
              * @description 实际未读取的页、楼层或内容范围。
              */
             unread_scope?: string[];
+        };
+        /**
+         * TiebaSearchDiscovery
+         * @description 一条候选发现路径：主题搜索或回复搜索、页码与回复定位。
+         *
+         *     同一个帖子可能先由主题搜索发现，又由回复搜索命中；两条路径都要保留，
+         *     否则读取与总结阶段会丢掉「标题不含话题、只有回复提到」的线索。
+         */
+        TiebaSearchDiscovery: {
+            /**
+             * Discovery Type
+             * @description thread 或 reply。
+             * @default thread
+             */
+            discovery_type: string;
+            /**
+             * Query
+             * @description 实际发送的吧内检索词。
+             */
+            query?: string | null;
+            /**
+             * Search Page
+             * @description 命中所处的搜索页（1 基）。
+             */
+            search_page?: number | null;
+            /**
+             * Matched Reply
+             * @description 回复搜索中的实际命中片段；仅用于发现候选。
+             */
+            matched_reply?: string | null;
+            /**
+             * Matched Reply Id
+             * @description 回复命中对应的楼层或楼中楼 ID；未知时为 None。
+             */
+            matched_reply_id?: string | null;
+            /**
+             * Matched Author
+             * @description 回复命中对应的发言者；未知时为 None。
+             */
+            matched_author?: string | null;
+            /**
+             * Source
+             * @description 发现路径的来源。
+             * @default tieba_browser
+             */
+            source: string;
+        };
+        /**
+         * TiebaSearchScope
+         * @description 一个搜索页签实际读到的页范围与停止原因。
+         */
+        TiebaSearchScope: {
+            /**
+             * Tab
+             * @description thread（主题）或 reply（回复）。
+             */
+            tab: string;
+            /**
+             * Query
+             * @description 实际发送的吧内检索词。
+             */
+            query: string;
+            /**
+             * Pages Read
+             * @description 实际成功解析的页数。
+             * @default 0
+             */
+            pages_read: number;
+            /**
+             * Pages Limit
+             * @description 本页签允许读取的最大页数。
+             * @default 0
+             */
+            pages_limit: number;
+            /**
+             * Visited Pages
+             * @description 实际读到的页码。
+             */
+            visited_pages?: number[];
+            /**
+             * Last Page
+             * @description 最后读到的页码。
+             */
+            last_page?: number | null;
+            /**
+             * Has More
+             * @description 最后响应是否声明还有后续页；未知时为 None。
+             */
+            has_more?: boolean | null;
+            /**
+             * Stop Reason
+             * @description 停止翻页的分类码；正常读完为 None。
+             */
+            stop_reason?: string | null;
+            /**
+             * Note
+             * @description 面向用户的页范围说明。
+             */
+            note?: string | null;
         };
         /**
          * TiebaSummaryCitation

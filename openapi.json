@@ -65067,6 +65067,14 @@
             ],
             "title": "Read Error Code",
             "description": "页面读取失败分类码；用于认证续接与故障说明。"
+          },
+          "discoveries": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaSearchDiscovery"
+            },
+            "type": "array",
+            "title": "Discoveries",
+            "description": "该帖在搜索阶段的发现路径。"
           }
         },
         "type": "object",
@@ -65567,6 +65575,14 @@
             "title": "Read Error Message",
             "description": "未取得内容时的中文原因说明。"
           },
+          "discoveries": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaSearchDiscovery"
+            },
+            "type": "array",
+            "title": "Discoveries",
+            "description": "该帖在搜索阶段的发现路径。"
+          },
           "retrieved_at": {
             "type": "string",
             "format": "date-time",
@@ -65846,6 +65862,14 @@
             "type": "array",
             "title": "Queries",
             "description": "每次外部调用的统一记录（查询词/条数/时间/错误）。"
+          },
+          "search_scope": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaSearchScope"
+            },
+            "type": "array",
+            "title": "Search Scope",
+            "description": "每个搜索页签实际读取的页范围与停止原因。"
           },
           "forum": {
             "type": "string",
@@ -66144,6 +66168,12 @@
             "description": "贴吧检索请求数。",
             "default": 0
           },
+          "search_page_count": {
+            "type": "integer",
+            "title": "Search Page Count",
+            "description": "实际读取的搜索页数（含主题与回复）。",
+            "default": 0
+          },
           "read_request_count": {
             "type": "integer",
             "title": "Read Request Count",
@@ -66198,6 +66228,174 @@
         ],
         "title": "TiebaRunMetadata",
         "description": "一轮贴吧采集的可核对运行记录（不含会话秘密或原始响应）。"
+      },
+      "TiebaSearchDiscovery": {
+        "properties": {
+          "discovery_type": {
+            "type": "string",
+            "title": "Discovery Type",
+            "description": "thread 或 reply。",
+            "default": "thread"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query",
+            "description": "实际发送的吧内检索词。"
+          },
+          "search_page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search Page",
+            "description": "命中所处的搜索页（1 基）。"
+          },
+          "matched_reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Reply",
+            "description": "回复搜索中的实际命中片段；仅用于发现候选。"
+          },
+          "matched_reply_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Reply Id",
+            "description": "回复命中对应的楼层或楼中楼 ID；未知时为 None。"
+          },
+          "matched_author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Author",
+            "description": "回复命中对应的发言者；未知时为 None。"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "发现路径的来源。",
+            "default": "tieba_browser"
+          }
+        },
+        "type": "object",
+        "title": "TiebaSearchDiscovery",
+        "description": "一条候选发现路径：主题搜索或回复搜索、页码与回复定位。\n\n同一个帖子可能先由主题搜索发现，又由回复搜索命中；两条路径都要保留，\n否则读取与总结阶段会丢掉「标题不含话题、只有回复提到」的线索。"
+      },
+      "TiebaSearchScope": {
+        "properties": {
+          "tab": {
+            "type": "string",
+            "title": "Tab",
+            "description": "thread（主题）或 reply（回复）。"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "实际发送的吧内检索词。"
+          },
+          "pages_read": {
+            "type": "integer",
+            "title": "Pages Read",
+            "description": "实际成功解析的页数。",
+            "default": 0
+          },
+          "pages_limit": {
+            "type": "integer",
+            "title": "Pages Limit",
+            "description": "本页签允许读取的最大页数。",
+            "default": 0
+          },
+          "visited_pages": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Visited Pages",
+            "description": "实际读到的页码。"
+          },
+          "last_page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Page",
+            "description": "最后读到的页码。"
+          },
+          "has_more": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has More",
+            "description": "最后响应是否声明还有后续页；未知时为 None。"
+          },
+          "stop_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Reason",
+            "description": "停止翻页的分类码；正常读完为 None。"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "面向用户的页范围说明。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tab",
+          "query"
+        ],
+        "title": "TiebaSearchScope",
+        "description": "一个搜索页签实际读到的页范围与停止原因。"
       },
       "TiebaSummaryCitation": {
         "properties": {

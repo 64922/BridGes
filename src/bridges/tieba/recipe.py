@@ -29,16 +29,16 @@ NODE_VERIFY = "tieba.verify"
 
 TIEBA_RECIPE_ID = "tieba-research"
 
-TIEBA_RECIPE_VERSION = "tieba-recipe-v7"
+TIEBA_RECIPE_VERSION = "tieba-recipe-v8"
 
 #: 各节点能力版本（产物兼容性与收据键的一部分）。
 TIEBA_CAPABILITY_VERSIONS: dict[str, str] = {
     "tieba.parse_request": "tieba-parse-v6",
     "tieba.plan_evidence": "tieba-plan-v6",
     "tieba.verify_official_pages": "tieba-official-v5",
-    "tieba.search_threads": "tieba-search-v9",
-    "tieba.read_threads": "tieba-read-v8",
-    "tieba.synthesize_evidence": "tieba-synthesize-v7",
+    "tieba.search_threads": "tieba-search-v10",
+    "tieba.read_threads": "tieba-read-v9",
+    "tieba.synthesize_evidence": "tieba-synthesize-v8",
     "tieba.verify_evidence": "tieba-verify-v4",
 }
 

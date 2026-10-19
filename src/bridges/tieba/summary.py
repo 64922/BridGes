@@ -16,6 +16,7 @@ from bridges.tieba.contracts import (
     TiebaSummaryClaim,
     TiebaSummaryClaimKind,
 )
+from bridges.tieba.recipe import TIEBA_RECIPE_VERSION
 from bridges.tieba.summary_material import (
     aggregation_payload,
     build_verification_payload,
@@ -401,7 +402,7 @@ class TiebaSummaryGenerator:
                 prompt_version=SUMMARY_PROMPT_VERSION,
                 input_schema_version="tieba-read-evidence-v2",
                 output_schema_version=SUMMARY_SCHEMA_VERSION,
-                recipe_version="tieba-recipe-v7",
+                recipe_version=TIEBA_RECIPE_VERSION,
                 context_compile_version="payload-budget-v2",
                 quality_policy_version="tieba-citation-support-v1",
                 estimate_version="token-estimate-v2",

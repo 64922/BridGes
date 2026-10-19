@@ -17,6 +17,7 @@ from bridges.tieba.contracts import (
     TiebaRejectedCandidate,
     TiebaResearchProjection,
     TiebaResearchStatus,
+    TiebaSearchScope,
     TiebaTimeFilter,
 )
 from bridges.tieba.evidence import ReadOutcome
@@ -87,6 +88,7 @@ def build_projection(
     surface_error = ended_in_error or retryable
     return TiebaResearchProjection(
         status=status,
+        search_scope=list(attempts.scope) if attempts is not None else [],
         topic=topic_of(analysis) or FORUM_NAME,
         original_question=analysis.original_question,
         topic_terms=list(analysis.topic_terms),
@@ -142,6 +144,7 @@ def evidence_boundary(
     ]
     if attempts is not None:
         notes.extend(attempts.rounds)
+        notes.extend(_search_scope_notes(attempts.scope))
     if unconfirmed and reads is not None:
         notes.append(
             f"另有 {reads.unconfirmed_total} 条候选帖没有取得页面（其中页面不可读 "
@@ -169,6 +172,31 @@ def evidence_boundary(
             "原始命中数不等于确认帖子数。"
         )
     notes.append("总结仅基于实际取得的页面原文生成，引用指向本轮读取的发言；不补写未取得内容。")
+    return notes
+
+
+def _search_scope_notes(scope: Sequence[TiebaSearchScope]) -> list[str]:
+    notes: list[str] = []
+    for item in scope:
+        label = "主题" if item.tab == "thread" else "回复"
+        pages = (
+            f"第 {item.visited_pages[0]}–{item.visited_pages[-1]} 页"
+            if item.visited_pages
+            else "未读到页面"
+        )
+        note = (
+            f"搜索页签「{label}」查询「{item.query}」："
+            f"已读 {pages}（上限 {item.pages_limit} 页）"
+        )
+        if item.has_more is True:
+            note += "，页面声明还有后续结果"
+        elif item.has_more is False:
+            note += "，页面声明没有更多结果"
+        else:
+            note += "，页面未声明是否还有后续结果"
+        if item.note:
+            note += f"；{item.note}"
+        notes.append(note + "。")
     return notes
 
 
