@@ -152,6 +152,39 @@ def read_outcome(invocation: NodeInvocation) -> ReadOutcome:
     )
 
 
+def search_attempts_payload(attempts: SearchAttempts) -> dict[str, Any]:
+    """把检索结果转成可持久化载荷（最终产物与中途检查点共用）。"""
+    return {
+        "candidates": [hit.model_dump(mode="json") for hit in attempts.hits],
+        "rejected": [item.model_dump(mode="json") for item in attempts.rejected],
+        "records": [record.model_dump(mode="json") for record in attempts.records],
+        "rounds": list(attempts.rounds),
+        "raw_hits": attempts.diagnostics.raw_hits,
+        "usable": attempts.diagnostics.usable,
+        "search_scope": [scope.model_dump(mode="json") for scope in attempts.scope],
+        "partial": attempts.partial,
+        "closeout_reason": attempts.closeout_reason,
+    }
+
+
+def read_outcome_payload(reads: ReadOutcome) -> dict[str, Any]:
+    """把读取结果转成可持久化载荷（最终产物与中途检查点共用）。"""
+    return {
+        "confirmed": [post.model_dump(mode="json") for post in reads.confirmed],
+        "rejected": [item.model_dump(mode="json") for item in reads.rejected],
+        "unconfirmed": [link.model_dump(mode="json") for link in reads.unconfirmed],
+        "unreadable": reads.unreadable,
+        "not_attempted": reads.not_attempted,
+        "unconfirmed_total": reads.unconfirmed_total,
+        "attempted_urls": list(reads.attempted_urls),
+        "retry_urls": list(reads.retry_urls),
+        "partial": reads.partial,
+        "first_pass_read_count": reads.first_pass_read_count,
+        "deepened_post_count": reads.deepened_post_count,
+        "closeout_reason": reads.closeout_reason,
+    }
+
+
 def dependency_payload(invocation: NodeInvocation, node: str) -> dict[str, Any]:
     return dict(invocation.dependencies[node].payload)
 

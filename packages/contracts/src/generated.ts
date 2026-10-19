@@ -29350,6 +29350,45 @@ export interface components {
          */
         TiebaQuestionKind: "policy" | "experience" | "mixed";
         /**
+         * TiebaRecovery
+         * @description 恢复入口的真实范围：是否自动、是否复用已保存证据、失败阶段。
+         */
+        TiebaRecovery: {
+            /**
+             * @description 恢复动作类型。
+             * @default none
+             */
+            action: components["schemas"]["TiebaRecoveryAction"];
+            /**
+             * Automatic
+             * @description 是否会自行续接。
+             * @default false
+             */
+            automatic: boolean;
+            /**
+             * Reuses Saved Evidence
+             * @description 恢复时是否复用已保存的检索或页面证据。
+             * @default false
+             */
+            reuses_saved_evidence: boolean;
+            /**
+             * Failed Stage
+             * @description 失败或未完成的节点。
+             */
+            failed_stage?: string | null;
+            /**
+             * Scope Note
+             * @description 面向用户的中文恢复范围说明。
+             */
+            scope_note?: string | null;
+        };
+        /**
+         * TiebaRecoveryAction
+         * @description 服务端明确给出的恢复动作。
+         * @enum {string}
+         */
+        TiebaRecoveryAction: "none" | "continue_auth" | "retry_incomplete_stage" | "retry_run";
+        /**
          * TiebaRejectedCandidate
          * @description 被剔除的候选与剔除理由（他吧同名帖必须留下痕迹，不静默丢弃）。
          */
@@ -29624,6 +29663,8 @@ export interface components {
              * @default false
              */
             retryable: boolean;
+            /** @description 服务端给出的恢复动作与真实复用范围。 */
+            recovery?: components["schemas"]["TiebaRecovery"] | null;
             /**
              * Error Code
              * @description 失败分类码。

@@ -171,6 +171,7 @@ export function tiebaResearch(
     error_message: null,
     completed_at: null,
     pending: null,
+    recovery: null,
     ...overrides,
   };
 }

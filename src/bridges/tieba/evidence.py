@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -89,6 +90,7 @@ def read_candidates(
     stop_event: threading.Event | None,
     deadline_seconds: float,
     resume: dict[str, Any] | None = None,
+    checkpoint: Callable[[ReadOutcome], None] | None = None,
 ) -> ReadOutcome:
     """读取候选：只有页面自身确认属于目标贴吧的帖子才算确认。
 
@@ -138,6 +140,26 @@ def read_candidates(
     deep_failed = False
     deadline = time.monotonic() + deadline_seconds
     excluded_wait_seconds = 0.0
+
+    def notify() -> None:
+        if checkpoint is None:
+            return
+        checkpoint(
+            ReadOutcome(
+                confirmed=list(confirmed),
+                rejected=list(rejected),
+                unconfirmed=list(links),
+                unreadable=unreadable,
+                not_attempted=0,
+                unconfirmed_total=len(links),
+                attempted_urls=tuple(sorted(attempted | new_attempted)),
+                retry_urls=tuple(sorted(retry_urls)),
+                partial=True,
+                first_pass_read_count=first_pass_read_count,
+                deepened_post_count=deepened_post_count,
+                closeout_reason="checkpoint",
+            )
+        )
     # 回复命中往往来自标题不含话题的帖子；先给它们读取机会，避免被主题词
     # 的前几条候选永久挤在读取上限之外。
     ordered_hits = tuple(
@@ -199,6 +221,7 @@ def read_candidates(
             partial = True
             closeout_reason = "auth_required"
             stopped_index = index
+            notify()
             break
         if _budget_blocked(result.error_code):
             unreadable += 1
@@ -212,6 +235,7 @@ def read_candidates(
             partial = True
             closeout_reason = "budget_exhausted"
             stopped_index = index
+            notify()
             break
         retry_urls.discard(hit.url)
         action, post, rejected_item = _classify_read(hit, result, topic_analysis)
@@ -229,6 +253,7 @@ def read_candidates(
                     read_error_code=result.error_code,
                 )
             )
+        notify()
     if closeout_reason == "completed":
         if len(confirmed) >= SUFFICIENT_CONFIRMED_POSTS and all(
             post.replies_obtained for post in confirmed
@@ -280,6 +305,7 @@ def read_candidates(
                     if _improved(post, deeper):
                         confirmed[confirmed.index(post)] = deeper
                         deepened_post_count += 1
+                        notify()
                 else:
                     deep_failed = True
             if closeout_reason == "completed" and deep_failed:

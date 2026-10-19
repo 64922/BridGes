@@ -88,6 +88,14 @@ export function AssistantActions({
     onRetry != null &&
     (retryableDone || legacyFailure) &&
     hasRealRetryCommand(message, message.turnResult ?? null);
+  const tiebaRecovery = message.tiebaResearch?.recovery;
+  const retryLabel = legacyFailure
+    ? "重试"
+    : tiebaRecovery?.action === "retry_incomplete_stage"
+      ? "重试未完成阶段"
+      : tiebaRecovery?.action === "retry_run"
+        ? "重新运行"
+        : "重新生成";
 
   return (
     <div
@@ -129,7 +137,7 @@ export function AssistantActions({
       {showRetry && (
         <MessageAction
           icon="retry"
-          label={legacyFailure ? "重试" : "重新生成"}
+          label={retryLabel}
           onClick={() => onRetry?.(message.id)}
         />
       )}

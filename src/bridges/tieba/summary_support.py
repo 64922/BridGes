@@ -11,12 +11,25 @@ from bridges.tieba.summary_contracts import (
     SUMMARY_CLAIMS_SCHEMA,
     SUMMARY_VERIFY_SCHEMA,
     TiebaSummaryMetrics,
+    TiebaSummaryOutcome,
 )
 
 
 def merge_notes(*parts: str | None) -> str | None:
     values = [part for part in parts if part]
     return "；".join(dict.fromkeys(values)) or None
+
+
+def stopped_outcome(
+    tracker: TiebaSummaryTracker, notes: list[str]
+) -> TiebaSummaryOutcome:
+    return TiebaSummaryOutcome(
+        None,
+        [],
+        [],
+        merge_notes("已停止，未继续调用模型。", *notes),
+        tracker.snapshot(),
+    )
 
 
 def request_payload(
@@ -75,4 +88,9 @@ class TiebaSummaryTracker:
         )
 
 
-__all__ = ["TiebaSummaryTracker", "merge_notes", "request_payload"]
+__all__ = [
+    "TiebaSummaryTracker",
+    "merge_notes",
+    "request_payload",
+    "stopped_outcome",
+]

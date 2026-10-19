@@ -99,6 +99,7 @@ export function TiebaAnswer({
     research.status === "clarification" || research.status === "waiting_auth";
   const failed = research.status === "error";
   const stopped = research.status === "stopped";
+  const recovery = research.recovery;
   const hasSummary = Boolean(research.summary);
   const hasClaims = claims.length > 0;
   const fallback = fallbackText?.trim() ?? "";
@@ -144,7 +145,9 @@ export function TiebaAnswer({
             }}
           >
             {research.status === "waiting_auth"
-              ? "请在当前账户专用的贴吧会话中完成登录或安全验证，然后在聊天里回复“继续”；系统会沿用原话题。不会读取系统浏览器凭据，也不会绕过验证。"
+              ? recovery?.scope_note
+                ? `${recovery.scope_note}不会读取系统浏览器凭据，也不会绕过验证。`
+                : "请在当前账户专用的贴吧会话中完成登录或安全验证，然后在聊天里回复“继续”；系统会沿用原话题。不会读取系统浏览器凭据，也不会绕过验证。"
               : "直接在下方回复即可；回复会带着「贴吧信息搜集」模块发出（输入框上方的模块标签可随时移除）。"}
           </p>
         </div>
@@ -179,9 +182,26 @@ export function TiebaAnswer({
           aria-live="polite"
           style={{ margin: 0, color: "var(--color-text-secondary)" }}
         >
-          本轮已停止贴吧检索，已读范围与引用保留；不会自动继续。
+          {recovery?.scope_note ?? "本轮已停止贴吧检索，已读范围与引用保留；不会自动继续。"}
         </p>
       )}
+
+      {recovery &&
+        recovery.action !== "none" &&
+        recovery.action !== "continue_auth" &&
+        recovery.scope_note && (
+          <p
+            data-testid="tieba-recovery"
+            role="status"
+            style={{
+              margin: 0,
+              color: "var(--color-text-secondary)",
+              fontSize: "var(--text-xs)",
+            }}
+          >
+            {recovery.scope_note}
+          </p>
+        )}
 
       {hasSummary && (
         <>
@@ -337,10 +357,14 @@ export function TiebaAnswer({
               cursor: "pointer",
             }}
           >
-            <Icon name="retry" size={14} aria-hidden /> 重跑本轮
+            <Icon name="retry" size={14} aria-hidden />{" "}
+            {recovery?.action === "retry_incomplete_stage"
+              ? "重试未完成阶段"
+              : "重跑本轮"}
           </button>
           <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
-            会重跑整轮对话（包含贴吧检索），不会只补缺失回复。
+            {recovery?.scope_note ??
+              "会重跑整轮对话（包含贴吧检索），不会只补缺失回复。"}
           </span>
         </div>
       )}

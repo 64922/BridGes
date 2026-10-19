@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any
 
 from bridges.ai.model_quota import RunModelQuota
 from bridges.ai.payload_budget import evaluate_payload_gate
-from bridges.contracts.ai import CallContractVersions, ModelCallResult
+from bridges.contracts.ai import ModelCallResult
 from bridges.tieba.contracts import (
     TiebaPostProjection,
     TiebaSummaryCitation,
@@ -16,7 +17,6 @@ from bridges.tieba.contracts import (
     TiebaTimeFilter,
     TiebaTimeScopeMode,
 )
-from bridges.tieba.recipe import TIEBA_RECIPE_VERSION
 from bridges.tieba.summary_contracts import (
     ITEMS_PER_BATCH,
     MAX_BATCH_CALLS,
@@ -24,15 +24,13 @@ from bridges.tieba.summary_contracts import (
     MAX_SUMMARY_CLAIMS,
     SUMMARY_AGGREGATE_INSTRUCTION,
     SUMMARY_CLAIMS_INSTRUCTION,
-    SUMMARY_INPUT_SCHEMA_VERSION,
     SUMMARY_OUTPUT_TOKENS,
-    SUMMARY_PROMPT_VERSION,
-    SUMMARY_SCHEMA_VERSION,
     SUMMARY_VERIFY_INSTRUCTION,
     VERIFY_OUTPUT_TOKENS,
     TiebaSummaryAuditError,
     TiebaSummaryOutcome,
 )
+from bridges.tieba.summary_invocation import invoke_summary
 from bridges.tieba.summary_material import (
     aggregation_payload,
     build_verification_payload,
@@ -49,6 +47,7 @@ from bridges.tieba.summary_support import (
     TiebaSummaryTracker,
     merge_notes,
     request_payload,
+    stopped_outcome,
 )
 
 
@@ -75,6 +74,7 @@ class TiebaSummaryGenerator:
         model_id: str | None,
         model_quota: RunModelQuota | None,
         budget: Any = None,
+        stop_event: threading.Event | None = None,
     ) -> TiebaSummaryOutcome:
         all_materials = sources(posts)
         tracker = TiebaSummaryTracker(
@@ -158,6 +158,10 @@ class TiebaSummaryGenerator:
         if omitted_sources:
             batch_notes.append(f"超过模型素材上限，另有 {omitted_sources} 条已读原文未进入总结。")
         materials = materials[:MAX_EVIDENCE_ITEMS]
+
+        if stop_event is not None and stop_event.is_set():
+            return stopped_outcome(tracker, batch_notes)
+
         batches = [
             materials[index : index + ITEMS_PER_BATCH]
             for index in range(0, len(materials), ITEMS_PER_BATCH)
@@ -167,6 +171,8 @@ class TiebaSummaryGenerator:
         summary_calls = 0
         batch_index = 0
         while pending_batches and summary_calls < MAX_BATCH_CALLS:
+            if stop_event is not None and stop_event.is_set():
+                return stopped_outcome(tracker, batch_notes)
             batch = pending_batches.pop(0)
             batch_index += 1
             payload = summary_payload(topic, batch)
@@ -211,6 +217,8 @@ class TiebaSummaryGenerator:
                 tracker.failed_batch_count += 1
                 batch_notes.append(f"第 {batch_index} 组模型总结调用失败。")
                 continue
+            if stop_event is not None and stop_event.is_set():
+                return stopped_outcome(tracker, batch_notes)
             tracker.succeeded_batch_count += 1
             parsed_claims = read_claims(result)
             allowed = {str(item["id"]) for item in batch if not item.get("context_only")}
@@ -279,6 +287,8 @@ class TiebaSummaryGenerator:
                 ),
                 tracker.snapshot(),
             )
+        if stop_event is not None and stop_event.is_set():
+            return stopped_outcome(tracker, batch_notes)
         tracker.model_call_count += 1
         try:
             aggregated = self._invoke(
@@ -302,6 +312,8 @@ class TiebaSummaryGenerator:
                 merge_notes("观点语义整合失败；未提交分段拼接式摘要。", *batch_notes),
                 tracker.snapshot(),
             )
+        if stop_event is not None and stop_event.is_set():
+            return stopped_outcome(tracker, batch_notes)
         aggregate_summary = read_summary(aggregated)
         if aggregate_summary and contains_consensus_phrase(aggregate_summary):
             batch_notes.append("连贯总结含全体共识式表述，未提交该正文。")
@@ -373,6 +385,8 @@ class TiebaSummaryGenerator:
                 ),
                 tracker.snapshot(),
             )
+        if stop_event is not None and stop_event.is_set():
+            return stopped_outcome(tracker, batch_notes)
         tracker.model_call_count += 1
         try:
             checked = self._invoke(
@@ -399,6 +413,8 @@ class TiebaSummaryGenerator:
                 ),
                 tracker.snapshot(),
             )
+        if stop_event is not None and stop_event.is_set():
+            return stopped_outcome(tracker, batch_notes)
         supported = supported_indices(checked, verify_count)
         supported_claims = [
             claim for index, claim in enumerate(summary_claims) if index in supported
@@ -465,32 +481,16 @@ class TiebaSummaryGenerator:
         *,
         final_payload: dict[str, Any] | None = None,
     ) -> ModelCallResult:
-        model_payload = final_payload or request_payload(
-            instruction, payload, output_key, output_tokens
-        )
-        result = self._gateway.invoke(
-            "qwen_structured_output",
-            "1",
+        return invoke_summary(
+            self._gateway,
+            self._on_result,
+            instruction,
+            payload,
             run_context,
-            model_payload,
-            budget=budget,
-            model_override=model_id,
-            model_quota=quota,
-            call_contract=CallContractVersions(
-                prompt_version=SUMMARY_PROMPT_VERSION,
-                input_schema_version=SUMMARY_INPUT_SCHEMA_VERSION,
-                output_schema_version=SUMMARY_SCHEMA_VERSION,
-                recipe_version=TIEBA_RECIPE_VERSION,
-                context_compile_version="payload-budget-v2",
-                quality_policy_version="tieba-citation-support-v1",
-                estimate_version="token-estimate-v2",
-                quota_version=quota.quota_version,
-            ),
+            model_id,
+            quota,
+            budget,
+            output_key,
+            output_tokens,
+            final_payload=final_payload,
         )
-        result = cast(ModelCallResult, result)
-        if self._on_result is not None:
-            try:
-                self._on_result(result)
-            except Exception as exc:
-                raise TiebaSummaryAuditError("贴吧模型运行锁审计失败。") from exc
-        return result

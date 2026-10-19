@@ -21,6 +21,8 @@ from bridges.tieba.contracts import (
     TiebaOfficialCheck,
     TiebaPostProjection,
     TiebaQuestionAnalysis,
+    TiebaRecovery,
+    TiebaRecoveryAction,
     TiebaResearchProjection,
     TiebaSearchScope,
     TiebaTimeFilter,
@@ -222,6 +224,19 @@ def _unread_scope(
     return notes
 
 
+def _summary_incomplete(summary: Any) -> bool:
+    """模型总结是否因失败或覆盖不全而未完整生成。"""
+    metrics = getattr(summary, "metrics", None)
+    if metrics is None:
+        return False
+    if int(getattr(metrics, "failed_batch_count", 0) or 0) > 0:
+        return True
+    return (
+        int(getattr(metrics, "model_call_count", 0) or 0) > 0
+        and getattr(summary, "summary", None) is None
+    )
+
+
 class TiebaSynthesisNodes:
     """构造综合投影并运行代码级证据质量核验。"""
 
@@ -237,6 +252,7 @@ class TiebaSynthesisNodes:
         model_quota: Any,
         run_started_at: datetime | None = None,
         summary_call_count: Callable[[], int] | None = None,
+        stop_event: Any = None,
     ) -> None:
         self._summary_generator = summary_generator
         self._budget = budget
@@ -247,6 +263,7 @@ class TiebaSynthesisNodes:
         self._model_quota = model_quota
         self._run_started_at = run_started_at
         self._summary_call_count = summary_call_count
+        self._stop_event = stop_event
 
     def run_synthesize(self, invocation: NodeInvocation) -> NodeExecution:
         analysis = read_analysis(invocation)
@@ -284,6 +301,7 @@ class TiebaSynthesisNodes:
         if note is not None:
             projection = projection.model_copy(update={"official_unverified_note": note})
         summary_metrics: TiebaSummaryMetrics | None = None
+        summary_incomplete = False
         if self._summary_generator is not None:
             summary = self._summary_generator.generate(
                 self._run_context,
@@ -294,13 +312,28 @@ class TiebaSynthesisNodes:
                 model_id=self._run_model_id,
                 model_quota=self._model_quota,
                 budget=self._budget.model_budget if self._budget is not None else None,
+                stop_event=self._stop_event,
             )
+            summary_incomplete = _summary_incomplete(summary)
             projection = projection.model_copy(
                 update={
                     "summary": summary.summary,
                     "summary_claims": summary.claims,
                     "summary_citations": summary.citations,
                     "summary_note": summary.note,
+                    "recovery": (
+                        TiebaRecovery(
+                            action=TiebaRecoveryAction.RETRY_INCOMPLETE_STAGE,
+                            reuses_saved_evidence=True,
+                            failed_stage=NODE_SYNTHESIZE,
+                            scope_note=(
+                                "总结未完整生成。重新生成会复用已保存的检索与页面证据，"
+                                "只重做总结与核验；不会重读已确认页面。"
+                            ),
+                        )
+                        if summary_incomplete
+                        else None
+                    ),
                 }
             )
             summary_metrics = summary.metrics
@@ -349,7 +382,10 @@ class TiebaSynthesisNodes:
                 invocation,
                 clock=self._clock,
                 trust_state=ArtifactTrust.EVIDENCE_BOUND,
-                payload={"projection": projection.model_dump(mode="json")},
+                payload={
+                    "projection": projection.model_dump(mode="json"),
+                    "partial": summary_incomplete,
+                },
                 source_refs=[post.url for post in projection.confirmed_posts],
                 read_scope="归纳：只使用实际读到的楼层与官方原文章节",
             ),

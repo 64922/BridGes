@@ -80,6 +80,7 @@ def test_policy_checks_official_first_and_shares_one_run_budget(
         result: Any,
         *,
         remaining_budget_ms: int | None,
+        task_ref: tuple[str | None, int | None] | None = None,
     ) -> Any:
         delivered.append(result)
         return original_delivery(
@@ -89,6 +90,7 @@ def test_policy_checks_official_first_and_shares_one_run_budget(
             message_id,
             result,
             remaining_budget_ms=remaining_budget_ms,
+            task_ref=task_ref,
         )
 
     monkeypatch.setattr(TiebaResultDelivery, "_deliver_completed", capture)
