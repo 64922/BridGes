@@ -120,6 +120,9 @@ def configure_research_services(app: FastAPI) -> None:
         task_version_provider=lambda account_id, conversation_id: (
             _current_task_reference(app, account_id, conversation_id)
         ),
+        account_deleting=(
+            tieba_browser.account_is_deleting if tieba_browser is not None else None
+        ),
     )
     app.router.add_event_handler(
         "shutdown", app.state.tieba_research_service.close

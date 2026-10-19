@@ -208,6 +208,21 @@ def read_candidates(
         deadline += wait_seconds
         excluded_wait_seconds += wait_seconds
         new_attempted.add(hit.url)
+        if _account_deleted(result.error_code):
+            unreadable += 1
+            browser_blocked_error = result.error_code
+            links.append(
+                _unconfirmed_link(
+                    hit,
+                    "未读取：账户正在删除",
+                    read_error_code=result.error_code,
+                )
+            )
+            partial = True
+            closeout_reason = "account_deleting"
+            stopped_index = index
+            notify()
+            break
         if _auth_blocked(result.error_code):
             links.append(
                 _unconfirmed_link(
@@ -292,6 +307,10 @@ def read_candidates(
                 wait_seconds = max(0, result.excluded_wait_ms) / 1000
                 deadline += wait_seconds
                 excluded_wait_seconds += wait_seconds
+                if _account_deleted(result.error_code):
+                    partial = True
+                    closeout_reason = "account_deleting"
+                    break
                 if _auth_blocked(result.error_code):
                     deep_failed = True
                     closeout_reason = "deepen_incomplete"
@@ -320,7 +339,9 @@ def read_candidates(
                 links.append(prior)
             continue
         not_attempted += 1
-        if browser_blocked_error == "tieba_browser_auth_unverified":
+        if browser_blocked_error == "tieba_browser_account_deleting":
+            reason = "未读取：账户正在删除"
+        elif browser_blocked_error == "tieba_browser_auth_unverified":
             reason = "未读取：无法独立确认专用会话的认证状态"
         elif browser_blocked_error is not None:
             reason = "未读取：当前会话认证待完成，之后可继续"
@@ -382,6 +403,10 @@ def _auth_blocked(code: str | None) -> bool:
         "tieba_browser_auth_interrupted",
         "tieba_browser_auth_unverified",
     }
+
+
+def _account_deleted(code: str | None) -> bool:
+    return code == "tieba_browser_account_deleting"
 
 
 def _budget_blocked(code: str | None) -> bool:

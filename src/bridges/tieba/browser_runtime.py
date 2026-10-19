@@ -119,6 +119,7 @@ class TiebaBrowserRuntime:
             account_lock = self._account_locks.setdefault(account_id, threading.Lock())
         lock_deadline = deadline if deadline is not None else time.monotonic() + 25
         while not account_lock.acquire(timeout=min(0.1, max(0, lock_deadline - time.monotonic()))):
+            self._raise_if_account_is_deleting(account_id, profile)
             if callable(checker) and checker():
                 raise TiebaBrowserError("tieba_browser_cancelled", "已停止贴吧浏览器读取。")
             if time.monotonic() >= lock_deadline:
@@ -151,7 +152,16 @@ class TiebaBrowserRuntime:
                     stop_event,
                     deadline or time.monotonic() + 25,
                     request_budget,
-                    request_guard,
+                    self._deletion_aware_guard(
+                        account_id,
+                        profile,
+                        request_guard
+                        or (
+                            request_budget.request_block_reason
+                            if request_budget is not None
+                            else None
+                        ),
+                    ),
                 )
             except TiebaBrowserError as error:
                 with self._lock:
@@ -165,6 +175,7 @@ class TiebaBrowserRuntime:
                     "tieba_browser_unavailable",
                     "tieba_browser_work_time_exhausted",
                     "tieba_browser_request_queue_full",
+                    "tieba_browser_account_deleting",
                 }:
                     self._drop_worker(
                         account_id, worker, request_budget=request_budget
@@ -235,10 +246,31 @@ class TiebaBrowserRuntime:
         if worker is not None:
             self._dispose(worker)
 
+    def account_is_deleting(self, account_id: str) -> bool:
+        """账户删除栅栏是否生效（内存标记或跨进程落盘标记）。"""
+        return self._account_is_deleting(
+            account_id, profile_path(self._data_dir, account_id)
+        )
+
     def _account_is_deleting(self, account_id: str, profile: Path) -> bool:
         with self._lock:
             deleting = account_id in self._deleting_accounts
         return deleting or account_profile_is_fenced(profile)
+
+    def _deletion_aware_guard(
+        self,
+        account_id: str,
+        profile: Path,
+        request_guard: Callable[[], str | None] | None,
+    ) -> Callable[[], str | None]:
+        """每个请求与等待周期都先检查删除栅栏，再执行原运行守卫。"""
+
+        def guard() -> str | None:
+            if self._account_is_deleting(account_id, profile):
+                return "tieba_browser_account_deleting"
+            return request_guard() if request_guard is not None else None
+
+        return guard
 
     def _raise_if_account_is_deleting(self, account_id: str, profile: Path) -> None:
         with self._lock:
@@ -319,6 +351,11 @@ class TiebaBrowserRuntime:
         return None
 
     def _spawn(self, profile: Path) -> _BrowserWorker:
+        if account_profile_is_fenced(profile):
+            raise TiebaBrowserError(
+                "tieba_browser_account_deleting",
+                "账户正在删除，贴吧专用会话不可继续使用。",
+            )
         process = subprocess.Popen(
             [sys.executable, "-m", "bridges.tieba.browser_worker", str(profile)],
             stdin=subprocess.PIPE,

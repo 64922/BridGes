@@ -135,6 +135,7 @@ class BrowserTiebaSearch:
                     "tieba_browser_request_guard_failed",
                     "tieba_browser_work_time_exhausted",
                     "tieba_browser_request_queue_full",
+                    "tieba_browser_account_deleting",
                 },
             )
             if cancelled or (deadline is not None and time.monotonic() >= deadline):
@@ -156,6 +157,7 @@ class BrowserTiebaSearch:
                 "tieba_browser_task_changed",
                 "tieba_browser_run_invalidated",
                 "tieba_browser_request_guard_failed",
+                "tieba_browser_account_deleting",
             }:
                 return SearchOutcome(
                     record=record,
