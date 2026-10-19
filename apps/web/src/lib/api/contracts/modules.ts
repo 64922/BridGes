@@ -16,6 +16,8 @@ export type TiebaRunMetadata = components["schemas"]["TiebaRunMetadata"];
 
 export type TiebaReply = components["schemas"]["TiebaReply"];
 
+export type TiebaNestedProgress = components["schemas"]["TiebaNestedProgress"];
+
 export type TiebaCandidateLink = components["schemas"]["TiebaCandidateLink"];
 
 export type TiebaRejectedCandidate = components["schemas"]["TiebaRejectedCandidate"];

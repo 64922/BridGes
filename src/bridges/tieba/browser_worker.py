@@ -20,6 +20,10 @@ from bridges.tieba.browser_auth import (
     AuthSession,
 )
 from bridges.tieba.browser_dom import SEARCH_DOM
+from bridges.tieba.browser_nested import (
+    DEFAULT_NESTED_PAGES_LIMIT,
+    MAX_NESTED_PARENTS_PER_PAGE,
+)
 from bridges.tieba.browser_requests import BrowserRequestTracker
 from bridges.tieba.browser_runtime import account_profile_is_fenced
 from bridges.tieba.browser_search import run_search
@@ -84,6 +88,18 @@ def _run_action(
         scroll_limit = int(str(raw_scroll_limit or 8))
         raw_pages_limit = payload.get("pages_limit")
         pages_limit = int(str(raw_pages_limit or 2))
+        raw_nested_pages = payload.get("nested_pages_limit")
+        nested_pages_limit = (
+            int(str(raw_nested_pages))
+            if raw_nested_pages is not None
+            else DEFAULT_NESTED_PAGES_LIMIT
+        )
+        raw_nested_parents = payload.get("nested_parents_limit")
+        nested_parents_limit = (
+            int(str(raw_nested_parents))
+            if raw_nested_parents is not None
+            else MAX_NESTED_PARENTS_PER_PAGE
+        )
         result = read_thread(
             page,
             str(payload["url"]),
@@ -91,6 +107,8 @@ def _run_action(
             closed,
             auth,
             pages_limit=pages_limit,
+            nested_pages_limit=nested_pages_limit,
+            nested_parents_limit=nested_parents_limit,
             progress=lambda value: emit({"progress": value}),
         )
     else:

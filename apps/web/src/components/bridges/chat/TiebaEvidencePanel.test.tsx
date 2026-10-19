@@ -20,6 +20,7 @@ const citation: TiebaSummaryCitation = {
   parent_reply_id: null,
   floor: 3,
   posted_at: "2026-09-20 21:14",
+  nested: false,
   quote: "南区六人间，有空调，热水要刷卡。",
 };
 
@@ -38,6 +39,8 @@ const post: TiebaPostProjection = {
   floor_min: 1,
   floor_max: 12,
   replies_obtained: true,
+  nested_complete: false,
+  nested_incomplete_count: 0,
   replies: [
     {
       floor: 3,
@@ -47,6 +50,8 @@ const post: TiebaPostProjection = {
       posted_at: "2026-09-20 21:14",
       is_original_poster: false,
       content: "南区六人间，有空调，热水要刷卡。",
+      nested: false,
+      nested_preview: false,
     },
     {
       floor: 4,
@@ -56,6 +61,8 @@ const post: TiebaPostProjection = {
       posted_at: "2026-09-20 22:10",
       is_original_poster: false,
       content: "热水晚上十一点后就没了。",
+      nested: false,
+      nested_preview: false,
     },
   ],
   read_error_code: null,
@@ -194,6 +201,8 @@ describe("贴吧引用右侧资料面板（工单 10）", () => {
           posted_at: "2026-09-21 08:30",
           is_original_poster: false,
           content: "第二页补充：晚上十一点后热水会停。",
+          nested: false,
+          nested_preview: false,
         },
       ],
     };
@@ -206,6 +215,119 @@ describe("贴吧引用右侧资料面板（工单 10）", () => {
     expect(scope.textContent).toContain("从第 3 页起未读取");
     expect(screen.getByTestId("tieba-evidence-reply-17").getAttribute("data-active")).toBe(
       "true"
+    );
+  });
+
+  it("楼中楼引用先按回复 ID 定位，并展示父楼层上下文", () => {
+    const nestedCitation: TiebaSummaryCitation = {
+      ...citation,
+      citation_id: "E2",
+      reply_id: "n5",
+      parent_reply_id: "reply-4",
+      floor: 4,
+      nested: true,
+      author: "纠正者",
+      posted_at: "2026-08-05 00:17",
+      quote: "更正：北区是十一点半停水，不是十一点。",
+    };
+    const nestedPost: TiebaPostProjection = {
+      ...post,
+      nested_complete: true,
+      nested_incomplete_count: 0,
+      replies: [
+        ...(post.replies ?? []).filter((reply) => reply.floor !== 4),
+        {
+          floor: 4,
+          reply_id: "reply-4",
+          parent_reply_id: null,
+          temporal_scope: "unknown",
+          posted_at: "2026-08-01 10:00",
+          author: "父楼层作者",
+          is_original_poster: false,
+          content: "北区热水十一点就停了。",
+          nested: false,
+          nested_preview: false,
+          nested_progress: {
+            state: "complete",
+            total_replies: 17,
+            preview_count: 4,
+            read_count: 17,
+            pages_read: 2,
+            pages_limit: 2,
+            total_pages: 2,
+            complete: true,
+            error_code: null,
+            error_message: null,
+          },
+        },
+        {
+          floor: 4,
+          reply_id: "n5",
+          parent_reply_id: "reply-4",
+          temporal_scope: "unknown",
+          posted_at: "2026-08-05 00:17",
+          author: "纠正者",
+          is_original_poster: false,
+          content: "更正：北区是十一点半停水，不是十一点。",
+          nested: true,
+          nested_preview: false,
+        },
+      ],
+    };
+
+    renderPanel({ citation: nestedCitation, post: nestedPost });
+
+    expect(screen.getByTestId("tieba-evidence-location").textContent).toContain(
+      "楼中楼（第 4 楼）"
+    );
+    expect(
+      screen.getByTestId("tieba-evidence-reply-nested-n5").getAttribute(
+        "data-active"
+      )
+    ).toBe("true");
+    expect(
+      screen.getByTestId("tieba-evidence-reply-4").getAttribute("data-active")
+    ).toBeNull();
+    const parent = screen.getByTestId("tieba-evidence-parent-context");
+    expect(parent.textContent).toContain("父楼层作者");
+    expect(parent.textContent).toContain("北区热水十一点就停了");
+  });
+
+  it("父楼层不在已读原文时明确未知，不按邻接关系猜测", () => {
+    const nestedCitation: TiebaSummaryCitation = {
+      ...citation,
+      citation_id: "E2",
+      reply_id: "n5",
+      parent_reply_id: "missing-parent",
+      floor: 4,
+      nested: true,
+      quote: "更正：北区是十一点半停水，不是十一点。",
+    };
+    const nestedPost: TiebaPostProjection = {
+      ...post,
+      replies: [
+        {
+          floor: 4,
+          reply_id: "n5",
+          parent_reply_id: "missing-parent",
+          temporal_scope: "unknown",
+          posted_at: "2026-08-05 00:17",
+          author: "纠正者",
+          is_original_poster: false,
+          content: "更正：北区是十一点半停水，不是十一点。",
+          nested: true,
+          nested_preview: false,
+        },
+      ],
+    };
+
+    renderPanel({ citation: nestedCitation, post: nestedPost });
+
+    expect(
+      screen.getByTestId("tieba-evidence-parent-missing").textContent
+    ).toContain("不按展示邻接关系猜测");
+    expect(screen.getByTestId("tieba-evidence-quote").textContent).toContain(
+      "更正"
     );
   });
 

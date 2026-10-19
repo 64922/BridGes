@@ -28915,6 +28915,73 @@ export interface components {
          */
         TiebaEvidenceRoute: "tieba" | "official";
         /**
+         * TiebaNestedProgress
+         * @description 父楼层自己的楼中楼游标与完成状态；各父楼层互不合并。
+         */
+        TiebaNestedProgress: {
+            /**
+             * @description 楼中楼读取状态。
+             * @default none
+             */
+            state: components["schemas"]["TiebaNestedState"];
+            /**
+             * Total Replies
+             * @description 页面声明的楼中楼总数；未知时为 None。
+             */
+            total_replies?: number | null;
+            /**
+             * Preview Count
+             * @description 帖子页首批预览的条数。
+             * @default 0
+             */
+            preview_count: number;
+            /**
+             * Read Count
+             * @description 独立楼中楼页实际取得的条数。
+             * @default 0
+             */
+            read_count: number;
+            /**
+             * Pages Read
+             * @description 独立楼中楼页实际读取页数。
+             * @default 0
+             */
+            pages_read: number;
+            /**
+             * Pages Limit
+             * @description 单个父楼层允许读取的页数上限。
+             * @default 0
+             */
+            pages_limit: number;
+            /**
+             * Total Pages
+             * @description 页面声明的楼中楼总页数。
+             */
+            total_pages?: number | null;
+            /**
+             * Complete
+             * @description 是否已确认读完该父楼层的楼中楼。
+             * @default false
+             */
+            complete: boolean;
+            /**
+             * Error Code
+             * @description 未读完时的稳定分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 未读完时的中文原因。
+             */
+            error_message?: string | null;
+        };
+        /**
+         * TiebaNestedState
+         * @description 一个父楼层的楼中楼读取状态。
+         * @enum {string}
+         */
+        TiebaNestedState: "none" | "preview" | "partial" | "complete";
+        /**
          * TiebaOfficialApplicability
          * @description 一条官方证据与问题的适用性核对（主体／校区／用途／日期）。
          *
@@ -29178,6 +29245,28 @@ export interface components {
              */
             pagination_error_message?: string | null;
             /**
+             * Nested Complete
+             * @description 所有父楼层的楼中楼是否都确认读完。
+             * @default true
+             */
+            nested_complete: boolean;
+            /**
+             * Nested Incomplete Count
+             * @description 仍有未读楼中楼的父楼层数。
+             * @default 0
+             */
+            nested_incomplete_count: number;
+            /**
+             * Nested Error Code
+             * @description 楼中楼未读完时的首选稳定分类码。
+             */
+            nested_error_code?: string | null;
+            /**
+             * Nested Error Message
+             * @description 楼中楼未读完时的合并中文原因。
+             */
+            nested_error_message?: string | null;
+            /**
              * Discoveries
              * @description 该帖在搜索阶段的发现路径。
              */
@@ -29284,6 +29373,20 @@ export interface components {
              * @description 楼层正文（页面原文，已去标签）。
              */
             content: string;
+            /**
+             * Nested
+             * @description 是否为楼中楼回复。
+             * @default false
+             */
+            nested: boolean;
+            /**
+             * Nested Preview
+             * @description 是否只来自帖子页首批预览、尚未经独立楼中楼页确认。
+             * @default false
+             */
+            nested_preview: boolean;
+            /** @description 父楼层自己的楼中楼读取进度；非父楼层为 None。 */
+            nested_progress?: components["schemas"]["TiebaNestedProgress"] | null;
         };
         /**
          * TiebaResearchProjection
@@ -29695,6 +29798,12 @@ export interface components {
             posted_at?: string | null;
             /** Author */
             author?: string | null;
+            /**
+             * Nested
+             * @description 引用的是否为楼中楼回复。
+             * @default false
+             */
+            nested: boolean;
             /** Quote */
             quote: string;
         };

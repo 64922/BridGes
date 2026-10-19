@@ -20,8 +20,9 @@ COUNT_CONFLICT = "tieba_browser_pagination_count_conflict"
 PAGE_FAILED = "tieba_browser_page_failed"
 WORKER_EXITED = "tieba_browser_worker_exited"
 PAGINATION_UNAVAILABLE = "tieba_browser_pagination_unavailable"
+REPLY_LIMIT = "tieba_browser_reply_limit"
 
-MAX_MERGED_REPLIES = 240
+MAX_MERGED_REPLIES = 480
 
 
 @dataclass(frozen=True)
@@ -129,17 +130,39 @@ def merge_thread_pages(
     limit = max(1, int(pages_limit or 1))
     first = pages[0]
     unique_replies: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
+    index_by_id: dict[str, int] = {}
     for page in pages:
         for reply in page.get("replies", []):
             if not isinstance(reply, dict):
                 continue
             reply_id = str(reply.get("reply_id") or "").strip()
+            if reply_id and reply_id in index_by_id:
+                index = index_by_id[reply_id]
+                existing = unique_replies[index]
+                if existing.get("nested_preview") and not reply.get("nested_preview"):
+                    upgraded = dict(reply)
+                    upgraded["nested_progress"] = _merge_nested_progress(
+                        existing.get("nested_progress"),
+                        reply.get("nested_progress"),
+                    )
+                    unique_replies[index] = upgraded
+                else:
+                    existing["nested_progress"] = _merge_nested_progress(
+                        existing.get("nested_progress"),
+                        reply.get("nested_progress"),
+                    )
+                continue
             if reply_id:
-                if reply_id in seen_ids:
-                    continue
-                seen_ids.add(reply_id)
+                index_by_id[reply_id] = len(unique_replies)
             unique_replies.append(dict(reply))
+    if len(unique_replies) > MAX_MERGED_REPLIES:
+        unique_replies = unique_replies[:MAX_MERGED_REPLIES]
+        if stop is None:
+            stop = PageStop(
+                REPLY_LIMIT,
+                f"本轮记录达到 {MAX_MERGED_REPLIES} 条回复上限，"
+                "其余已读回复未纳入，不声称完整。",
+            )
     loaded_reply_count = sum(
         1 for reply in unique_replies if not reply.get("nested")
     )
@@ -173,6 +196,28 @@ def merge_thread_pages(
         "pagination_error_code": stop.code if stop is not None else None,
         "pagination_error_message": stop.message if stop is not None else None,
     }
+
+
+def _merge_nested_progress(
+    existing: Any, incoming: Any
+) -> dict[str, Any] | None:
+    if not isinstance(existing, dict):
+        return incoming if isinstance(incoming, dict) else None
+    if not isinstance(incoming, dict):
+        return existing
+    rank = {"none": 0, "preview": 1, "partial": 2, "complete": 3}
+    existing_rank = rank.get(str(existing.get("state") or "none"), 0)
+    incoming_rank = rank.get(str(incoming.get("state") or "none"), 0)
+    if existing.get("complete") and not incoming.get("complete"):
+        return existing
+    if incoming.get("complete") or incoming_rank > existing_rank:
+        return incoming
+    if incoming_rank == existing_rank:
+        if int(incoming.get("pages_read") or 0) > int(existing.get("pages_read") or 0):
+            return incoming
+        if int(incoming.get("read_count") or 0) > int(existing.get("read_count") or 0):
+            return incoming
+    return existing
 
 
 def _final_stop(
@@ -241,6 +286,7 @@ __all__ = [
     "PAGE_LIMIT",
     "PAGINATION_MISSING",
     "PAGINATION_UNAVAILABLE",
+    "REPLY_LIMIT",
     "PageStop",
     "WORKER_EXITED",
     "check_page",

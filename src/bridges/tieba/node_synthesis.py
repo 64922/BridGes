@@ -150,6 +150,16 @@ def _unread_scope(
                 notes.append(f"{post.url}：已成功读取第 {success} 页；{unread}")
             else:
                 notes.append(f"{post.url}：{unread}")
+        if post.nested_incomplete_count:
+            detail = (
+                f"；{post.nested_error_message}"
+                if post.nested_error_message
+                else ""
+            )
+            notes.append(
+                f"{post.url}：有 {post.nested_incomplete_count} 个父楼层的楼中楼"
+                f"未确认读完{detail}。"
+            )
         if post.total_replies is not None:
             notes.append(
                 f"{post.url}：页面声明 {post.total_replies} 条回复，"

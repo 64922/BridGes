@@ -22,6 +22,7 @@ const citation: TiebaSummaryCitation = {
   floor: 3,
   posted_at: "2026-09-20 21:14",
   author: "吧友甲",
+  nested: false,
   quote: "南区六人间，有空调，热水要刷卡。",
 };
 
@@ -40,6 +41,8 @@ const post: TiebaPostProjection = {
   floor_min: 1,
   floor_max: 12,
   replies_obtained: true,
+  nested_complete: false,
+  nested_incomplete_count: 0,
   replies: [
     {
       floor: 3,
@@ -50,6 +53,8 @@ const post: TiebaPostProjection = {
       author: "吧友甲",
       is_original_poster: false,
       content: "南区六人间，有空调，热水要刷卡。",
+      nested: false,
+      nested_preview: false,
     },
   ],
   read_error_code: null,
@@ -92,9 +97,70 @@ describe("贴吧证据行（工单 04）", () => {
   it("引用定位展示发言者，缺失时如实标注", () => {
     expect(citationLocation(citation)).toContain("吧友甲");
     expect(citationLocation(citation)).toContain("第 3 楼");
+    expect(citationLocation({ ...citation, nested: true })).toContain(
+      "楼中楼（第 3 楼）"
+    );
     expect(
       citationLocation({ ...citation, author: null, floor: null, posted_at: null })
     ).toBe("发言者未知 · 楼层未知");
+  });
+
+  it("帖子原文区分楼中楼预览、已读进度与父楼层", () => {
+    const nestedPost: TiebaPostProjection = {
+      ...post,
+      nested_complete: false,
+      nested_incomplete_count: 1,
+      nested_error_message: "第 4 楼楼中楼已读 1/2 页，未确认读完。",
+      replies: [
+        ...(post.replies ?? []),
+        {
+          floor: 4,
+          reply_id: "reply-4",
+          parent_reply_id: null,
+          temporal_scope: "unknown",
+          posted_at: "2026-08-01 10:00",
+          author: "父楼层作者",
+          is_original_poster: false,
+          content: "北区热水十一点就停了。",
+          nested: false,
+          nested_preview: false,
+          nested_progress: {
+            state: "partial",
+            total_replies: 17,
+            preview_count: 4,
+            read_count: 10,
+            pages_read: 1,
+            pages_limit: 2,
+            total_pages: 2,
+            complete: false,
+            error_code: "tieba_browser_nested_page_limit",
+            error_message: "第 4 楼楼中楼已读 1/2 页，未确认读完。",
+          },
+        },
+        {
+          floor: 4,
+          reply_id: "n5",
+          parent_reply_id: "reply-4",
+          temporal_scope: "unknown",
+          posted_at: "2026-08-05 00:17",
+          author: "纠正者",
+          is_original_poster: false,
+          content: "更正：北区是十一点半停水。",
+          nested: true,
+          nested_preview: true,
+        },
+      ],
+    };
+
+    render(<PostRow post={nestedPost} />);
+
+    const replies = screen.getByTestId("tieba-post-8123456789-replies");
+    expect(replies.textContent).toContain("楼中楼（第 4 楼）");
+    expect(replies.textContent).toContain("仅页面预览");
+    expect(replies.textContent).toContain("已读部分 · 预览 4 条");
+    expect(
+      screen.getByTestId("tieba-post-8123456789-nested-boundary").textContent
+    ).toContain("未确认读完");
   });
 
   it("帖子回复保留发言者身份", () => {

@@ -17,6 +17,7 @@ const citation: TiebaSummaryCitation = {
   floor: 3,
   posted_at: "2026-09-20 21:14",
   author: "吧友甲",
+  nested: false,
   quote: "南区六人间，有空调，热水要刷卡。",
 };
 
@@ -35,6 +36,8 @@ const post: TiebaPostProjection = {
   floor_min: 1,
   floor_max: 12,
   replies_obtained: true,
+  nested_complete: false,
+  nested_incomplete_count: 0,
   replies: [
     {
       floor: 3,
@@ -45,6 +48,8 @@ const post: TiebaPostProjection = {
       author: "吧友甲",
       is_original_poster: false,
       content: "南区六人间，有空调，热水要刷卡。",
+      nested: false,
+      nested_preview: false,
     },
   ],
   read_error_code: null,

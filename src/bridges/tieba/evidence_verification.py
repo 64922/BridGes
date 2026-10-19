@@ -209,6 +209,7 @@ def _summary_traceable(
             for reply in post.replies
             if reply.reply_id == citation.reply_id
             and reply.parent_reply_id == citation.parent_reply_id
+            and reply.nested == citation.nested
             and reply.floor == citation.floor
             and reply.posted_at == citation.posted_at
             and reply.author == citation.author

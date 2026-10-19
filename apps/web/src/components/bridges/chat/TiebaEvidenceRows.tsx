@@ -3,6 +3,7 @@
 import type {
   ModuleQueryRecord,
   TiebaCandidateLink,
+  TiebaNestedProgress,
   TiebaOfficialCheck,
   TiebaPostProjection,
   TiebaRejectedCandidate,
@@ -54,13 +55,43 @@ export function discoveryLabel(discovery: TiebaSearchDiscovery): string {
   return `${kind}${query} · ${page}`;
 }
 
-/** 引用在帖子里的定位：发言者、楼层与发言时间；缺失处如实标注。 */
+/** 引用在帖子里的定位：发言者、楼层与发言时间；楼中楼单独标注。 */
 export function citationLocation(citation: TiebaSummaryCitation): string {
-  const parts = [
-    citation.author ?? "发言者未知",
-    citation.floor != null ? `第 ${citation.floor} 楼` : "楼层未知",
-  ];
+  const location =
+    citation.floor != null
+      ? citation.nested
+        ? `楼中楼（第 ${citation.floor} 楼）`
+        : `第 ${citation.floor} 楼`
+      : citation.nested
+        ? "楼中楼（父楼层未知）"
+        : "楼层未知";
+  const parts = [citation.author ?? "发言者未知", location];
   if (citation.posted_at) parts.push(citation.posted_at);
+  return parts.join(" · ");
+}
+
+const NESTED_STATE_LABELS: Record<string, string> = {
+  none: "无楼中楼",
+  preview: "仅预览",
+  partial: "已读部分",
+  complete: "已读完",
+};
+
+/** 父楼层的楼中楼范围：预览、已读页与是否确认读完。 */
+export function nestedProgressLabel(progress: TiebaNestedProgress): string {
+  const parts = [
+    NESTED_STATE_LABELS[progress.state ?? "none"] ?? progress.state,
+    `预览 ${progress.preview_count ?? 0} 条`,
+  ];
+  if (progress.total_replies != null) {
+    parts.push(`页面声明 ${progress.total_replies} 条`);
+  }
+  if ((progress.pages_read ?? 0) > 0) {
+    parts.push(
+      `已读 ${progress.pages_read ?? 0}/${progress.pages_limit ?? 0} 页`
+    );
+  }
+  parts.push(progress.complete ? "已确认读完" : "未确认读完");
   return parts.join(" · ");
 }
 
@@ -134,6 +165,14 @@ export function postReadScope(post: TiebaPostProjection): string {
     parts.push(`向下加载 ${post.scroll_rounds}/${post.scroll_rounds_limit} 轮`);
   }
   if (post.total_pages) parts.push(`页面声明共 ${post.total_pages} 页`);
+  const hasNested = (post.replies ?? []).some((reply) => reply.nested);
+  if ((post.nested_incomplete_count ?? 0) > 0) {
+    parts.push(`楼中楼有 ${post.nested_incomplete_count} 个父楼层未确认读完`);
+  } else if (hasNested && post.nested_complete === true) {
+    parts.push("楼中楼已确认读完");
+  } else if (hasNested) {
+    parts.push("楼中楼完成状态未知");
+  }
   if (post.floor_min != null && post.floor_max != null) {
     parts.push(`第 ${post.floor_min}–${post.floor_max} 楼`);
   }
@@ -198,6 +237,11 @@ export function PostRow({ post }: { post: TiebaPostProjection }) {
           : ""}
         {post.pages_complete ? " · 普通楼层页已全部读取" : " · 普通楼层页未读完"}
         {post.total_pages ? `（页面声明共 ${post.total_pages} 页）` : ""}
+        {(post.nested_incomplete_count ?? 0) > 0
+          ? ` · 楼中楼有 ${post.nested_incomplete_count} 个父楼层未读完`
+          : replies.some((reply) => reply.nested) && post.nested_complete === true
+            ? " · 楼中楼已确认读完"
+            : ""}
         {floors ? ` · ${floors}` : ""} · 读取于 {formatTime(post.retrieved_at)}
       </span>
       {post.pagination_error_message &&
@@ -206,6 +250,14 @@ export function PostRow({ post }: { post: TiebaPostProjection }) {
             {post.pagination_error_message}
           </span>
         )}
+      {(post.nested_incomplete_count ?? 0) > 0 && post.nested_error_message && (
+        <span
+          data-testid={`tieba-post-${post.thread_id ?? post.url}-nested-boundary`}
+          style={{ color: "var(--color-status-wait)", fontSize: "var(--text-xs)" }}
+        >
+          楼中楼：{post.nested_error_message}
+        </span>
+      )}
       {(post.discoveries ?? []).length > 0 && (
         <span
           data-testid={`tieba-post-${post.thread_id ?? post.url}-discoveries`}
@@ -248,14 +300,44 @@ export function PostRow({ post }: { post: TiebaPostProjection }) {
           }}
         >
           {replies.map((reply, index) => (
-            <li key={`${reply.floor ?? index}-${index}`}>
+            <li
+              key={`${reply.nested ? "nested" : "floor"}-${
+                reply.reply_id ?? index
+              }`}
+              style={
+                reply.nested
+                  ? {
+                      marginLeft: "var(--space-4)",
+                      borderLeft: "2px solid var(--color-border)",
+                      paddingLeft: "var(--space-2)",
+                    }
+                  : undefined
+              }
+            >
               <span style={{ color: "var(--color-text-tertiary)" }}>
                 {reply.author ? `${reply.author} · ` : ""}
-                {reply.floor != null ? `第 ${reply.floor} 楼` : "楼层未知"}
+                {reply.nested
+                  ? `楼中楼${reply.floor != null ? `（第 ${reply.floor} 楼）` : ""}`
+                  : reply.floor != null
+                    ? `第 ${reply.floor} 楼`
+                    : "楼层未知"}
                 {reply.is_original_poster ? "（楼主）" : ""}
+                {reply.nested_preview ? " · 仅页面预览" : ""}
                 {reply.posted_at ? ` · ${reply.posted_at}` : " · 时间未给出"}：
               </span>
               {reply.content}
+              {reply.nested_progress && (
+                <span
+                  data-testid={`tieba-nested-progress-${reply.reply_id ?? index}`}
+                  style={{
+                    display: "block",
+                    color: "var(--color-text-tertiary)",
+                    fontSize: "var(--text-xs)",
+                  }}
+                >
+                  楼中楼范围：{nestedProgressLabel(reply.nested_progress)}
+                </span>
+              )}
             </li>
           ))}
         </ul>

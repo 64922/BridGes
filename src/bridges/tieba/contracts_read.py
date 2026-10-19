@@ -32,6 +32,34 @@ class TiebaTemporalScope(StrEnum):
     UNKNOWN = "unknown"
 
 
+class TiebaNestedState(StrEnum):
+    """一个父楼层的楼中楼读取状态。"""
+
+    NONE = "none"
+    PREVIEW = "preview"
+    PARTIAL = "partial"
+    COMPLETE = "complete"
+
+
+class TiebaNestedProgress(BaseModel):
+    """父楼层自己的楼中楼游标与完成状态；各父楼层互不合并。"""
+
+    state: TiebaNestedState = Field(
+        default=TiebaNestedState.NONE, description="楼中楼读取状态。"
+    )
+    total_replies: int | None = Field(
+        default=None, description="页面声明的楼中楼总数；未知时为 None。"
+    )
+    preview_count: int = Field(default=0, description="帖子页首批预览的条数。")
+    read_count: int = Field(default=0, description="独立楼中楼页实际取得的条数。")
+    pages_read: int = Field(default=0, description="独立楼中楼页实际读取页数。")
+    pages_limit: int = Field(default=0, description="单个父楼层允许读取的页数上限。")
+    total_pages: int | None = Field(default=None, description="页面声明的楼中楼总页数。")
+    complete: bool = Field(default=False, description="是否已确认读完该父楼层的楼中楼。")
+    error_code: str | None = Field(default=None, description="未读完时的稳定分类码。")
+    error_message: str | None = Field(default=None, description="未读完时的中文原因。")
+
+
 class TiebaReply(BaseModel):
     """真实读到的楼层；时间与楼层按页面原文记录。"""
 
@@ -48,6 +76,13 @@ class TiebaReply(BaseModel):
     )
     is_original_poster: bool = Field(default=False, description="是否楼主本人发言。")
     content: str = Field(description="楼层正文（页面原文，已去标签）。")
+    nested: bool = Field(default=False, description="是否为楼中楼回复。")
+    nested_preview: bool = Field(
+        default=False, description="是否只来自帖子页首批预览、尚未经独立楼中楼页确认。"
+    )
+    nested_progress: TiebaNestedProgress | None = Field(
+        default=None, description="父楼层自己的楼中楼读取进度；非父楼层为 None。"
+    )
 
 
 class TiebaPageEvidence(BaseModel):
@@ -90,6 +125,18 @@ class TiebaReadResult(BaseModel):
     )
     pagination_error_message: str | None = Field(
         default=None, description="分页未完成时的中文原因。"
+    )
+    nested_complete: bool = Field(
+        default=True, description="所有父楼层的楼中楼是否都确认读完。"
+    )
+    nested_incomplete_count: int = Field(
+        default=0, description="仍有未读楼中楼的父楼层数。"
+    )
+    nested_error_code: str | None = Field(
+        default=None, description="楼中楼未读完时的首选稳定分类码。"
+    )
+    nested_error_message: str | None = Field(
+        default=None, description="楼中楼未读完时的合并中文原因。"
     )
     excluded_wait_ms: int = Field(default=0, description="外部浏览器中人工登录/验证等待时长。")
     retrieved_at: datetime = Field(description="读取时间。")
@@ -134,6 +181,18 @@ class TiebaPostProjection(BaseModel):
     pagination_error_message: str | None = Field(
         default=None, description="分页未完成时的中文原因。"
     )
+    nested_complete: bool = Field(
+        default=True, description="所有父楼层的楼中楼是否都确认读完。"
+    )
+    nested_incomplete_count: int = Field(
+        default=0, description="仍有未读楼中楼的父楼层数。"
+    )
+    nested_error_code: str | None = Field(
+        default=None, description="楼中楼未读完时的首选稳定分类码。"
+    )
+    nested_error_message: str | None = Field(
+        default=None, description="楼中楼未读完时的合并中文原因。"
+    )
     discoveries: list[TiebaSearchDiscovery] = Field(
         default_factory=list, description="该帖在搜索阶段的发现路径。"
     )
@@ -142,6 +201,8 @@ class TiebaPostProjection(BaseModel):
 
 __all__ = [
     "ReadStatus",
+    "TiebaNestedProgress",
+    "TiebaNestedState",
     "TiebaPageEvidence",
     "TiebaPostProjection",
     "TiebaReadResult",

@@ -45,6 +45,12 @@ function unreadReason(post: TiebaPostProjection): string | null {
   if (post.pagination_error_message) {
     return post.pagination_error_message;
   }
+  if ((post.nested_incomplete_count ?? 0) > 0) {
+    return (
+      post.nested_error_message ||
+      `有 ${post.nested_incomplete_count} 个父楼层的楼中楼未确认读完。`
+    );
+  }
   if (!post.replies_obtained) {
     return post.read_error_message || "本轮未取得回复文本。";
   }

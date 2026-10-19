@@ -19,6 +19,12 @@ from bridges.tieba.browser_auth import (
 )
 from bridges.tieba.browser_capture import StructuredCapture, wait_for_payloads
 from bridges.tieba.browser_dom import THREAD_DOM, THREAD_FLOORS
+from bridges.tieba.browser_nested import MAX_NESTED_PARENTS_PER_PAGE
+from bridges.tieba.browser_nested_enrich import (
+    _annotate_nested_previews,
+    _enrich_nested_replies,
+)
+from bridges.tieba.browser_nested_protocol import _positive_int
 from bridges.tieba.browser_pagination import (
     PAGE_FAILED,
     PAGINATION_UNAVAILABLE,
@@ -73,7 +79,7 @@ def _read_dom(
         raise StructuredResponseError("帖子页面 DOM 缺少吧名、标题或正文")
     reply_count = len(replies) if isinstance(replies, list) else 0
     top_level_count = int(result.get("loaded_reply_count") or 0)
-    return {
+    value = {
         **{str(key): value for key, value in result.items()},
         "scroll_rounds": scroll_rounds,
         "scroll_rounds_limit": limit,
@@ -90,12 +96,11 @@ def _read_dom(
             }
         ],
         "pagination_error_code": PAGINATION_UNAVAILABLE,
-        "pagination_error_message": (
-            "DOM 只补充有限滚动范围，未声称读取全部页。"
-        ),
+        "pagination_error_message": ("DOM 只补充有限滚动范围，未声称读取全部页。"),
         "response_valid": True,
         "source": "dom",
     }
+    return _annotate_nested_previews(value)
 
 
 def _read_thread_page(
@@ -184,12 +189,16 @@ def read_thread(
     auth: AuthSession,
     *,
     pages_limit: int = 2,
+    nested_pages_limit: int = 0,
+    nested_parents_limit: int = MAX_NESTED_PARENTS_PER_PAGE,
     progress: Callable[[dict[str, object]], None] | None = None,
 ) -> dict[str, object]:
     parsed = urlparse(url)
     if parsed.hostname != "tieba.baidu.com" or not parsed.path.startswith("/p/"):
         raise ValueError("只允许读取贴吧帖子")
     limit = max(1, int(pages_limit or 1))
+    path_parts = parsed.path.strip("/").split("/")
+    thread_id = path_parts[1] if len(path_parts) >= 2 else ""
     pages: list[dict[str, object]] = []
     stop: PageStop | None = None
     expected_total_pages: int | None = None
@@ -214,15 +223,11 @@ def read_thread(
             break
         target = page_url(url, page_number)
         try:
-            value, page = _read_thread_page(
-                page, target, page_number, closed, auth
-            )
+            value, page = _read_thread_page(page, target, page_number, closed, auth)
         except (StructuredResponseError, TypeError, ValueError) as error:
             if not pages:
                 try:
-                    return _read_dom(
-                        page, scroll_rounds_limit, closed, auth.deadline
-                    )
+                    return _read_dom(page, scroll_rounds_limit, closed, auth.deadline)
                 except StructuredResponseError as dom_error:
                     raise error from dom_error
             stop = _page_stop(page_number, error)
@@ -233,14 +238,23 @@ def read_thread(
             stop = _page_stop(page_number, error)
             break
         if page_number == 1:
-            expected_total_pages = _optional_int(value.get("total_pages"))
-            expected_total_replies = _optional_int(value.get("total_replies"))
+            expected_total_pages = _positive_int(value.get("total_pages"))
+            expected_total_replies = _positive_int(value.get("total_replies"))
         check = check_page(
             value,
             requested_page=page_number,
             previous_page=previous_page,
             expected_total_pages=expected_total_pages,
             expected_total_replies=expected_total_replies,
+        )
+        value = _enrich_nested_replies(
+            value,
+            page,
+            thread_id=thread_id,
+            closed=closed,
+            deadline=auth.deadline,
+            pages_limit=nested_pages_limit,
+            parents_limit=nested_parents_limit,
         )
         pages.append(value)
         previous_page = page_number
@@ -258,12 +272,3 @@ def read_thread(
         if value.get("has_more") is not True:
             break
     return merge_thread_pages(pages, pages_limit=limit, stop=stop)
-
-
-def _optional_int(value: object) -> int | None:
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        return int(str(value).strip())
-    except (TypeError, ValueError):
-        return None
