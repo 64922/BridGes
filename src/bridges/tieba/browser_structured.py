@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 from bridges.tieba.lexicon import TARGET_FORUM_NAME
 
-BROWSER_PROTOCOL_VERSION = "tieba-browser-protocol-v2"
+BROWSER_PROTOCOL_VERSION = "tieba-browser-protocol-v3"
 
 MAX_PAGE_REPLIES = 120
 
@@ -134,6 +134,7 @@ def parse_thread_payload(
                     "author": author,
                     "parent_reply_id": None,
                     "nested": False,
+                    "sub_post_number": _as_int(item.get("sub_post_number")),
                 }
             )
         loaded_reply_count += 1
@@ -151,6 +152,8 @@ def parse_thread_payload(
                     "author": _author(sub, users),
                     "parent_reply_id": reply_id or None,
                     "nested": True,
+                    "nested_preview": True,
+                    "sub_post_number": None,
                 }
             )
     page = _mapping(root.get("page"))
@@ -162,6 +165,7 @@ def parse_thread_payload(
         "url": _canonical_url(url),
         "thread_id": _text(thread.get("id") or thread.get("tid")) or None,
         "forum": _with_forum_suffix(forum_name),
+        "forum_id": _text(forum.get("id") or forum.get("fid")) or None,
         "title": title,
         "original": original[:2000],
         "posted_at": _format_time(first_floor.get("time")),

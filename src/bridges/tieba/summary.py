@@ -27,7 +27,7 @@ from bridges.tieba.summary_material import (
     supported_indices,
 )
 
-SUMMARY_PROMPT_VERSION = "tieba-summary-v5"
+SUMMARY_PROMPT_VERSION = "tieba-summary-v6"
 SUMMARY_SCHEMA_VERSION = "tieba-summary-claims-v3"
 SUMMARY_OUTPUT_TOKENS = 1200
 VERIFY_OUTPUT_TOKENS = 800
@@ -192,6 +192,9 @@ class TiebaSummaryGenerator:
                         "请只根据下列已读贴吧内容提出 1 至 4 条简短观点。"
                         "context_only 为 true 的内容只可帮助理解关联的近期楼中楼，"
                         "不得据此提出观点、统计或引用；观点与引用只能依据其他近期证据。"
+                        "nested 为 true 的是楼中楼；parent_content 只帮助理解它回应了什么，"
+                        "不能把父楼层作者的观点、身份或经历归给楼中楼作者，"
+                        "引用只能指向该楼中楼自己的正文。"
                         "每条标注 finding、difference、uncertainty 或 time_change，并引用证据 ID。"
                         "保留相反说法和时间差异；identity_state 为 unknown 且属于同一"
                         "duplicate_text_group 的原文仍分别保留，但只能视为一份重复文本，"
@@ -306,8 +309,9 @@ class TiebaSummaryGenerator:
             checked = self._invoke(
                 (
                     "逐条判断观点是否被其所列原文实质支持。"
-                    "只输出 supported 中支持的零起始索引；观点超出引文、混淆时间"
-                    "或把样本写成普遍共识时不支持；同一 duplicate_text_group 的未知身份原文"
+                    "只输出 supported 中支持的零起始索引；观点超出引文、混淆时间、"
+                    "把父楼层观点归给楼中楼作者或把样本写成普遍共识时不支持；"
+                    "同一 duplicate_text_group 的未知身份原文"
                     "不能证明多个发言者或多条独立意见。"
                 ),
                 verification_payload,
@@ -355,6 +359,7 @@ class TiebaSummaryGenerator:
                 floor=source_by_id[citation_id].get("floor"),
                 posted_at=source_by_id[citation_id].get("posted_at"),
                 author=source_by_id[citation_id].get("author"),
+                nested=bool(source_by_id[citation_id].get("nested")),
                 quote=str(source_by_id[citation_id]["content"])[:240],
             )
             for citation_id in citation_ids
@@ -400,7 +405,7 @@ class TiebaSummaryGenerator:
             model_quota=quota,
             call_contract=CallContractVersions(
                 prompt_version=SUMMARY_PROMPT_VERSION,
-                input_schema_version="tieba-read-evidence-v2",
+                input_schema_version="tieba-read-evidence-v3",
                 output_schema_version=SUMMARY_SCHEMA_VERSION,
                 recipe_version=TIEBA_RECIPE_VERSION,
                 context_compile_version="payload-budget-v2",

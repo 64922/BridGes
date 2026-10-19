@@ -175,8 +175,11 @@ def render_result_content(projection: TiebaResearchProjection) -> str:
                 lines.append(f"   发现路径：{discoveries}")
             if post.replies:
                 for reply in post.replies:
+                    kind = "楼中楼" if reply.nested else f"第 {_floor(reply.floor)} 楼"
+                    if reply.nested_preview:
+                        kind += "（仅预览）"
                     lines.append(
-                        f"   第 {_floor(reply.floor)} 楼"
+                        f"   · {kind}"
                         f"{_speaker(reply.author, reply.posted_at)}：{reply.content}"
                     )
             else:
@@ -389,6 +392,10 @@ def _read_scope(post: TiebaPostProjection) -> str:
     parts.append(
         "普通楼层页已全部读取" if post.pages_complete else "普通楼层页未读完"
     )
+    if post.nested_incomplete_count:
+        parts.append(f"楼中楼有 {post.nested_incomplete_count} 个父楼层未读完")
+    elif any(reply.nested for reply in post.replies):
+        parts.append("楼中楼已确认读完")
     if post.scroll_rounds_limit:
         parts.append(f"向下加载 {post.scroll_rounds}/{post.scroll_rounds_limit} 轮")
     if post.total_pages is not None:

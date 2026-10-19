@@ -345,6 +345,10 @@ def confirmed_post(hit: TiebaSearchHit, result: TiebaReadResult) -> TiebaPostPro
         read_error_message=result.error_message,
         pagination_error_code=result.pagination_error_code,
         pagination_error_message=result.pagination_error_message,
+        nested_complete=result.nested_complete,
+        nested_incomplete_count=result.nested_incomplete_count,
+        nested_error_code=result.nested_error_code,
+        nested_error_message=result.nested_error_message,
         discoveries=list(hit.discoveries),
         retrieved_at=result.retrieved_at,
     )

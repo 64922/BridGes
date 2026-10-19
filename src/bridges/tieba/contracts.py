@@ -17,6 +17,12 @@ from bridges.tieba.contracts_read import (
     ReadStatus as ReadStatus,
 )
 from bridges.tieba.contracts_read import (
+    TiebaNestedProgress as TiebaNestedProgress,
+)
+from bridges.tieba.contracts_read import (
+    TiebaNestedState as TiebaNestedState,
+)
+from bridges.tieba.contracts_read import (
     TiebaPageEvidence as TiebaPageEvidence,
 )
 from bridges.tieba.contracts_read import (
@@ -336,6 +342,7 @@ class TiebaSummaryCitation(BaseModel):
     floor: int | None = None
     posted_at: str | None = None
     author: str | None = None
+    nested: bool = Field(default=False, description="引用的是否为楼中楼回复。")
     quote: str
 
 

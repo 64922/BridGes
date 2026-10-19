@@ -65238,6 +65238,107 @@
         "title": "TiebaEvidenceRoute",
         "description": "两条独立取证路径：贴吧公开帖子与学校官方页面。"
       },
+      "TiebaNestedProgress": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/TiebaNestedState",
+            "description": "楼中楼读取状态。",
+            "default": "none"
+          },
+          "total_replies": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Replies",
+            "description": "页面声明的楼中楼总数；未知时为 None。"
+          },
+          "preview_count": {
+            "type": "integer",
+            "title": "Preview Count",
+            "description": "帖子页首批预览的条数。",
+            "default": 0
+          },
+          "read_count": {
+            "type": "integer",
+            "title": "Read Count",
+            "description": "独立楼中楼页实际取得的条数。",
+            "default": 0
+          },
+          "pages_read": {
+            "type": "integer",
+            "title": "Pages Read",
+            "description": "独立楼中楼页实际读取页数。",
+            "default": 0
+          },
+          "pages_limit": {
+            "type": "integer",
+            "title": "Pages Limit",
+            "description": "单个父楼层允许读取的页数上限。",
+            "default": 0
+          },
+          "total_pages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Pages",
+            "description": "页面声明的楼中楼总页数。"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete",
+            "description": "是否已确认读完该父楼层的楼中楼。",
+            "default": false
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "未读完时的稳定分类码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "未读完时的中文原因。"
+          }
+        },
+        "type": "object",
+        "title": "TiebaNestedProgress",
+        "description": "父楼层自己的楼中楼游标与完成状态；各父楼层互不合并。"
+      },
+      "TiebaNestedState": {
+        "type": "string",
+        "enum": [
+          "none",
+          "preview",
+          "partial",
+          "complete"
+        ],
+        "title": "TiebaNestedState",
+        "description": "一个父楼层的楼中楼读取状态。"
+      },
       "TiebaOfficialApplicability": {
         "properties": {
           "subject": {
@@ -65664,6 +65765,42 @@
             "title": "Pagination Error Message",
             "description": "分页未完成时的中文原因。"
           },
+          "nested_complete": {
+            "type": "boolean",
+            "title": "Nested Complete",
+            "description": "所有父楼层的楼中楼是否都确认读完。",
+            "default": true
+          },
+          "nested_incomplete_count": {
+            "type": "integer",
+            "title": "Nested Incomplete Count",
+            "description": "仍有未读楼中楼的父楼层数。",
+            "default": 0
+          },
+          "nested_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nested Error Code",
+            "description": "楼中楼未读完时的首选稳定分类码。"
+          },
+          "nested_error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nested Error Message",
+            "description": "楼中楼未读完时的合并中文原因。"
+          },
           "discoveries": {
             "items": {
               "$ref": "#/components/schemas/TiebaSearchDiscovery"
@@ -65829,6 +65966,29 @@
             "type": "string",
             "title": "Content",
             "description": "楼层正文（页面原文，已去标签）。"
+          },
+          "nested": {
+            "type": "boolean",
+            "title": "Nested",
+            "description": "是否为楼中楼回复。",
+            "default": false
+          },
+          "nested_preview": {
+            "type": "boolean",
+            "title": "Nested Preview",
+            "description": "是否只来自帖子页首批预览、尚未经独立楼中楼页确认。",
+            "default": false
+          },
+          "nested_progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TiebaNestedProgress"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "父楼层自己的楼中楼读取进度；非父楼层为 None。"
           }
         },
         "type": "object",
@@ -66561,6 +66721,12 @@
               }
             ],
             "title": "Author"
+          },
+          "nested": {
+            "type": "boolean",
+            "title": "Nested",
+            "description": "引用的是否为楼中楼回复。",
+            "default": false
           },
           "quote": {
             "type": "string",

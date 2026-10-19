@@ -14,6 +14,7 @@ import {
   OfficialCheckRow,
   READ_STATUS_LABELS,
   formatTime,
+  nestedProgressLabel,
   postReadScope,
 } from "./TiebaEvidenceRows";
 
@@ -35,7 +36,15 @@ function safeOpenUrl(value: string | null | undefined): string | null {
 
 function locationOf(citation: TiebaSummaryCitation): string {
   const parts = [`引用 ${citation.citation_id}`];
-  parts.push(citation.floor != null ? `第 ${citation.floor} 楼` : "楼层未知");
+  const location =
+    citation.floor != null
+      ? citation.nested
+        ? `楼中楼（第 ${citation.floor} 楼）`
+        : `第 ${citation.floor} 楼`
+      : citation.nested
+        ? "楼中楼（父楼层未知）"
+        : "楼层未知";
+  parts.push(location);
   if (citation.posted_at) parts.push(`发言时间 ${citation.posted_at}`);
   return parts.join(" · ");
 }
@@ -52,12 +61,24 @@ function TiebaEvidenceContent({
   const panelRef = useRef<HTMLElement>(null);
   const openUrl = safeOpenUrl(citation.url) ?? safeOpenUrl(post?.url);
   const replies = post?.replies ?? [];
-  const citedReply =
-    citation.floor != null
-      ? replies.find((reply) => reply.floor === citation.floor)
+  const citedReply = citation.nested
+    ? citation.reply_id != null
+      ? replies.find((reply) => reply.reply_id === citation.reply_id)
+      : undefined
+    : citation.floor != null
+      ? replies.find(
+          (reply) => reply.floor === citation.floor && reply.nested !== true
+        )
       : citation.reply_id != null
         ? replies.find((reply) => reply.reply_id === citation.reply_id)
         : undefined;
+  const parentReply =
+    citedReply?.nested && citedReply.parent_reply_id
+      ? replies.find(
+          (reply) =>
+            reply.reply_id === citedReply.parent_reply_id && reply.nested !== true
+        )
+      : undefined;
   const hasLocation = citation.floor != null || citation.reply_id != null;
 
   useEffect(() => {
@@ -116,6 +137,38 @@ function TiebaEvidenceContent({
           {citation.quote}
         </blockquote>
 
+        {citedReply?.nested && (
+          <section
+            className={styles.section}
+            data-testid="tieba-evidence-parent-context"
+          >
+            <h3 className={styles.sectionTitle}>父楼层上下文</h3>
+            {parentReply ? (
+              <>
+                <p className={styles.note}>
+                  {parentReply.author ?? "父楼层作者未知"}
+                  {parentReply.floor != null
+                    ? ` · 第 ${parentReply.floor} 楼`
+                    : ""}
+                  {parentReply.posted_at ? ` · ${parentReply.posted_at}` : ""}
+                  {parentReply.nested_progress
+                    ? ` · ${nestedProgressLabel(parentReply.nested_progress)}`
+                    : ""}
+                </p>
+                <p className={styles.note}>{parentReply.content}</p>
+              </>
+            ) : (
+              <p
+                className={styles.warning}
+                data-testid="tieba-evidence-parent-missing"
+              >
+                引用的楼中楼所属父楼层不在本轮已读原文中，无法展示父上下文；
+                不按展示邻接关系猜测作者或立场。
+              </p>
+            )}
+          </section>
+        )}
+
         {post ? (
           <section className={styles.section} data-testid="tieba-evidence-scope">
             <h3 className={styles.sectionTitle}>本帖读取范围</h3>
@@ -141,7 +194,13 @@ function TiebaEvidenceContent({
         {hasLocation && !citedReply && (
           <p className={styles.warning} data-testid="tieba-evidence-location-missing">
             引用的
-            {citation.floor != null ? `第 ${citation.floor} 楼` : "回复"}
+            {citation.nested
+              ? citation.floor != null
+                ? `第 ${citation.floor} 楼的楼中楼`
+                : "楼中楼"
+              : citation.floor != null
+                ? `第 ${citation.floor} 楼`
+                : "回复"}
             不在本轮已读原文里，无法展开该楼层原文。
           </p>
         )}
@@ -231,22 +290,49 @@ function TiebaEvidenceContent({
             <ol className={styles.replyList}>
               {replies.map((reply, index) => {
                 const active = reply === citedReply;
+                const replyKey = reply.nested
+                  ? reply.reply_id ?? reply.floor ?? index
+                  : reply.floor ?? reply.reply_id ?? index;
                 return (
                   <li
-                    key={`${reply.floor ?? "unknown"}-${reply.reply_id ?? index}`}
+                    key={`${reply.nested ? "nested" : "floor"}-${replyKey}-${index}`}
                     className={styles.reply}
                     data-active={active || undefined}
                     data-testid={`tieba-evidence-reply-${
-                      reply.floor ?? reply.reply_id ?? index
-                    }`}
+                      reply.nested ? "nested-" : ""
+                    }${replyKey}`}
+                    style={
+                      reply.nested
+                        ? {
+                            marginLeft: "var(--space-4)",
+                            borderLeft: "2px solid var(--color-border)",
+                            paddingLeft: "var(--space-2)",
+                          }
+                        : undefined
+                    }
                   >
                     <span className={styles.replyMeta}>
-                      {reply.floor != null ? `第 ${reply.floor} 楼` : "楼层未知"}
+                      {reply.nested
+                        ? `楼中楼${
+                            reply.floor != null ? `（第 ${reply.floor} 楼）` : ""
+                          }`
+                        : reply.floor != null
+                          ? `第 ${reply.floor} 楼`
+                          : "楼层未知"}
                       {reply.is_original_poster ? " · 楼主" : ""}
+                      {reply.nested_preview ? " · 仅页面预览" : ""}
                       {reply.posted_at ? ` · ${reply.posted_at}` : " · 时间未给出"}
                       {active ? " · 当前引用" : ""}
                     </span>
                     <span className={styles.replyBody}>{reply.content}</span>
+                    {reply.nested_progress && (
+                      <span
+                        className={styles.note}
+                        data-testid={`tieba-evidence-progress-${replyKey}`}
+                      >
+                        楼中楼范围：{nestedProgressLabel(reply.nested_progress)}
+                      </span>
+                    )}
                   </li>
                 );
               })}

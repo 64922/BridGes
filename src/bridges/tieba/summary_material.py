@@ -14,6 +14,11 @@ def sources(posts: list[TiebaPostProjection]) -> list[dict[str, Any]]:
     duplicate_groups: dict[tuple[str, str], str] = {}
     duplicate_counts: dict[str, int] = {}
     for post in posts:
+        parents = {
+            reply.reply_id: reply
+            for reply in post.replies
+            if not reply.nested and reply.reply_id
+        }
         for reply in post.replies:
             content = reply.content.strip()
             if not content:
@@ -34,9 +39,18 @@ def sources(posts: list[TiebaPostProjection]) -> list[dict[str, Any]]:
                 "posted_at": reply.posted_at,
                 "author": reply.author,
                 "temporal_scope": reply.temporal_scope.value,
+                "nested": reply.nested,
+                "nested_preview": reply.nested_preview,
                 "identity_state": "upstream_id" if reply.reply_id else "unknown",
                 "content": content[:800],
             }
+            if reply.nested:
+                parent = parents.get(reply.parent_reply_id or "")
+                source["parent_context_state"] = "read" if parent else "missing"
+                if parent is not None:
+                    source["parent_author"] = parent.author
+                    source["parent_posted_at"] = parent.posted_at
+                    source["parent_content"] = parent.content[:500]
             if not reply.reply_id:
                 normalized = " ".join(content.casefold().split())
                 group_key = (post.thread_id or post.url, normalized)
@@ -84,6 +98,12 @@ def build_verification_payload(
                     "time": sources[citation_id].get("posted_at"),
                     "author": sources[citation_id].get("author"),
                     "scope": sources[citation_id].get("temporal_scope"),
+                    "nested": sources[citation_id].get("nested"),
+                    "parent_reply_id": sources[citation_id].get("parent_reply_id"),
+                    "parent_context_state": sources[citation_id].get(
+                        "parent_context_state"
+                    ),
+                    "parent_content": sources[citation_id].get("parent_content"),
                     "identity_state": sources[citation_id].get("identity_state"),
                     "duplicate_text_group": sources[citation_id].get(
                         "duplicate_text_group"
@@ -108,6 +128,12 @@ def build_verification_payload(
                     "time": sources[citation_id].get("posted_at"),
                     "author": sources[citation_id].get("author"),
                     "scope": sources[citation_id].get("temporal_scope"),
+                    "nested": sources[citation_id].get("nested"),
+                    "parent_reply_id": sources[citation_id].get("parent_reply_id"),
+                    "parent_context_state": sources[citation_id].get(
+                        "parent_context_state"
+                    ),
+                    "parent_content": sources[citation_id].get("parent_content"),
                     "identity_state": sources[citation_id].get("identity_state"),
                     "duplicate_text_group": sources[citation_id].get(
                         "duplicate_text_group"
