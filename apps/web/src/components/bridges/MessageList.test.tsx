@@ -103,7 +103,7 @@ it("贴吧结构化结果只展示一次，空态正文保留原因而不重复�
     status: "empty", topic: "国庆节 假期", original_question: "我想了解国庆节假期的讨论",
     question_kind: "mixed", parallel_evidence: false, official_check_requested: true, retryable: false,
     forum: "华东交通大学吧", topic_terms: ["国庆节", "假期"],
-    time_filter: { applied: false, recent_count: 0, historical_count: 0, unknown_count: 0, note: "未指定年份" },
+    time_filter: { applied: false, mode: "unavailable", eligible_count: 0, context_only_count: 0, excluded_count: 0, history_supplemented: false, recent_count: 0, historical_count: 0, unknown_count: 0, note: "未指定年份" },
     empty_reason: "没有取得相关讨论",
   };
   render(<MessageList conversationId="conversation-1" messages={[assistantMessage({

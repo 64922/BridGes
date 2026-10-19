@@ -22,7 +22,7 @@ from bridges.tieba.contracts import (
     TiebaSearchHit,
 )
 from bridges.tieba.evidence_search import FAILED_QUERY_STATUSES, budget_exhausted
-from bridges.tieba.evidence_time import (
+from bridges.tieba.evidence_time_rules import (
     DATE_PATTERN,
     expired_notice,
     holiday_without_year,

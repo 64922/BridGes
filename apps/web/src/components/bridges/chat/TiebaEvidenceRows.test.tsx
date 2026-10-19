@@ -49,6 +49,7 @@ const post: TiebaPostProjection = {
       reply_id: "reply-3",
       parent_reply_id: null,
       temporal_scope: "unknown",
+      context_only: false,
       posted_at: "2026-09-20 21:14",
       author: "吧友甲",
       is_original_poster: false,
@@ -74,7 +75,7 @@ const post: TiebaPostProjection = {
 };
 
 const metadata: TiebaRunMetadata = {
-  contract_version: "tieba-run-metadata-v1",
+  contract_version: "tieba-run-metadata-v2",
   run_id: "run-1",
   recipe_version: "tieba-recipe-v3",
   component_versions: { browser_protocol: "tieba-browser-protocol-v2" },
@@ -88,7 +89,14 @@ const metadata: TiebaRunMetadata = {
   official_request_count: 1,
   model_call_count: 3,
   confirmed_post_count: 1,
-  read_reply_count: 1,
+  read_reply_count: 3,
+  candidate_count: 9,
+  usable_candidate_count: 4,
+  read_post_count: 1,
+  qualified_evidence_count: 1,
+  context_only_evidence_count: 1,
+  excluded_evidence_count: 2,
+  exclusion_reasons: { out_of_time_range: 1, campus_conflict: 1 },
   source_urls: [post.url],
   unread_scope: ["https://tieba.baidu.com/p/8123456789：只读取第 1 页，页面声明共 3 页。"],
 };
@@ -118,6 +126,7 @@ describe("贴吧证据行（工单 04）", () => {
           reply_id: "reply-4",
           parent_reply_id: null,
           temporal_scope: "unknown",
+          context_only: false,
           posted_at: "2026-08-01 10:00",
           author: "父楼层作者",
           is_original_poster: false,
@@ -142,6 +151,7 @@ describe("贴吧证据行（工单 04）", () => {
           reply_id: "n5",
           parent_reply_id: "reply-4",
           temporal_scope: "unknown",
+          context_only: false,
           posted_at: "2026-08-05 00:17",
           author: "纠正者",
           is_original_poster: false,
@@ -190,6 +200,42 @@ describe("贴吧证据行（工单 04）", () => {
     expect(text).toContain("模型调用 3 次");
     expect(text).toContain("确认帖子 1 个");
     expect(text).toContain("browser_protocol tieba-browser-protocol-v2");
+    expect(text).toContain("候选 9 条");
+    expect(text).toContain("合格证据 1 条");
+    expect(text).toContain("仅上下文 1 条");
+    expect(text).toContain("时间范围外 1 条");
+    expect(text).toContain("明确其他校区 1 条");
     expect(text).toContain("只读取第 1 页");
   });
-});
+
+  it("帖子展示排除原因与仅上下文发言", () => {
+    render(
+      <PostRow
+        post={{
+          ...post,
+          scope_excluded_reasons: { campus_conflict: 1 },
+          replies: [
+            {
+              ...(post.replies?.[0] ?? {
+                content: "",
+                is_original_poster: false,
+                nested: false,
+                nested_preview: false,
+                context_only: false,
+              }),
+              temporal_scope: "historical",
+              context_only: true,
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(
+      screen.getByTestId("tieba-post-8123456789-scope-exclusions").textContent
+    ).toContain("明确其他校区 1 条");
+    const replies = screen.getByTestId("tieba-post-8123456789-replies");
+    expect(replies.textContent).toContain("时间分类：历史");
+    expect(replies.textContent).toContain("仅上下文，不作为引用依据");
+  });
+})

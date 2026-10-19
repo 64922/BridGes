@@ -33,6 +33,21 @@ export const READ_STATUS_LABELS: Record<string, string> = {
   cancelled: "已取消",
 };
 
+const TEMPORAL_SCOPE_LABELS: Record<string, string> = {
+  recent: "近期",
+  historical: "历史",
+  unknown: "时间未知",
+};
+
+const SCOPE_EXCLUSION_LABELS: Record<string, string> = {
+  campus_conflict: "明确其他校区",
+  campus_unconfirmed: "校区未确认",
+  other_topic: "其他话题",
+  topic_mismatch: "话题不相关",
+  out_of_time_range: "时间范围外",
+  unknown_time: "发言时间未知",
+};
+
 const OFFICIAL_STATUS_LABELS: Record<string, string> = {
   verified: "已定位相关段落",
   excerpt_not_found: "已取得页面，但未定位到相关段落",
@@ -96,6 +111,11 @@ export function nestedProgressLabel(progress: TiebaNestedProgress): string {
 }
 
 /** 运行记录：真实请求/模型调用计数、版本与未读范围。 */
+/** 排除原因的固定中文说明；未知原因保留原键以便核对。 */
+export function scopeExclusionLabel(reason: string): string {
+  return SCOPE_EXCLUSION_LABELS[reason] ?? reason;
+}
+
 export function RunMetadataRow({ metadata }: { metadata: TiebaRunMetadata }) {
   const elapsed =
     metadata.elapsed_ms == null
@@ -134,6 +154,18 @@ export function RunMetadataRow({ metadata }: { metadata: TiebaRunMetadata }) {
         <li>
           模型调用 {metadata.model_call_count} 次 · 确认帖子 {metadata.confirmed_post_count} 个 ·
           记录楼层 {metadata.read_reply_count} 条
+        </li>
+        <li data-testid="tieba-evidence-counts">
+          候选 {metadata.candidate_count ?? 0} 条 · 可读取 {metadata.usable_candidate_count ?? 0}{" "}
+          帖 · 已读 {metadata.read_post_count ?? 0} 帖 · 合格证据{" "}
+          {metadata.qualified_evidence_count ?? 0} 条 · 仅上下文{" "}
+          {metadata.context_only_evidence_count ?? 0} 条 · 排除{" "}
+          {metadata.excluded_evidence_count ?? 0} 条
+          {Object.keys(metadata.exclusion_reasons ?? {}).length > 0
+            ? `（${Object.entries(metadata.exclusion_reasons ?? {})
+                .map(([reason, count]) => `${scopeExclusionLabel(reason)} ${count} 条`)
+                .join("、")}）`
+            : ""}
         </li>
         {versions.length > 0 && (
           <li>组件版本：{versions.map(([name, version]) => `${name} ${version}`).join(" · ")}</li>
@@ -269,6 +301,17 @@ export function PostRow({ post }: { post: TiebaPostProjection }) {
       {post.read_status === "partial" && post.read_error_message && (
         <span style={{ color: "var(--color-status-wait)", fontSize: "var(--text-xs)" }}>{post.read_error_message}</span>
       )}
+      {Object.keys(post.scope_excluded_reasons ?? {}).length > 0 && (
+        <span
+          data-testid={`tieba-post-${post.thread_id ?? post.url}-scope-exclusions`}
+          style={{ color: "var(--color-status-wait)", fontSize: "var(--text-xs)" }}
+        >
+          已按话题或校区排除：
+          {Object.entries(post.scope_excluded_reasons ?? {})
+            .map(([reason, count]) => `${scopeExclusionLabel(reason)} ${count} 条`)
+            .join("、")}
+        </span>
+      )}
       {!post.replies_obtained && (
         <span
           data-testid={`tieba-post-${post.thread_id ?? post.url}-no-replies`}
@@ -326,6 +369,25 @@ export function PostRow({ post }: { post: TiebaPostProjection }) {
                 {reply.posted_at ? ` · ${reply.posted_at}` : " · 时间未给出"}：
               </span>
               {reply.content}
+              {(reply.temporal_scope || reply.context_only) && (
+                <span
+                  data-testid={`tieba-reply-scope-${reply.reply_id ?? index}`}
+                  style={{
+                    display: "block",
+                    color: "var(--color-text-tertiary)",
+                    fontSize: "var(--text-xs)",
+                  }}
+                >
+                  {reply.temporal_scope
+                    ? `时间分类：${
+                        TEMPORAL_SCOPE_LABELS[reply.temporal_scope] ??
+                        reply.temporal_scope
+                      }`
+                    : ""}
+                  {reply.temporal_scope && reply.context_only ? " · " : ""}
+                  {reply.context_only ? "仅上下文，不作为引用依据" : ""}
+                </span>
+              )}
               {reply.nested_progress && (
                 <span
                   data-testid={`tieba-nested-progress-${reply.reply_id ?? index}`}

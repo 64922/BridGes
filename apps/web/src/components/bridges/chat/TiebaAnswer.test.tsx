@@ -44,6 +44,7 @@ const post: TiebaPostProjection = {
       reply_id: "reply-3",
       parent_reply_id: null,
       temporal_scope: "unknown",
+      context_only: false,
       posted_at: "2026-09-20 21:14",
       author: "吧友甲",
       is_original_poster: false,

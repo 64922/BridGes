@@ -162,7 +162,7 @@ def test_correction_can_be_cited_without_attributing_parent_stance() -> None:
     assert "parent_content" in instruction
     assert "不能把父楼层作者" in instruction
     assert gateway.contracts[0].prompt_version == SUMMARY_PROMPT_VERSION
-    assert gateway.contracts[0].input_schema_version == "tieba-read-evidence-v3"
+    assert gateway.contracts[0].input_schema_version == "tieba-read-evidence-v4"
 
 
 def test_orphan_nested_source_marks_parent_context_missing() -> None:

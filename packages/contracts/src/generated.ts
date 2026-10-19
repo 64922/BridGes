@@ -29272,6 +29272,13 @@ export interface components {
              */
             discoveries?: components["schemas"]["TiebaSearchDiscovery"][];
             /**
+             * Scope Excluded Reasons
+             * @description 读取边界按话题／校区排除的发言数与原因。
+             */
+            scope_excluded_reasons?: {
+                [key: string]: number;
+            };
+            /**
              * Retrieved At
              * Format: date-time
              * @description 读取时间。
@@ -29387,6 +29394,12 @@ export interface components {
             nested_preview: boolean;
             /** @description 父楼层自己的楼中楼读取进度；非父楼层为 None。 */
             nested_progress?: components["schemas"]["TiebaNestedProgress"] | null;
+            /**
+             * Context Only
+             * @description 是否仅作理解相关的上下文保留；该条不能成为观点依据或引用。
+             * @default false
+             */
+            context_only: boolean;
         };
         /**
          * TiebaResearchProjection
@@ -29584,7 +29597,7 @@ export interface components {
         TiebaRunMetadata: {
             /**
              * Contract Version
-             * @default tieba-run-metadata-v1
+             * @default tieba-run-metadata-v2
              */
             contract_version: string;
             /**
@@ -29656,6 +29669,24 @@ export interface components {
              */
             model_call_count: number;
             /**
+             * Candidate Count
+             * @description 搜索取得的原始候选数（去重前）。
+             * @default 0
+             */
+            candidate_count: number;
+            /**
+             * Usable Candidate Count
+             * @description 可读取的候选帖数。
+             * @default 0
+             */
+            usable_candidate_count: number;
+            /**
+             * Read Post Count
+             * @description 实际尝试读取的候选页面数。
+             * @default 0
+             */
+            read_post_count: number;
+            /**
              * Confirmed Post Count
              * @description 确认属于目标吧的帖子数。
              * @default 0
@@ -29667,6 +29698,31 @@ export interface components {
              * @default 0
              */
             read_reply_count: number;
+            /**
+             * Qualified Evidence Count
+             * @description 符合话题、校区与时间条件、可作为观点依据的发言数。
+             * @default 0
+             */
+            qualified_evidence_count: number;
+            /**
+             * Context Only Evidence Count
+             * @description 仅作为必要上下文保留、不能引用的发言数。
+             * @default 0
+             */
+            context_only_evidence_count: number;
+            /**
+             * Excluded Evidence Count
+             * @description 已读但被话题／校区／时间条件排除的发言数。
+             * @default 0
+             */
+            excluded_evidence_count: number;
+            /**
+             * Exclusion Reasons
+             * @description 排除发言的稳定原因与数量。
+             */
+            exclusion_reasons?: {
+                [key: string]: number;
+            };
             /**
              * Source Urls
              * @description 可核对的帖子来源链接。
@@ -29858,6 +29914,11 @@ export interface components {
              */
             applied: boolean;
             /**
+             * @description 明确条件、默认近期、默认补充历史或无法换算。
+             * @default unavailable
+             */
+            mode: components["schemas"]["TiebaTimeScopeMode"];
+            /**
              * Since
              * @description 实际采用时间区间的起点（含）。
              */
@@ -29886,11 +29947,48 @@ export interface components {
              */
             unknown_count: number;
             /**
+             * Eligible Count
+             * @description 符合条件、可作为观点依据的发言数。
+             * @default 0
+             */
+            eligible_count: number;
+            /**
+             * Context Only Count
+             * @description 仅作为必要上下文保留的发言数。
+             * @default 0
+             */
+            context_only_count: number;
+            /**
+             * Excluded Count
+             * @description 按时间条件排除、不进入总结的发言数。
+             * @default 0
+             */
+            excluded_count: number;
+            /**
+             * History Supplemented
+             * @description 默认窗口证据不足时是否明确补充了历史发言。
+             * @default false
+             */
+            history_supplemented: boolean;
+            /**
+             * Exclusion Reasons
+             * @description 按时间条件排除的发言数与原因。
+             */
+            exclusion_reasons?: {
+                [key: string]: number;
+            };
+            /**
              * Note
              * @description 面向用户的中文说明（含未执行时的原因）。
              */
             note: string;
         };
+        /**
+         * TiebaTimeScopeMode
+         * @description 时间范围在总结证据上的实际执行方式。
+         * @enum {string}
+         */
+        TiebaTimeScopeMode: "explicit" | "default_recent" | "default_supplement" | "unavailable";
         /**
          * TiebaVerification
          * @description ``tieba.verify`` 的结构化核验结果（模型不能自行宣布通过）。

@@ -5,7 +5,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from bridges.tieba.contracts import ReadStatus, TiebaPostProjection, TiebaReply
+from bridges.tieba.contracts import (
+    ReadStatus,
+    TiebaPostProjection,
+    TiebaReply,
+    TiebaTimeFilter,
+)
 from bridges.tieba.node_synthesis import _run_metadata, _unread_scope
 
 
@@ -41,6 +46,7 @@ def test_run_metadata_records_counts_versions_and_unread_scope() -> None:
         reads=SimpleNamespace(attempted_urls=["https://tieba.baidu.com/p/123"]),
         checks=[object()],
         confirmed=[_post()],
+        time_filter=TiebaTimeFilter(note="未指定时间"),
         started_at=started,
         finished_at=finished,
         model_calls=3,

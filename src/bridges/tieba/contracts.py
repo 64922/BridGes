@@ -37,6 +37,9 @@ from bridges.tieba.contracts_read import (
 from bridges.tieba.contracts_read import (
     TiebaTemporalScope as TiebaTemporalScope,
 )
+from bridges.tieba.contracts_read import (
+    TiebaTimeScopeMode as TiebaTimeScopeMode,
+)
 from bridges.tieba.lexicon import TARGET_FORUM_NAME
 from bridges.tieba.run_metadata import TiebaRunMetadata
 from bridges.tieba.search_contracts import (
@@ -255,6 +258,10 @@ class TiebaTimeFilter(BaseModel):
     requirement: str | None = Field(default=None, description="时间条件原话。")
     year: int | None = Field(default=None, description="绝对年份；相对说法为 None。")
     applied: bool = Field(default=False, description="是否真的按帖子时间过滤过。")
+    mode: TiebaTimeScopeMode = Field(
+        default=TiebaTimeScopeMode.UNAVAILABLE,
+        description="明确条件、默认近期、默认补充历史或无法换算。",
+    )
     since: datetime | None = Field(default=None, description="实际采用时间区间的起点（含）。")
     until: datetime | None = Field(
         default=None, description="实际采用时间区间的终点（含）；未知时为 None。"
@@ -262,6 +269,15 @@ class TiebaTimeFilter(BaseModel):
     recent_count: int = Field(default=0, description="实际读到且落在近期窗口的发言数。")
     historical_count: int = Field(default=0, description="实际读到的历史发言数。")
     unknown_count: int = Field(default=0, description="实际读到但无法确认时间的发言数。")
+    eligible_count: int = Field(default=0, description="符合条件、可作为观点依据的发言数。")
+    context_only_count: int = Field(default=0, description="仅作为必要上下文保留的发言数。")
+    excluded_count: int = Field(default=0, description="按时间条件排除、不进入总结的发言数。")
+    history_supplemented: bool = Field(
+        default=False, description="默认窗口证据不足时是否明确补充了历史发言。"
+    )
+    exclusion_reasons: dict[str, int] = Field(
+        default_factory=dict, description="按时间条件排除的发言数与原因。"
+    )
     note: str = Field(description="面向用户的中文说明（含未执行时的原因）。")
 
 

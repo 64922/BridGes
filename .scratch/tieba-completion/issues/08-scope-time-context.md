@@ -4,7 +4,7 @@
 
 **Blocked by:** 05 — 发现多页候选和仅在回复中出现的话题；07 — 楼中楼分页保留稳定身份和纠正上下文
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 实施边界与关键决策
 
@@ -12,12 +12,12 @@
 
 ## 验收条件
 
-- [ ] 默认近十二个月优先；不足时明确补充历史，明确时间范围时不擅自补入范围外证据。
-- [ ] 按发言时间筛选，老帖近期回复可纳入；只有月日、不可信年份或未知时区的情况不猜成近期。
-- [ ] 明确校区冲突和仅同校区但无关话题被排除；无冲突且必要的上下文可保留，引用限制可验证。
-- [ ] 标题无关但回复相关可进入证据；反驳、否定、纠正及常用别称不被简单关键词筛选抹掉。
-- [ ] 历史父上下文标为仅上下文，不成为近期观点的引用；不同时间说法变化在总结中有依据。
-- [ ] 候选数、已读数、合格证据数与排除原因分别记录；无合格证据不能表达成吧内不存在讨论。
+- [x] 默认近十二个月优先；不足时明确补充历史，明确时间范围时不擅自补入范围外证据。
+- [x] 按发言时间筛选，老帖近期回复可纳入；只有月日、不可信年份或未知时区的情况不猜成近期。
+- [x] 明确校区冲突和仅同校区但无关话题被排除；无冲突且必要的上下文可保留，引用限制可验证。
+- [x] 标题无关但回复相关可进入证据；反驳、否定、纠正及常用别称不被简单关键词筛选抹掉。
+- [x] 历史父上下文标为仅上下文，不成为近期观点的引用；不同时间说法变化在总结中有依据。
+- [x] 候选数、已读数、合格证据数与排除原因分别记录；无合格证据不能表达成吧内不存在讨论。
 
 ## 验证方式
 
@@ -42,3 +42,16 @@
 
 
 - 2026-10-18：用户确认拆分，正式发布为 ready-for-agent；编号、内容范围和依赖保持已批准方案，未开始业务开发。
+
+- 2026-10-19T11:26:24+08:00：实现与受控验证完成，转 `ready-for-human`。
+  - 基线：工作树 `D:\BridGes\.worktrees\08-scope-time-context`；分支 `08-scope-time-context`；基线 `7202dd2d`（main，已合 07）。前置 05、07 均为 `ready-for-human`：分页代码与离线回归已交付，真实生产模型总结仍待人工复核；本票按用户指令继续，不把前置当作已人工验收。
+  - 时间语义：新增 `TiebaTimeScopeMode`（`explicit/default_recent/default_supplement/unavailable`）与默认近 12 个月、近期阈值 3 条。默认窗口不足时明确补充历史/未知；显式范围只取范围内发言，范围外历史父回复仅作上下文。时间解析按实际发言时间，支持 ISO `Z`/偏移/`UTC`/`GMT` 换算到中国时区；缺年、早于 2003 年、明显未来日期、未知时区缩写均保持 `unknown`，不猜成近期；老帖中的近期回复可单独纳入。
+  - 证据范围：读取边界先按明确校区收敛，同校区但明确谈论其他话题的发言排除；无冲突父回复回填为 `context_only`，可与纠正/反驳子回复一起保留但不能引用。无校区条件时不因回复未重复关键词而误删标题相关帖内的回复。
+  - 总结与核验：`summary_scope` 分离合格证据、仅上下文与排除项；总结按时间模式选材，历史/未知时间如实标注，新增时间变化提示；引用、分段和追溯核验拒绝 `context_only`，读范围仍用全部时间标注发言核对。
+  - 公开投影与界面：新增 `TiebaTimeFilter.mode/eligible_count/context_only_count/excluded_count/history_supplemented/exclusion_reasons`、`TiebaReply.context_only`、`TiebaPostProjection.scope_excluded_reasons`；运行记录新增候选、可读取、已读、合格证据、仅上下文、排除数与原因。中文界面显示时间分类、仅上下文标记、排除原因与运行计数；无合格证据明确写“不代表吧内不存在讨论”。
+  - 拆分：为满足单文件不超过 500 行，时间/日期解析规则移入 `evidence_time_rules.py`，总结选材移入 `summary_material.time_scoped_materials`；无兼容双实现。
+  - 版本：recipe `tieba-recipe-v10`、读取 `tieba-read-v11`、总结 `tieba-synthesize-v10`、核验 `tieba-verify-v6`、总结提示词 `tieba-summary-v7`、总结输入 schema `tieba-read-evidence-v4`、运行元数据契约 `tieba-run-metadata-v2`；已同步 `openapi.json` 与 `packages/contracts/src/generated.ts`。无数据库 schema 或存量数据迁移。
+  - 测试：`python -m pytest tests/tieba tests/contracts -q` → `393 passed`，退出码 0；`ruff check src/bridges/tieba tests/tieba` → 全部通过，退出码 0；`mypy src/bridges/tieba` → 本票文件无错误（仍有 10 个既有跨模块错误）；前端 `tsc --noEmit` 通过、`vitest run` → 54 文件 / 417 通过、`next lint` 仅既有 `<img>` 警告、`next build` 编译与 23 个静态页生成成功（worktree `node_modules` junction 导致 standalone trace 符号链接 EPERM，和 07 记录一致）。全仓 `pytest -q` 仍在收集期被 4 个既有 `tests/career_plan` 导入错误阻断；`--ignore=tests/career_plan` 的大范围运行仍有大量与本票无关的既有失败（331 failed / 5993 passed / 39 skipped），因此本票回归范围以 tieba + contracts 为准。
+  - 真实/模拟证据：本票使用固定日期矩阵、校区冲突、父上下文、纠正与时间变化等受控样例；**未重新执行真实浏览器 + 生产模型的默认时间/明确时间两条旅程**，也未取得真实模型引用证据。真实上游协议、登录态与模型总结仍需人工复核。
+  - 未验证/剩余：真实默认与明确时间旅程；真实多帖模型总结及引用；上游页面时间格式的更多变体；全仓既有失败基线。
+  - 回滚：回退本票提交即可；recipe、读取、总结、核验与提示词/schema 版本须成组回退，旧代码不应恢复新版本产物。历史投影缺少新字段时按默认值读取，无需数据迁移。

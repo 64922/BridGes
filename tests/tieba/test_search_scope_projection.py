@@ -350,6 +350,7 @@ def test_run_metadata_counts_search_pages() -> None:
         reads=reads,  # type: ignore[arg-type]
         checks=(),
         confirmed=(),
+        time_filter=TiebaTimeFilter(note="未指定时间"),
         started_at=now,
         finished_at=now,
         model_calls=0,

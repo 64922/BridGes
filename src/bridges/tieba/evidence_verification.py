@@ -18,7 +18,7 @@ from bridges.tieba.evidence_official import (
     assess_applicability,
     detect_conflicts,
 )
-from bridges.tieba.evidence_time import apply_time_condition
+from bridges.tieba.evidence_time import apply_time_condition, summary_scope
 from bridges.tieba.lexicon import TARGET_FORUM_NAME
 from bridges.tieba.official import (
     STATUS_VERIFIED,
@@ -95,10 +95,11 @@ def run_verification(
         and post.affiliation_evidence.startswith("已读取帖子页面")
         for post in projection.confirmed_posts
     )
-    _, filtered_posts = apply_time_condition(analysis, list(posts))
-    read_scope = _read_scope_consistent(projection.confirmed_posts, filtered_posts)
-    unread_absent = _quotes_traceable(projection.sections, filtered_posts) and _summary_traceable(
-        projection, filtered_posts
+    _, tagged_posts = apply_time_condition(analysis, list(posts))
+    _, scoped_posts = summary_scope(analysis, list(posts))
+    read_scope = _read_scope_consistent(projection.confirmed_posts, tagged_posts)
+    unread_absent = _quotes_traceable(projection.sections, scoped_posts) and _summary_traceable(
+        projection, scoped_posts
     )
     consensus_absent = not _has_consensus_phrases(projection)
     official_scope = _official_scope_consistent(analysis, plan, projection, checks)
@@ -213,6 +214,7 @@ def _summary_traceable(
             and reply.floor == citation.floor
             and reply.posted_at == citation.posted_at
             and reply.author == citation.author
+            and not reply.context_only
             and citation.quote
             and citation.quote in reply.content
         ]

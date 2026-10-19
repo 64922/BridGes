@@ -155,7 +155,7 @@ export function tiebaResearch(
     place_or_event: [],
     question_kind: "experience",
     parallel_evidence: false,
-    time_filter: { requirement: null, year: null, applied: false, recent_count: 0, historical_count: 0, unknown_count: 0, note: "未提出时间条件。" },
+    time_filter: { requirement: null, year: null, applied: false, mode: "unavailable", eligible_count: 0, context_only_count: 0, excluded_count: 0, history_supplemented: false, recent_count: 0, historical_count: 0, unknown_count: 0, note: "未提出时间条件。" },
     queries: [],
     forum: "华东交通大学吧",
     confirmed_posts: [],

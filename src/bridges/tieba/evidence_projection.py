@@ -23,7 +23,8 @@ from bridges.tieba.contracts import (
 from bridges.tieba.evidence import ReadOutcome
 from bridges.tieba.evidence_official import OFFICIAL_TRIGGER_NOTE
 from bridges.tieba.evidence_search import FAILED_QUERY_STATUSES, FORUM_NAME, SearchAttempts
-from bridges.tieba.evidence_time import HOLIDAY_YEAR_NOTE, holiday_without_year
+from bridges.tieba.evidence_time import HOLIDAY_YEAR_NOTE
+from bridges.tieba.evidence_time_rules import holiday_without_year
 from bridges.tieba.lexicon import (
     TARGET_FORUM_NAME,
     TARGET_FORUM_URL,
@@ -67,6 +68,7 @@ def build_projection(
         rejected=rejected,
         attempts=attempts,
         reads=reads,
+        time_filter=time_filter,
     )
     if analysis.needs_official_check:
         boundary.append(OFFICIAL_TRIGGER_NOTE)
@@ -137,6 +139,7 @@ def evidence_boundary(
     rejected: list[TiebaRejectedCandidate],
     attempts: SearchAttempts | None,
     reads: ReadOutcome | None,
+    time_filter: TiebaTimeFilter,
 ) -> list[str]:
     notes = [
         f"固定贴吧入口：[{TARGET_FORUM_NAME}]({TARGET_FORUM_URL})",
@@ -165,6 +168,21 @@ def evidence_boundary(
                 f"其中 {len(unread)} 个帖子确认了归属但没有取得回复内容，未做任何内容推断。"
             )
         notes.append("不承诺完整抓取某帖全部回复，也不绕过登录或访问限制。")
+    excluded = _exclusion_reasons(confirmed, time_filter)
+    if excluded:
+        detail = "、".join(
+            f"{EXCLUSION_REASON_LABELS.get(reason, reason)} {count} 条"
+            for reason, count in excluded.items()
+        )
+        notes.append(
+            f"范围筛选：已读发言中 {sum(excluded.values())} 条未进入总结（{detail}）；"
+            "仅上下文材料不能成为观点依据或引用。"
+        )
+    if confirmed and time_filter.eligible_count == 0:
+        notes.append(
+            "本轮已读原文中没有符合话题、校区和时间条件的合格证据；"
+            "这只说明本轮未取得合格证据，不代表吧内不存在相关讨论。"
+        )
     if attempts is not None and attempts.diagnostics.raw_hits:
         notes.append(
             f"本轮共取得 {attempts.diagnostics.raw_hits} 条原始搜索结果，"
@@ -173,6 +191,26 @@ def evidence_boundary(
         )
     notes.append("总结仅基于实际取得的页面原文生成，引用指向本轮读取的发言；不补写未取得内容。")
     return notes
+
+
+EXCLUSION_REASON_LABELS = {
+    "campus_conflict": "明确其他校区",
+    "campus_unconfirmed": "校区未确认",
+    "other_topic": "其他话题",
+    "topic_mismatch": "话题不相关",
+    "out_of_time_range": "时间范围外",
+    "unknown_time": "发言时间未知",
+}
+
+
+def _exclusion_reasons(
+    confirmed: Sequence[TiebaPostProjection], time_filter: TiebaTimeFilter
+) -> dict[str, int]:
+    reasons = dict(time_filter.exclusion_reasons)
+    for post in confirmed:
+        for reason, count in post.scope_excluded_reasons.items():
+            reasons[reason] = reasons.get(reason, 0) + count
+    return reasons
 
 
 def _search_scope_notes(scope: Sequence[TiebaSearchScope]) -> list[str]:

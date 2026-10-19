@@ -19,6 +19,11 @@ const research: TiebaResearchProjection = {
   topic_terms: ["空调"],
   time_filter: {
     applied: false,
+    mode: "unavailable",
+    eligible_count: 0,
+    context_only_count: 0,
+    excluded_count: 0,
+    history_supplemented: false,
     recent_count: 0,
     historical_count: 0,
     unknown_count: 0,

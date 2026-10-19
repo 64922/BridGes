@@ -65809,6 +65809,14 @@
             "title": "Discoveries",
             "description": "该帖在搜索阶段的发现路径。"
           },
+          "scope_excluded_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Scope Excluded Reasons",
+            "description": "读取边界按话题／校区排除的发言数与原因。"
+          },
           "retrieved_at": {
             "type": "string",
             "format": "date-time",
@@ -65989,6 +65997,12 @@
               }
             ],
             "description": "父楼层自己的楼中楼读取进度；非父楼层为 None。"
+          },
+          "context_only": {
+            "type": "boolean",
+            "title": "Context Only",
+            "description": "是否仅作理解相关的上下文保留；该条不能成为观点依据或引用。",
+            "default": false
           }
         },
         "type": "object",
@@ -66347,7 +66361,7 @@
           "contract_version": {
             "type": "string",
             "title": "Contract Version",
-            "default": "tieba-run-metadata-v1"
+            "default": "tieba-run-metadata-v2"
           },
           "run_id": {
             "type": "string",
@@ -66441,6 +66455,24 @@
             "description": "实际发生的模型调用数。",
             "default": 0
           },
+          "candidate_count": {
+            "type": "integer",
+            "title": "Candidate Count",
+            "description": "搜索取得的原始候选数（去重前）。",
+            "default": 0
+          },
+          "usable_candidate_count": {
+            "type": "integer",
+            "title": "Usable Candidate Count",
+            "description": "可读取的候选帖数。",
+            "default": 0
+          },
+          "read_post_count": {
+            "type": "integer",
+            "title": "Read Post Count",
+            "description": "实际尝试读取的候选页面数。",
+            "default": 0
+          },
           "confirmed_post_count": {
             "type": "integer",
             "title": "Confirmed Post Count",
@@ -66452,6 +66484,32 @@
             "title": "Read Reply Count",
             "description": "实际记录的楼层数（含楼中楼）。",
             "default": 0
+          },
+          "qualified_evidence_count": {
+            "type": "integer",
+            "title": "Qualified Evidence Count",
+            "description": "符合话题、校区与时间条件、可作为观点依据的发言数。",
+            "default": 0
+          },
+          "context_only_evidence_count": {
+            "type": "integer",
+            "title": "Context Only Evidence Count",
+            "description": "仅作为必要上下文保留、不能引用的发言数。",
+            "default": 0
+          },
+          "excluded_evidence_count": {
+            "type": "integer",
+            "title": "Excluded Evidence Count",
+            "description": "已读但被话题／校区／时间条件排除的发言数。",
+            "default": 0
+          },
+          "exclusion_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Exclusion Reasons",
+            "description": "排除发言的稳定原因与数量。"
           },
           "source_urls": {
             "items": {
@@ -66819,6 +66877,11 @@
             "description": "是否真的按帖子时间过滤过。",
             "default": false
           },
+          "mode": {
+            "$ref": "#/components/schemas/TiebaTimeScopeMode",
+            "description": "明确条件、默认近期、默认补充历史或无法换算。",
+            "default": "unavailable"
+          },
           "since": {
             "anyOf": [
               {
@@ -66863,6 +66926,38 @@
             "description": "实际读到但无法确认时间的发言数。",
             "default": 0
           },
+          "eligible_count": {
+            "type": "integer",
+            "title": "Eligible Count",
+            "description": "符合条件、可作为观点依据的发言数。",
+            "default": 0
+          },
+          "context_only_count": {
+            "type": "integer",
+            "title": "Context Only Count",
+            "description": "仅作为必要上下文保留的发言数。",
+            "default": 0
+          },
+          "excluded_count": {
+            "type": "integer",
+            "title": "Excluded Count",
+            "description": "按时间条件排除、不进入总结的发言数。",
+            "default": 0
+          },
+          "history_supplemented": {
+            "type": "boolean",
+            "title": "History Supplemented",
+            "description": "默认窗口证据不足时是否明确补充了历史发言。",
+            "default": false
+          },
+          "exclusion_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Exclusion Reasons",
+            "description": "按时间条件排除的发言数与原因。"
+          },
           "note": {
             "type": "string",
             "title": "Note",
@@ -66875,6 +66970,17 @@
         ],
         "title": "TiebaTimeFilter",
         "description": "时间条件的真实执行状态：解析到了什么、有没有真的用上。"
+      },
+      "TiebaTimeScopeMode": {
+        "type": "string",
+        "enum": [
+          "explicit",
+          "default_recent",
+          "default_supplement",
+          "unavailable"
+        ],
+        "title": "TiebaTimeScopeMode",
+        "description": "时间范围在总结证据上的实际执行方式。"
       },
       "TiebaVerification": {
         "properties": {

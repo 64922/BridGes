@@ -23,6 +23,7 @@ from bridges.tieba.contracts import (
     TiebaQuestionAnalysis,
     TiebaResearchProjection,
     TiebaSearchScope,
+    TiebaTimeFilter,
 )
 from bridges.tieba.evidence import ReadOutcome
 from bridges.tieba.evidence_official import (
@@ -84,6 +85,7 @@ def _run_metadata(
     reads: ReadOutcome,
     checks: Sequence[TiebaOfficialCheck],
     confirmed: Sequence[TiebaPostProjection],
+    time_filter: TiebaTimeFilter,
     started_at: datetime,
     finished_at: datetime,
     model_calls: int,
@@ -91,8 +93,16 @@ def _run_metadata(
     search_count = len(attempts.records)
     scope = getattr(attempts, "scope", ())
     read_count = len(reads.attempted_urls)
+    diagnostics = getattr(attempts, "diagnostics", None)
     official_count = len(checks)
     elapsed_ms = max(0, int((finished_at - started_at).total_seconds() * 1000))
+    scope_reasons: dict[str, int] = {}
+    for post in confirmed:
+        for reason, count in post.scope_excluded_reasons.items():
+            scope_reasons[reason] = scope_reasons.get(reason, 0) + count
+    exclusion_reasons = dict(time_filter.exclusion_reasons)
+    for reason, count in scope_reasons.items():
+        exclusion_reasons[reason] = exclusion_reasons.get(reason, 0) + count
     return TiebaRunMetadata(
         run_id=invocation.run_id,
         recipe_version=TIEBA_RECIPE_VERSION,
@@ -109,8 +119,17 @@ def _run_metadata(
         read_request_count=read_count,
         official_request_count=official_count,
         model_call_count=model_calls,
+        candidate_count=getattr(diagnostics, "raw_hits", 0),
+        usable_candidate_count=getattr(diagnostics, "usable", 0),
+        read_post_count=read_count,
         confirmed_post_count=len(confirmed),
         read_reply_count=sum(len(post.replies) for post in confirmed),
+        qualified_evidence_count=time_filter.eligible_count,
+        context_only_evidence_count=time_filter.context_only_count,
+        excluded_evidence_count=(
+            time_filter.excluded_count + sum(scope_reasons.values())
+        ),
+        exclusion_reasons=exclusion_reasons,
         source_urls=[post.url for post in confirmed],
         unread_scope=_unread_scope(confirmed, scope),
     )
@@ -200,7 +219,9 @@ class TiebaSynthesisNodes:
         checks = read_checks(invocation)
         attempts = read_search_attempts(invocation)
         reads = read_outcome(invocation)
-        time_filter, confirmed, sections = summarize(analysis, reads.confirmed)
+        time_filter, confirmed, summary_posts, sections = summarize(
+            analysis, reads.confirmed
+        )
         conflicts = detect_conflicts(analysis, checks, reads.confirmed)
         projection = build_projection(
             analysis=analysis,
@@ -226,9 +247,10 @@ class TiebaSynthesisNodes:
         if self._summary_generator is not None:
             summary = self._summary_generator.generate(
                 self._run_context,
-                confirmed,
+                summary_posts,
                 topic=analysis.original_question,
                 time_requirement=analysis.time_requirement,
+                time_filter=time_filter,
                 model_id=self._run_model_id,
                 model_quota=self._model_quota,
                 budget=self._budget.model_budget if self._budget is not None else None,
@@ -253,7 +275,8 @@ class TiebaSynthesisNodes:
                     attempts=attempts,
                     reads=reads,
                     checks=checks,
-                    confirmed=confirmed,
+                    confirmed=reads.confirmed,
+                    time_filter=time_filter,
                     started_at=self._run_started_at or finished_at,
                     finished_at=finished_at,
                     model_calls=(

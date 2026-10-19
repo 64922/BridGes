@@ -32,6 +32,15 @@ class TiebaTemporalScope(StrEnum):
     UNKNOWN = "unknown"
 
 
+class TiebaTimeScopeMode(StrEnum):
+    """时间范围在总结证据上的实际执行方式。"""
+
+    EXPLICIT = "explicit"
+    DEFAULT_RECENT = "default_recent"
+    DEFAULT_SUPPLEMENT = "default_supplement"
+    UNAVAILABLE = "unavailable"
+
+
 class TiebaNestedState(StrEnum):
     """一个父楼层的楼中楼读取状态。"""
 
@@ -82,6 +91,10 @@ class TiebaReply(BaseModel):
     )
     nested_progress: TiebaNestedProgress | None = Field(
         default=None, description="父楼层自己的楼中楼读取进度；非父楼层为 None。"
+    )
+    context_only: bool = Field(
+        default=False,
+        description="是否仅作理解相关的上下文保留；该条不能成为观点依据或引用。",
     )
 
 
@@ -139,6 +152,9 @@ class TiebaReadResult(BaseModel):
         default=None, description="楼中楼未读完时的合并中文原因。"
     )
     excluded_wait_ms: int = Field(default=0, description="外部浏览器中人工登录/验证等待时长。")
+    scope_excluded_reasons: dict[str, int] = Field(
+        default_factory=dict, description="读取边界按话题／校区排除的发言数与原因。"
+    )
     retrieved_at: datetime = Field(description="读取时间。")
 
     @property
@@ -196,6 +212,9 @@ class TiebaPostProjection(BaseModel):
     discoveries: list[TiebaSearchDiscovery] = Field(
         default_factory=list, description="该帖在搜索阶段的发现路径。"
     )
+    scope_excluded_reasons: dict[str, int] = Field(
+        default_factory=dict, description="读取边界按话题／校区排除的发言数与原因。"
+    )
     retrieved_at: datetime = Field(description="读取时间。")
 
 
@@ -208,4 +227,5 @@ __all__ = [
     "TiebaReadResult",
     "TiebaReply",
     "TiebaTemporalScope",
+    "TiebaTimeScopeMode",
 ]

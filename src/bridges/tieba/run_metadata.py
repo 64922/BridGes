@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 class TiebaRunMetadata(BaseModel):
     """一轮贴吧采集的可核对运行记录（不含会话秘密或原始响应）。"""
 
-    contract_version: str = Field(default="tieba-run-metadata-v1")
+    contract_version: str = Field(default="tieba-run-metadata-v2")
     run_id: str = Field(description="本轮运行的稳定标识。")
     recipe_version: str = Field(description="执行的贴吧配方版本。")
     component_versions: dict[str, str] = Field(
@@ -25,8 +25,23 @@ class TiebaRunMetadata(BaseModel):
     read_request_count: int = Field(default=0, description="帖子读取请求数。")
     official_request_count: int = Field(default=0, description="学校官方页面请求数。")
     model_call_count: int = Field(default=0, description="实际发生的模型调用数。")
+    candidate_count: int = Field(default=0, description="搜索取得的原始候选数（去重前）。")
+    usable_candidate_count: int = Field(default=0, description="可读取的候选帖数。")
+    read_post_count: int = Field(default=0, description="实际尝试读取的候选页面数。")
     confirmed_post_count: int = Field(default=0, description="确认属于目标吧的帖子数。")
     read_reply_count: int = Field(default=0, description="实际记录的楼层数（含楼中楼）。")
+    qualified_evidence_count: int = Field(
+        default=0, description="符合话题、校区与时间条件、可作为观点依据的发言数。"
+    )
+    context_only_evidence_count: int = Field(
+        default=0, description="仅作为必要上下文保留、不能引用的发言数。"
+    )
+    excluded_evidence_count: int = Field(
+        default=0, description="已读但被话题／校区／时间条件排除的发言数。"
+    )
+    exclusion_reasons: dict[str, int] = Field(
+        default_factory=dict, description="排除发言的稳定原因与数量。"
+    )
     source_urls: list[str] = Field(default_factory=list, description="可核对的帖子来源链接。")
     unread_scope: list[str] = Field(
         default_factory=list, description="实际未读取的页、楼层或内容范围。"

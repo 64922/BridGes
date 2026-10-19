@@ -5,7 +5,12 @@ from __future__ import annotations
 from typing import Any, cast
 
 from bridges.contracts.ai import ModelCallResult
-from bridges.tieba.contracts import TiebaPostProjection, TiebaSummaryClaim, TiebaSummaryClaimKind
+from bridges.tieba.contracts import (
+    TiebaPostProjection,
+    TiebaSummaryClaim,
+    TiebaSummaryClaimKind,
+    TiebaTimeScopeMode,
+)
 
 
 def sources(posts: list[TiebaPostProjection]) -> list[dict[str, Any]]:
@@ -39,6 +44,7 @@ def sources(posts: list[TiebaPostProjection]) -> list[dict[str, Any]]:
                 "posted_at": reply.posted_at,
                 "author": reply.author,
                 "temporal_scope": reply.temporal_scope.value,
+                "context_only": reply.context_only,
                 "nested": reply.nested,
                 "nested_preview": reply.nested_preview,
                 "identity_state": "upstream_id" if reply.reply_id else "unknown",
@@ -197,3 +203,75 @@ def supported_indices(result: ModelCallResult, count: int) -> set[int]:
         for value in result.output.get("supported", [])
         if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < count
     }
+
+
+def time_scoped_materials(
+    materials: list[dict[str, Any]],
+    *,
+    mode: TiebaTimeScopeMode | None,
+    requirement: str | None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """按时间模式选材；范围内的历史父回复只作上下文，不能引用。"""
+    if mode is None:
+        return materials, []
+    if mode is TiebaTimeScopeMode.UNAVAILABLE:
+        return [], []
+    if mode is TiebaTimeScopeMode.DEFAULT_SUPPLEMENT:
+        historical = sum(
+            1
+            for item in materials
+            if item.get("temporal_scope") == "historical" and not item.get("context_only")
+        )
+        unknown = sum(
+            1
+            for item in materials
+            if item.get("temporal_scope") == "unknown" and not item.get("context_only")
+        )
+        notes = []
+        if historical or unknown:
+            notes.append(
+                f"未指定时间：近十二个月证据不足，已明确补充历史 {historical} 条、"
+                f"时间未知 {unknown} 条；这些发言按实际时间标注，不标为近期。"
+            )
+        return materials, notes
+    eligible_scope = "recent"
+    eligible = [
+        item for item in materials if item.get("temporal_scope") == eligible_scope
+    ]
+    parent_ids = {
+        (str(item.get("thread_id") or ""), str(item["parent_reply_id"]))
+        for item in eligible
+        if item.get("parent_reply_id")
+    }
+    context = [
+        item
+        for item in materials
+        if item.get("temporal_scope") == "historical"
+        and item.get("reply_id")
+        and (str(item.get("thread_id") or ""), str(item["reply_id"])) in parent_ids
+    ]
+    for item in context:
+        item["context_only"] = True
+    selected = [*eligible, *context]
+    if mode is TiebaTimeScopeMode.DEFAULT_RECENT:
+        excluded_history = sum(
+            1
+            for item in materials
+            if item.get("temporal_scope") == "historical"
+            and not item.get("context_only")
+            and item not in selected
+        )
+        excluded_unknown = sum(
+            1
+            for item in materials
+            if item.get("temporal_scope") == "unknown"
+            and not item.get("context_only")
+            and item not in selected
+        )
+        notes = [
+            "未指定时间：先只看近十二个月；"
+            f"历史 {excluded_history} 条与时间未知 {excluded_unknown} 条未进入总结。"
+        ]
+    else:
+        notes = []
+    return selected, notes
