@@ -6,6 +6,7 @@ import { Icon, type IconName } from "@/components/design-system/Icon";
 import { chatModuleLabel } from "@/lib/chat-modules";
 import type { TurnResultBlock, TurnResultProjection } from "@/lib/api";
 import type { ChatMessageView } from "@/lib/chat-message-view";
+import { waitReasonLabel } from "@/lib/wait-reason";
 
 /**
  * 已交付、未完成、待补充、可信限制与真实恢复的就近说明。
@@ -78,7 +79,9 @@ export function DeliveryStatus({
         result={result}
         outcome="needs_input"
         label={
-          result.wait_reason ? `等待你补充：${result.wait_reason}` : result.outcome_label
+          result.wait_reason
+            ? waitReasonLabel(result.wait_reason)
+            : result.outcome_label
         }
         icon="info"
         tone="var(--color-status-info)"

@@ -182,10 +182,17 @@ export function TiebaEvidenceDetails({
         </p>
       )}
       {research.status === "empty" && (
-        <p style={{ margin: 0 }}>
-          {research.empty_reason ?? "没有找到属于目标贴吧的帖子。"}
-          {" 未召回帖子不代表吧内没有相关讨论。"}
-        </p>
+        <>
+          <p style={{ margin: 0 }}>
+            {research.empty_reason ?? "没有找到属于目标贴吧的帖子。"}
+          </p>
+          <p
+            data-testid="tieba-empty-guidance"
+            style={{ margin: 0, color: "var(--color-status-wait)" }}
+          >
+            可以补充校区、时间范围或换用吧内常用说法后重试；未召回不代表吧内没有相关讨论。
+          </p>
+        </>
       )}
       {research.empty_reason && research.status !== "empty" && (
         <p style={{ margin: 0 }}>{research.empty_reason}</p>

@@ -16,6 +16,7 @@ from bridges.tieba.browser_request_budget import (
     BrowserRequestBudget,
     request_denial_message,
 )
+from bridges.tieba.progress import notify_auth_wait
 
 if TYPE_CHECKING:
     from bridges.tieba.budget import TiebaBudget
@@ -50,6 +51,7 @@ def receive_result(
         waited_ms = auth_wait.finish(time.monotonic())
         if waited_ms is None:
             return
+        notify_auth_wait("completed")
         if request_budget is not None:
             request_budget.record_manual_wait(waited_ms)
         deadline += waited_ms / 1000.0
@@ -111,7 +113,8 @@ def receive_result(
                 continue
             auth_event = value.get("auth_wait")
             if auth_event == "started":
-                auth_wait.start(str(value.get("reason") or ""), now)
+                if auth_wait.start(str(value.get("reason") or ""), now):
+                    notify_auth_wait("started")
                 continue
             if auth_event == "finished":
                 finish_auth_wait(str(value.get("outcome") or "finished"))

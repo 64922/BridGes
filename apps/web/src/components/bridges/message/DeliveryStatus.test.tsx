@@ -136,6 +136,56 @@ describe("DeliveryStatus（工单 07）", () => {
     expect(screen.queryByTestId("delivery-recovery")).toBeNull();
   });
 
+  it("贴吧认证等待显示可执行动作，不泄露内部等待代码", () => {
+    render(
+      <DeliveryStatus
+        message={message({
+          turnResult: projection({
+            outcome: "needs_input",
+            outcome_label: "等待你补充信息后继续；任务保持待输入。",
+            trust: null,
+            trust_label: null,
+            delivered: [],
+            blocked: [],
+            capability_list: [],
+            actual_module_id: null,
+            wait_reason: "tieba_authentication",
+          }),
+        })}
+      />
+    );
+
+    expect(textOf("delivery-outcome")).toContain(
+      "等待你完成贴吧登录或安全验证"
+    );
+    expect(textOf("delivery-outcome")).not.toContain("tieba_authentication");
+  });
+
+  it("贴吧澄清等待显示可执行的中文说明", () => {
+    render(
+      <DeliveryStatus
+        message={message({
+          turnResult: projection({
+            outcome: "needs_input",
+            outcome_label: "等待你补充信息后继续；任务保持待输入。",
+            trust: null,
+            trust_label: null,
+            delivered: [],
+            blocked: [],
+            capability_list: [],
+            actual_module_id: null,
+            wait_reason: "tieba_clarification",
+          }),
+        })}
+      />
+    );
+
+    expect(textOf("delivery-outcome")).toContain(
+      "等待你补充贴吧检索所需的信息"
+    );
+    expect(textOf("delivery-outcome")).not.toContain("tieba_clarification");
+  });
+
   it("停止后保留已交付正文并只在存在真实命令时提供继续", () => {
     const onRetry = vi.fn();
     render(

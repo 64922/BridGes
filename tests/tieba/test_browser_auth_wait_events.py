@@ -10,6 +10,11 @@ from typing import Any
 import pytest
 
 from bridges.tieba.browser_runtime import TiebaBrowserError, TiebaBrowserRuntime, _BrowserWorker
+from bridges.tieba.progress import (
+    AuthWaitProgress,
+    bind_auth_wait_progress,
+    reset_auth_wait_progress,
+)
 
 
 class _Process:
@@ -183,3 +188,47 @@ def test_task_change_during_auth_wait_does_not_execute_old_task(
     assert isinstance(errors[0], TiebaBrowserError)
     assert errors[0].code == "tieba_browser_task_changed"
     assert len(budget.manual_waits) == 1
+
+
+def test_paired_auth_wait_events_are_forwarded_as_public_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, str]] = []
+    progress = AuthWaitProgress(
+        lambda node, status, _duration: events.append((node, status))
+    )
+    token = bind_auth_wait_progress(progress)
+    try:
+        worker = _worker_with(
+            {"auth_wait": "started", "reason": "login"},
+            {"auth_wait": "started", "reason": "login"},
+            {"auth_wait": "finished", "outcome": "authenticated"},
+            {"auth_wait": "finished", "outcome": "authenticated"},
+            {"ok": True},
+        )
+        result = _receive(monkeypatch, worker, budget=_Budget())
+    finally:
+        reset_auth_wait_progress(token)
+
+    assert result["ok"] is True
+    assert events == [("tieba.auth", "started"), ("tieba.auth", "completed")]
+
+
+def test_auth_wait_completion_restores_the_previous_real_node() -> None:
+    events: list[tuple[str, str]] = []
+    progress = AuthWaitProgress(
+        lambda node, status, _duration: events.append((node, status))
+    )
+
+    progress.emit("tieba.read", "started", None)
+    progress.notify("started")
+    progress.notify("completed")
+    progress.emit("tieba.read", "completed", 120)
+
+    assert events == [
+        ("tieba.read", "started"),
+        ("tieba.auth", "started"),
+        ("tieba.auth", "completed"),
+        ("tieba.read", "started"),
+        ("tieba.read", "completed"),
+    ]
