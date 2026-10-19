@@ -14,17 +14,21 @@ from bridges.kernel.contracts import (
     QualityVerdict,
     RecoveryPolicy,
 )
+from bridges.tieba.browser_structured import BROWSER_PROTOCOL_VERSION
 from bridges.tieba.budget import TiebaBudget
 from bridges.tieba.contracts import (
     TiebaEvidencePlan,
     TiebaOfficialCheck,
+    TiebaPostProjection,
     TiebaQuestionAnalysis,
     TiebaResearchProjection,
 )
+from bridges.tieba.evidence import ReadOutcome
 from bridges.tieba.evidence_official import (
     detect_conflicts,
 )
 from bridges.tieba.evidence_projection import build_projection
+from bridges.tieba.evidence_search import SearchAttempts
 from bridges.tieba.evidence_time import summarize
 from bridges.tieba.evidence_verification import run_verification
 from bridges.tieba.node_flow_support import (
@@ -43,7 +47,10 @@ from bridges.tieba.recipe import (
     NODE_SYNTHESIZE,
     NODE_VERIFY,
     OFFICIAL_UNVERIFIED_NOTE,
+    TIEBA_CAPABILITY_VERSIONS,
+    TIEBA_RECIPE_VERSION,
 )
+from bridges.tieba.run_metadata import TiebaRunMetadata
 from bridges.tieba.summary import TiebaSummaryGenerator
 
 
@@ -69,6 +76,62 @@ def _official_unverified_note(
     return OFFICIAL_UNVERIFIED_NOTE
 
 
+def _run_metadata(
+    invocation: NodeInvocation,
+    *,
+    attempts: SearchAttempts,
+    reads: ReadOutcome,
+    checks: Sequence[TiebaOfficialCheck],
+    confirmed: Sequence[TiebaPostProjection],
+    started_at: datetime,
+    finished_at: datetime,
+    model_calls: int,
+) -> TiebaRunMetadata:
+    search_count = len(attempts.records)
+    read_count = len(reads.attempted_urls)
+    official_count = len(checks)
+    elapsed_ms = max(0, int((finished_at - started_at).total_seconds() * 1000))
+    return TiebaRunMetadata(
+        run_id=invocation.run_id,
+        recipe_version=TIEBA_RECIPE_VERSION,
+        component_versions={
+            "browser_protocol": BROWSER_PROTOCOL_VERSION,
+            **TIEBA_CAPABILITY_VERSIONS,
+        },
+        started_at=started_at,
+        completed_at=finished_at,
+        elapsed_ms=elapsed_ms,
+        request_count=search_count + read_count + official_count,
+        search_request_count=search_count,
+        read_request_count=read_count,
+        official_request_count=official_count,
+        model_call_count=model_calls,
+        confirmed_post_count=len(confirmed),
+        read_reply_count=sum(len(post.replies) for post in confirmed),
+        source_urls=[post.url for post in confirmed],
+        unread_scope=_unread_scope(confirmed),
+    )
+
+
+def _unread_scope(confirmed: Sequence[TiebaPostProjection]) -> list[str]:
+    if not confirmed:
+        return ["本轮没有确认任何帖子，未读范围覆盖全部候选帖链。"]
+    notes: list[str] = []
+    for post in confirmed:
+        if post.total_pages is not None and post.pages_read < post.total_pages:
+            notes.append(
+                f"{post.url}：只读取第 {post.pages_read} 页，页面声明共 {post.total_pages} 页。"
+            )
+        if post.total_replies is not None:
+            notes.append(
+                f"{post.url}：页面声明 {post.total_replies} 条回复，"
+                f"本轮记录 {len(post.replies)} 条楼层（含楼中楼）。"
+            )
+        if not post.replies_obtained:
+            notes.append(f"{post.url}：未取得回复内容。")
+    return notes
+
+
 class TiebaSynthesisNodes:
     """构造综合投影并运行代码级证据质量核验。"""
 
@@ -81,6 +144,8 @@ class TiebaSynthesisNodes:
         run_context: Any,
         run_model_id: str | None,
         model_quota: Any,
+        run_started_at: datetime | None = None,
+        summary_call_count: Callable[[], int] | None = None,
     ) -> None:
         self._summary_generator = summary_generator
         self._budget = budget
@@ -88,6 +153,8 @@ class TiebaSynthesisNodes:
         self._run_context = run_context
         self._run_model_id = run_model_id
         self._model_quota = model_quota
+        self._run_started_at = run_started_at
+        self._summary_call_count = summary_call_count
 
     def run_synthesize(self, invocation: NodeInvocation) -> NodeExecution:
         analysis = read_analysis(invocation)
@@ -140,6 +207,23 @@ class TiebaSynthesisNodes:
             projection = projection.model_copy(
                 update={"summary_note": "总结未生成：当前运行没有可用的模型网关。"}
             )
+        finished_at = self._clock()
+        projection = projection.model_copy(
+            update={
+                "run_metadata": _run_metadata(
+                    invocation,
+                    attempts=attempts,
+                    reads=reads,
+                    checks=checks,
+                    confirmed=confirmed,
+                    started_at=self._run_started_at or finished_at,
+                    finished_at=finished_at,
+                    model_calls=(
+                        self._summary_call_count() if self._summary_call_count else 0
+                    ),
+                )
+            }
+        )
         return NodeExecution(
             artifact=build_artifact(
                 invocation,

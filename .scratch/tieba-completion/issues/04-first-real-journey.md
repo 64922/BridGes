@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — 页面并发加载不再误报预算耗尽；02 — 自然语言话题生成有效且不重复的检索计划；03 — 专用会话认证成功后自动续接原话题
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 实施边界与关键决策
 
@@ -16,8 +16,8 @@
 - [ ] 候选经真实帖子内容确认目标吧和话题；搜索摘要不能直接进入总结证据。
 - [ ] 取得真实帖子身份、原文、可取得的发言身份和时间；缺失字段保持未知，响应校验失败有明确状态。
 - [ ] 真实模型经过已有网关及预算生成总结和支持核验；关键引用在界面能打开实际采集原文与原帖。
-- [ ] 记录运行标识、版本、请求与模型调用计数、耗时、可核对来源及未读范围；不记录会话秘密。
-- [ ] 最小失败旅程覆盖访问限制、读取为空、模型失败，均不伪造成功；成功旅程及脱敏夹具可复验。
+- [x] 记录运行标识、版本、请求与模型调用计数、耗时、可核对来源及未读范围；不记录会话秘密。
+- [x] 最小失败旅程覆盖访问限制、读取为空、模型失败，均不伪造成功；成功旅程及脱敏夹具可复验（成功旅程的真实模型/真实浏览器部分未在本轮执行，见交接）。
 
 ## 验证方式
 
@@ -42,3 +42,13 @@
 
 
 - 2026-10-18：用户确认拆分，正式发布为 ready-for-agent；编号、内容范围和依赖保持已批准方案，未开始业务开发。
+
+- 2026-10-19T07:57:32+08:00：实现交接（worktree `D:\BridGes\.worktrees\04-first-real-journey`，分支 `04-first-real-journey`，基线 `57628053`）。
+  - 已完成：搜索/帖子结构化响应解析与 DOM 兜底；主帖/回复 `author`、`origin_reply_id`、DOM 楼层补充；`response_valid`、`total_pages`、未读范围；引用作者核验；`TiebaRunMetadata`（运行标识、配方/能力版本、请求与模型调用计数、耗时、来源、未读范围）；引用与运行记录 UI；OpenAPI/TS 契约同步。
+  - 协议事实：搜索响应 `/mo/q/search/thread`，帖子响应 `/c/f/pb/page_pc`；`page_pc.post_list[].floor` 恒为 0，真实楼层由 DOM 补充；缺失字段保持 `None`，结构不符映射 `tieba_browser_response_invalid` / `ReadStatus.UNRECOGNIZED`。
+  - 测试：`python -m pytest tests/tieba -q` → 296 passed；`python -m pytest tests/tieba/test_run_metadata.py tests/tieba/test_summary_source_identity.py -q` → 6 passed；`python -m pytest tests/tieba/test_service_summary_audit.py -q` → 3 passed；`npm run test:unit` → 408 passed；`npm run typecheck`、`npm run lint`、`npm run build` 通过；`pip check` 通过；`ruff check src/bridges/tieba tests/tieba` 通过。
+  - 全量基线：`pytest -q` 在收集阶段因既有 `CareerBackgroundLoader` 缺失报 4 个错误（与本次改动无关）；忽略 `tests/career_plan` 后 5900 passed / 330 failed，失败均为既有其它模块基线，未出现 `tests/tieba` 失败。全仓 Ruff 457 个既有错误、`mypy src` 141 个既有错误，均未指向本次新增/修改的贴吧文件。
+  - 真实旅程：已准备临时库、真实账号与复制后的专用浏览器 profile，并打开正式 Web 登录页；按用户要求跳过登录/采集/模型调用。**本轮未发出生产模型调用，未取得真实成功旅程、UI 引用点击与费用证据。** 临时账号、数据库、复制的浏览器 profile（含登录态）与临时进程均已删除。
+  - 完成剩余验收所需：使用已登录的专用贴吧会话从正式聊天发送明确话题；确认至少一条真实原文与作者；让真实模型经网关生成总结；核对 `run_metadata.model_call_count` 与实际模型锁/请求账本一致并记录调用次数与费用范围；在 UI 打开引用核验原文和原帖。
+  - 公开契约：新增 `TiebaRunMetadata` 并出现在 `TiebaResearchProjection.run_metadata`；`TiebaReply.author`、`TiebaSummaryCitation.author`。无数据库 schema 迁移。浏览器协议版本 `tieba-browser-protocol-v1`。
+  - 回滚：本票尚未提交；可丢弃工作区改动或回退对应提交。新增文件 `browser_structured.py`、`browser_capture.py`、`browser_scroll.py`、`run_metadata.py` 可整体删除，`openapi.json` 与 `packages/contracts/src/generated.ts` 重新生成。

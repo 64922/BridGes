@@ -152,6 +152,7 @@ class TiebaResearchService:
                 retryable=False,
             )
         run_id = getattr(run_context, "run_id", None)
+        run_started_at = self._clock()
         pending = self._pending_wait(repo, account_id, conversation_id)
         if (
             pending is not None
@@ -228,6 +229,8 @@ class TiebaResearchService:
             run_context=run_context,
             run_model_id=run_model_id,
             model_quota=model_quota,
+            run_started_at=run_started_at,
+            summary_call_count=lambda: summary_attempt,
         )
         kernel = NodeKernel(
             registry=self._registry,

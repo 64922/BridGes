@@ -16,6 +16,7 @@ const citation: TiebaSummaryCitation = {
   parent_reply_id: null,
   floor: 3,
   posted_at: "2026-09-20 21:14",
+  author: "吧友甲",
   quote: "南区六人间，有空调，热水要刷卡。",
 };
 
@@ -40,6 +41,7 @@ const post: TiebaPostProjection = {
       parent_reply_id: null,
       temporal_scope: "unknown",
       posted_at: "2026-09-20 21:14",
+      author: "吧友甲",
       is_original_poster: false,
       content: "南区六人间，有空调，热水要刷卡。",
     },
@@ -76,6 +78,7 @@ describe("贴吧回答正文与依据（工单 10）", () => {
       "晚间热水供应不稳定"
     );
     expect(screen.queryByText("服务端已提交正文（同一份总结）")).toBeNull();
+    expect(screen.getByTestId("tieba-citation-E1").textContent).toContain("吧友甲");
 
     fireEvent.click(screen.getByTestId("tieba-citation-E1"));
     expect(onOpenCitation).toHaveBeenCalledTimes(1);

@@ -1,8 +1,15 @@
 """总结素材保留没有上游 ID 的独立实读发言。"""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
-from bridges.tieba.contracts import ReadStatus, TiebaPostProjection, TiebaReply
+from bridges.tieba.contracts import (
+    ReadStatus,
+    TiebaPostProjection,
+    TiebaReply,
+    TiebaSummaryCitation,
+)
+from bridges.tieba.evidence_verification import _summary_traceable
 from bridges.tieba.summary_material import build_verification_payload, sources
 
 
@@ -86,3 +93,39 @@ def test_same_text_with_distinct_upstream_ids_remains_distinct_and_identified() 
         "upstream_id",
     ]
     assert all("duplicate_text_group" not in item for item in evidence)
+
+
+def test_citation_author_must_match_the_read_reply() -> None:
+    post = TiebaPostProjection(
+        thread_id="100",
+        url="https://tieba.baidu.com/p/100",
+        title="宿舍热水",
+        affiliation_evidence="页面标题匹配",
+        read_status=ReadStatus.READ,
+        replies_obtained=True,
+        replies=[
+            TiebaReply(
+                reply_id="reply-3",
+                author="吧友甲",
+                content="晚上热水基本稳定。",
+            )
+        ],
+        retrieved_at=datetime.now(UTC),
+    )
+    citation = TiebaSummaryCitation(
+        citation_id="E1",
+        url=post.url,
+        reply_id="reply-3",
+        author="吧友甲",
+        quote="晚上热水基本稳定。",
+    )
+    projection = SimpleNamespace(
+        summary_citations=[citation],
+        summary_claims=[SimpleNamespace(text="热水基本稳定。", citation_ids=["E1"])],
+        summary="热水基本稳定。",
+    )
+    assert _summary_traceable(projection, [post])
+
+    wrong_author = citation.model_copy(update={"author": "吧友乙"})
+    projection.summary_citations = [wrong_author]
+    assert not _summary_traceable(projection, [post])

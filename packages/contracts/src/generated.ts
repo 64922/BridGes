@@ -29200,6 +29200,11 @@ export interface components {
              */
             posted_at?: string | null;
             /**
+             * Author
+             * @description 页面显示的发言身份；缺失时为 None。
+             */
+            author?: string | null;
+            /**
              * @description 按实际发言时间确定的近期、历史或未知分类。
              * @default unknown
              */
@@ -29385,6 +29390,8 @@ export interface components {
              * @description 本轮收敛时间。
              */
             completed_at?: string | null;
+            /** @description 本轮运行记录。 */
+            run_metadata?: components["schemas"]["TiebaRunMetadata"] | null;
             /** @description 等待用户回答的澄清状态；无等待为 None。 */
             pending?: components["schemas"]["ModuleWaitState"] | null;
         };
@@ -29398,6 +29405,101 @@ export interface components {
          * @enum {string}
          */
         TiebaResearchStatus: "clarification" | "waiting_auth" | "searching" | "success" | "links_only" | "empty" | "error" | "stopped";
+        /**
+         * TiebaRunMetadata
+         * @description 一轮贴吧采集的可核对运行记录（不含会话秘密或原始响应）。
+         */
+        TiebaRunMetadata: {
+            /**
+             * Contract Version
+             * @default tieba-run-metadata-v1
+             */
+            contract_version: string;
+            /**
+             * Run Id
+             * @description 本轮运行的稳定标识。
+             */
+            run_id: string;
+            /**
+             * Recipe Version
+             * @description 执行的贴吧配方版本。
+             */
+            recipe_version: string;
+            /**
+             * Component Versions
+             * @description 本轮实际使用的协议与节点能力版本。
+             */
+            component_versions?: {
+                [key: string]: string;
+            };
+            /**
+             * Started At
+             * @description 本轮开始时间。
+             */
+            started_at?: string | null;
+            /**
+             * Completed At
+             * @description 投影完成时间。
+             */
+            completed_at?: string | null;
+            /**
+             * Elapsed Ms
+             * @description 本轮实际耗时（毫秒）。
+             */
+            elapsed_ms?: number | null;
+            /**
+             * Request Count
+             * @description 外部请求总数。
+             * @default 0
+             */
+            request_count: number;
+            /**
+             * Search Request Count
+             * @description 贴吧检索请求数。
+             * @default 0
+             */
+            search_request_count: number;
+            /**
+             * Read Request Count
+             * @description 帖子读取请求数。
+             * @default 0
+             */
+            read_request_count: number;
+            /**
+             * Official Request Count
+             * @description 学校官方页面请求数。
+             * @default 0
+             */
+            official_request_count: number;
+            /**
+             * Model Call Count
+             * @description 实际发生的模型调用数。
+             * @default 0
+             */
+            model_call_count: number;
+            /**
+             * Confirmed Post Count
+             * @description 确认属于目标吧的帖子数。
+             * @default 0
+             */
+            confirmed_post_count: number;
+            /**
+             * Read Reply Count
+             * @description 实际记录的楼层数（含楼中楼）。
+             * @default 0
+             */
+            read_reply_count: number;
+            /**
+             * Source Urls
+             * @description 可核对的帖子来源链接。
+             */
+            source_urls?: string[];
+            /**
+             * Unread Scope
+             * @description 实际未读取的页、楼层或内容范围。
+             */
+            unread_scope?: string[];
+        };
         /**
          * TiebaSummaryCitation
          * @description 指向实际读取发言的可展开引用。
@@ -29417,6 +29519,8 @@ export interface components {
             floor?: number | null;
             /** Posted At */
             posted_at?: string | null;
+            /** Author */
+            author?: string | null;
             /** Quote */
             quote: string;
         };

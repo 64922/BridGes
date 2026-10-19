@@ -207,6 +207,7 @@ def _summary_traceable(
             and reply.parent_reply_id == citation.parent_reply_id
             and reply.floor == citation.floor
             and reply.posted_at == citation.posted_at
+            and reply.author == citation.author
             and citation.quote
             and citation.quote in reply.content
         ]

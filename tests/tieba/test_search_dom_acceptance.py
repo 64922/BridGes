@@ -7,12 +7,14 @@ from collections.abc import Iterator
 import pytest
 from playwright.sync_api import Page, Route, sync_playwright
 
+from bridges.tieba.browser_scroll import (
+    expand_thread_nested_replies,
+    scroll_thread_replies,
+)
 from bridges.tieba.browser_worker import (
     SEARCH_DOM,
     THREAD_DOM,
     BrowserTimeoutError,
-    expand_thread_nested_replies,
-    scroll_thread_replies,
     search,
 )
 

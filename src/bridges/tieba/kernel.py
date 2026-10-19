@@ -117,6 +117,8 @@ class TiebaNodeFlow:
         run_context: Any = None,
         run_model_id: str | None = None,
         model_quota: Any = None,
+        run_started_at: datetime | None = None,
+        summary_call_count: Callable[[], int] | None = None,
     ) -> None:
         if budget is not None:
             search = BudgetedSearchPort(search, budget, purpose="tieba.search")
@@ -142,6 +144,8 @@ class TiebaNodeFlow:
             run_context=run_context,
             run_model_id=run_model_id,
             model_quota=model_quota,
+            run_started_at=run_started_at,
+            summary_call_count=summary_call_count,
         )
 
     @property

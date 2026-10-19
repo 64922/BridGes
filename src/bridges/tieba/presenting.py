@@ -90,7 +90,7 @@ def build_sections(posts: list[TiebaPostProjection]) -> list[str]:
             quote = _quote(reply.content)
             if not quote:
                 continue
-            location = _location(post, reply.floor, reply.posted_at)
+            location = _location(post, reply.floor, reply.posted_at, reply.author)
             if _marked(reply.content, HEDGE_MARKERS):
                 _append(buckets[SECTION_HEDGE], f"{quote}（{location}）")
             elif _marked(reply.content, CONTRAST_MARKERS):
@@ -171,7 +171,7 @@ def render_result_content(projection: TiebaResearchProjection) -> str:
                 for reply in post.replies:
                     lines.append(
                         f"   第 {_floor(reply.floor)} 楼"
-                        f"{_time(reply.posted_at)}：{reply.content}"
+                        f"{_speaker(reply.author, reply.posted_at)}：{reply.content}"
                     )
             else:
                 missing = post.read_error_message or "本轮未取得回复文本。"
@@ -354,10 +354,17 @@ def _quote(content: str) -> str:
     return text[:QUOTE_MAX_CHARS] + ("…" if len(text) > QUOTE_MAX_CHARS else "")
 
 
-def _location(post: TiebaPostProjection, floor: int | None, posted_at: str | None) -> str:
+def _location(
+    post: TiebaPostProjection,
+    floor: int | None,
+    posted_at: str | None,
+    author: str | None,
+) -> str:
     parts = [post.title or post.url]
     if floor is not None:
         parts.append(f"第 {floor} 楼")
+    if author:
+        parts.append(author)
     if posted_at:
         parts.append(posted_at)
     return " · ".join(parts)
@@ -376,8 +383,9 @@ def _floor(floor: int | None) -> str:
     return str(floor) if floor is not None else "?"
 
 
-def _time(posted_at: str | None) -> str:
-    return f"（{posted_at}）" if posted_at else ""
+def _speaker(author: str | None, posted_at: str | None) -> str:
+    parts = [value for value in (author, posted_at) if value]
+    return f"（{'，'.join(parts)}）" if parts else ""
 
 
 def _fmt(moment: datetime) -> str:

@@ -12,6 +12,7 @@ import {
   PostRow,
   QueryRecordRow,
   RejectedRow,
+  RunMetadataRow,
   formatTime,
 } from "./TiebaEvidenceRows";
 
@@ -386,6 +387,8 @@ export function TiebaEvidenceDetails({
           ))}
         </ul>
       )}
+
+      {research.run_metadata && <RunMetadataRow metadata={research.run_metadata} />}
 
       <p style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
         本轮完成于 {formatTime(research.completed_at)}

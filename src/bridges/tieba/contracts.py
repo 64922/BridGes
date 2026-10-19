@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from bridges.contracts.modules import ModuleQueryRecord, ModuleWaitState
 from bridges.tieba.lexicon import TARGET_FORUM_NAME
+from bridges.tieba.run_metadata import TiebaRunMetadata
 
 
 class TiebaResearchStatus(StrEnum):
@@ -195,6 +196,7 @@ class TiebaReply(BaseModel):
         default=None, description="楼中楼所属的父楼层 ID；未知时为 None。"
     )
     posted_at: str | None = Field(default=None, description="页面上的发帖时间原文。")
+    author: str | None = Field(default=None, description="页面显示的发言身份；缺失时为 None。")
     temporal_scope: TiebaTemporalScope = Field(
         default=TiebaTemporalScope.UNKNOWN,
         description="按实际发言时间确定的近期、历史或未知分类。",
@@ -411,6 +413,7 @@ class TiebaSummaryCitation(BaseModel):
     parent_reply_id: str | None = None
     floor: int | None = None
     posted_at: str | None = None
+    author: str | None = None
     quote: str
 
 
@@ -488,6 +491,7 @@ class TiebaResearchProjection(BaseModel):
     error_code: str | None = Field(default=None, description="失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文错误说明。")
     completed_at: datetime | None = Field(default=None, description="本轮收敛时间。")
+    run_metadata: TiebaRunMetadata | None = Field(default=None, description="本轮运行记录。")
     pending: ModuleWaitState | None = Field(
         default=None, description="等待用户回答的澄清状态；无等待为 None。"
     )

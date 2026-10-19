@@ -8,6 +8,8 @@ export type TiebaPostProjection = components["schemas"]["TiebaPostProjection"];
 
 export type TiebaSummaryCitation = components["schemas"]["TiebaSummaryCitation"];
 
+export type TiebaRunMetadata = components["schemas"]["TiebaRunMetadata"];
+
 export type TiebaReply = components["schemas"]["TiebaReply"];
 
 export type TiebaCandidateLink = components["schemas"]["TiebaCandidateLink"];
