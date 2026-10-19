@@ -38,7 +38,7 @@ class CommitDecision:
 
 
 class RunCommitGuard:
-    """一次内核执行的租约/停止/版本快照与提交校验。"""
+    """一次内核执行的租约/停止/版本与外部条件快照及提交校验。"""
 
     def __init__(
         self,

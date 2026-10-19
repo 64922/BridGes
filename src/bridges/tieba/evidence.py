@@ -18,6 +18,13 @@ from bridges.tieba.contracts import (
     TiebaSearchHit,
 )
 from bridges.tieba.evidence_search import SearchAttempts
+from bridges.tieba.evidence_status import (
+    ACCOUNT_DELETING_CODE,
+    account_deleting,
+    auth_blocked,
+    budget_blocked,
+    read_block_reason,
+)
 from bridges.tieba.reading import READ_PAGES_LIMIT, TiebaThreadReader
 from bridges.tieba.reading_scope import scope_scoped_result
 from bridges.tieba.relevance import post_matches_topic
@@ -46,17 +53,6 @@ READ_POSTS_LIMIT = 8
 
 #: 帖链降级最多给出的候选链接数。
 CANDIDATE_LINKS_LIMIT = 6
-
-
-#: 读取失败分类的中文短标签（仅帖链的「页面不可读」原因）。
-READ_BLOCK_LABELS: dict[ReadStatus, str] = {
-    ReadStatus.ACCESS_RESTRICTED: "访问受限，未绕过",
-    ReadStatus.UNRECOGNIZED: "页面结构无法解析",
-    ReadStatus.NOT_FOUND: "帖子不存在或已删除",
-    ReadStatus.TIMEOUT: "读取超时",
-    ReadStatus.ERROR: "读取失败",
-    ReadStatus.CANCELLED: "已停止读取",
-}
 
 
 @dataclass(frozen=True)
@@ -208,7 +204,7 @@ def read_candidates(
         deadline += wait_seconds
         excluded_wait_seconds += wait_seconds
         new_attempted.add(hit.url)
-        if _account_deleted(result.error_code):
+        if account_deleting(result.error_code):
             unreadable += 1
             browser_blocked_error = result.error_code
             links.append(
@@ -223,11 +219,11 @@ def read_candidates(
             stopped_index = index
             notify()
             break
-        if _auth_blocked(result.error_code):
+        if auth_blocked(result.error_code):
             links.append(
                 _unconfirmed_link(
                     hit,
-                    _read_block_reason(result),
+                    read_block_reason(result),
                     read_error_code=result.error_code,
                 )
             )
@@ -238,7 +234,7 @@ def read_candidates(
             stopped_index = index
             notify()
             break
-        if _budget_blocked(result.error_code):
+        if budget_blocked(result.error_code):
             unreadable += 1
             links.append(
                 _unconfirmed_link(
@@ -264,7 +260,7 @@ def read_candidates(
             links.append(
                 _unconfirmed_link(
                     hit,
-                    _read_block_reason(result),
+                    read_block_reason(result),
                     read_error_code=result.error_code,
                 )
             )
@@ -307,15 +303,16 @@ def read_candidates(
                 wait_seconds = max(0, result.excluded_wait_ms) / 1000
                 deadline += wait_seconds
                 excluded_wait_seconds += wait_seconds
-                if _account_deleted(result.error_code):
+                if account_deleting(result.error_code):
+                    browser_blocked_error = result.error_code
                     partial = True
                     closeout_reason = "account_deleting"
                     break
-                if _auth_blocked(result.error_code):
+                if auth_blocked(result.error_code):
                     deep_failed = True
                     closeout_reason = "deepen_incomplete"
                     break
-                if _budget_blocked(result.error_code):
+                if budget_blocked(result.error_code):
                     partial = True
                     closeout_reason = "budget_exhausted"
                     break
@@ -339,7 +336,7 @@ def read_candidates(
                 links.append(prior)
             continue
         not_attempted += 1
-        if browser_blocked_error == "tieba_browser_account_deleting":
+        if browser_blocked_error == ACCOUNT_DELETING_CODE:
             reason = "未读取：账户正在删除"
         elif browser_blocked_error == "tieba_browser_auth_unverified":
             reason = "未读取：无法独立确认专用会话的认证状态"
@@ -395,26 +392,6 @@ def _slice_deadline(
     cap = min(READ_POST_DEADLINE_SECONDS + max(0.0, extra_seconds), remaining)
     share = remaining / max(1, slots)
     return now + min(cap, share)
-
-
-def _auth_blocked(code: str | None) -> bool:
-    return code in {
-        "tieba_browser_auth_required",
-        "tieba_browser_auth_interrupted",
-        "tieba_browser_auth_unverified",
-    }
-
-
-def _account_deleted(code: str | None) -> bool:
-    return code == "tieba_browser_account_deleting"
-
-
-def _budget_blocked(code: str | None) -> bool:
-    return code in {
-        "run_budget_exhausted",
-        "tieba_browser_work_time_exhausted",
-        "tieba_browser_request_queue_full",
-    }
 
 
 def _classify_read(
@@ -516,10 +493,3 @@ def _unconfirmed_link(
         discoveries=list(hit.discoveries),
     )
 
-
-def _read_block_reason(result: TiebaReadResult) -> str:
-    """读取失败或页面未声明吧名时的中文短因（页面不可读一类）。"""
-    if result.forum_name is None and result.status in {ReadStatus.READ, ReadStatus.PARTIAL}:
-        return "页面不可读：页面未声明所属贴吧"
-    label = READ_BLOCK_LABELS.get(result.status, result.status.value)
-    return f"页面不可读：{label}"

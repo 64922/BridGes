@@ -158,7 +158,13 @@ class TiebaResearchService:
         official_blocked_reason: str | None = None,
     ) -> TiebaRunOutcome:
         """执行一轮贴吧信息搜集；终态全部写回同一条助手消息。"""
-        if self._account_deleting is not None and self._account_deleting(account_id):
+
+        def account_blocked() -> str | None:
+            if self._account_deleting is not None and self._account_deleting(account_id):
+                return "account_deleting"
+            return None
+
+        if account_blocked() is not None:
             raise TiebaModuleError(
                 NODE_PARSE,
                 "account_deleting",
@@ -193,11 +199,6 @@ class TiebaResearchService:
         ):
             remaining_budget_ms = pending.context.get("remaining_work_ms")
 
-        def account_blocked() -> str | None:
-            if self._account_deleting is not None and self._account_deleting(account_id):
-                return "account_deleting"
-            return None
-
         guard = RunCommitGuard(
             repo,
             account_id=account_id,
@@ -208,7 +209,7 @@ class TiebaResearchService:
             task_version_provider=self._task_version_provider,
             stop_event=stop_event,
             clock=self._clock,
-            external_guard=account_blocked if self._account_deleting is not None else None,
+            external_guard=account_blocked,
         )
         budget = self._load_budget(
             repo,
@@ -297,6 +298,13 @@ class TiebaResearchService:
         with NodeKernelRepository(repo.database).transaction():
             decision = guard.verify()
             if not decision.ok:
+                if decision.code == "account_deleting":
+                    raise TiebaModuleError(
+                        NODE_PARSE,
+                        "account_deleting",
+                        "账户正在删除，贴吧搜集已停止。",
+                        retryable=False,
+                    )
                 if decision.code != "run_stopped":
                     raise TiebaModuleError(
                         NODE_PARSE,

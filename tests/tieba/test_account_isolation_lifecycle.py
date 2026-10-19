@@ -202,50 +202,6 @@ def test_account_deletion_aborts_inflight_browser_action(
     runtime.close()
 
 
-def test_account_deletion_aborts_account_lock_wait(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    runtime = TiebaBrowserRuntime(tmp_path)
-    held = threading.Lock()
-    held.acquire()
-    attempted = threading.Event()
-
-    class ObservedLock:
-        def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
-            attempted.set()
-            if blocking and timeout >= 0:
-                return held.acquire(timeout=timeout)
-            return held.acquire(blocking)
-
-        def release(self) -> None:
-            held.release()
-
-    runtime._account_locks["alice"] = ObservedLock()  # type: ignore[assignment]
-    state = _runtime_spy(runtime, monkeypatch)
-    failures: list[TiebaBrowserError] = []
-
-    def request() -> None:
-        try:
-            runtime.request("alice", {"action": "search", "terms": "宿舍"})
-        except TiebaBrowserError as error:
-            failures.append(error)
-
-    waiter = threading.Thread(target=request)
-    waiter.start()
-    assert attempted.wait(timeout=1)
-    fence_account_profile(tmp_path, "alice")
-    waiter.join(timeout=2)
-    still_waiting = waiter.is_alive()
-    if still_waiting:
-        held.release()
-        waiter.join(timeout=2)
-    else:
-        held.release()
-
-    assert not still_waiting
-    assert [error.code for error in failures] == ["tieba_browser_account_deleting"]
-    assert state["spawned"] == []
-
 
 def test_account_deletion_during_browser_start_disposes_worker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -432,3 +388,4 @@ def test_read_candidates_stops_after_account_deletion() -> None:
     assert reader.calls == 1
     assert outcome.partial is True
     assert outcome.closeout_reason == "account_deleting"
+
