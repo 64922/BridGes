@@ -47,7 +47,7 @@
   - 分支/worktree：`14-account-isolation-lifecycle` / `D:\BridGes\.worktrees\14-account-isolation-lifecycle`；基线 main `2afb8644`；实现提交 `2ac5c060`、`9043b6f4`。
   - 实际行为：账户删除标记（内存 + `.account-deleting` 落盘）在账户锁等待、浏览器启动、认证等待、分页请求、恢复前和最终提交前均生效；删除后不回退公开检索、不重建 profile、不提交迟到结果；同账户请求串行、账户间 worker 隔离；读取阶段记录 `account_deleting` 收尾原因并停止后续读取。
   - 公开行为：新增稳定错误码 `tieba_browser_account_deleting`、提交守卫生效码 `account_deleting`、读取收尾原因 `account_deleting`；未修改 schema/API 协议，未生成客户端，未提升 recipe 版本；回滚直接回退上述两个实现提交，无数据迁移。
-  - 自动化证据：`python -m pytest tests/tieba -q` → `437 passed`（exit 0）；`python -m pytest tests/lifecycle tests/kernel -q` → `100 passed`（exit 0）；变更文件 `python -m ruff check` 通过；变更文件 mypy 无新增错误。
+  - 自动化证据（并入 main 的 issue 13 后复验）：`python -m pytest tests/tieba -q` → `439 passed`（exit 0）；`python -m pytest tests/lifecycle tests/kernel -q` → `101 passed`（exit 0）；变更文件 `python -m ruff check` 通过；变更文件 mypy 无新增错误。
   - 全量基线：`pytest` 仍受 main 既有缺口影响（4 个 `tests/career_plan` 模块 collection error；排除后 `345 failed, 6145 passed, 39 skipped`，失败均为 career/plugin/mcp/retirement 等无关模块）；全仓 ruff 有 456 个既有错误；均未在本票扩大。
   - 真实/模拟边界：全部删除、并发、认证等待、分页等待和资源回收证据来自独立临时目录、进程替身与故障注入，未对用户主账户做破坏性验收。
   - 未验收项：真实专用账户登录/退出、真实浏览器进程启动与退出、真实账户删除端到端、日志与模型输入的 Cookie/令牌金丝雀、成功任务与保留任务执行权的真实分离；待具备专用账户后人工补充。
