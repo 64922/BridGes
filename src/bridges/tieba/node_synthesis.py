@@ -33,6 +33,7 @@ from bridges.tieba.evidence_projection import _search_scope_notes, build_project
 from bridges.tieba.evidence_search import SearchAttempts
 from bridges.tieba.evidence_time import summarize
 from bridges.tieba.evidence_verification import run_verification
+from bridges.tieba.execution_metrics import TiebaExecutionMetrics
 from bridges.tieba.node_flow_support import (
     build_artifact,
     dependency_payload,
@@ -48,11 +49,16 @@ from bridges.tieba.official import (
 from bridges.tieba.recipe import (
     NODE_SYNTHESIZE,
     NODE_VERIFY,
+    NODE_VERIFY_OFFICIAL,
     OFFICIAL_UNVERIFIED_NOTE,
     TIEBA_CAPABILITY_VERSIONS,
     TIEBA_RECIPE_VERSION,
 )
-from bridges.tieba.run_metadata import TiebaRunMetadata
+from bridges.tieba.run_metadata import (
+    TiebaBrowserCleanup,
+    TiebaRequestBreakdown,
+    TiebaRunMetadata,
+)
 from bridges.tieba.summary import TiebaSummaryGenerator
 
 
@@ -89,6 +95,11 @@ def _run_metadata(
     started_at: datetime,
     finished_at: datetime,
     model_calls: int,
+    official_closeout_reason: str = "completed",
+    stage_timings_ms: dict[str, int] | None = None,
+    remaining_work_ms: int | None = None,
+    request_breakdown: Sequence[TiebaRequestBreakdown] = (),
+    browser_cleanup: TiebaBrowserCleanup | None = None,
 ) -> TiebaRunMetadata:
     search_count = len(attempts.records)
     scope = getattr(attempts, "scope", ())
@@ -132,6 +143,20 @@ def _run_metadata(
         exclusion_reasons=exclusion_reasons,
         source_urls=[post.url for post in confirmed],
         unread_scope=_unread_scope(confirmed, scope),
+        first_pass_post_count=int(
+            getattr(reads, "first_pass_read_count", 0) or 0
+        ),
+        deepened_post_count=int(getattr(reads, "deepened_post_count", 0) or 0),
+        physical_request_count=sum(item.count for item in request_breakdown),
+        request_breakdown=list(request_breakdown),
+        stage_timings_ms=dict(stage_timings_ms or {}),
+        remaining_work_ms=remaining_work_ms,
+        closeout_reasons={
+            "search": getattr(attempts, "closeout_reason", "completed"),
+            "read": getattr(reads, "closeout_reason", "completed"),
+            "official": official_closeout_reason,
+        },
+        browser_cleanup=browser_cleanup,
     )
 
 
@@ -197,6 +222,7 @@ class TiebaSynthesisNodes:
         *,
         summary_generator: TiebaSummaryGenerator | None,
         budget: TiebaBudget | None,
+        metrics: TiebaExecutionMetrics,
         clock: Callable[[], datetime],
         run_context: Any,
         run_model_id: str | None,
@@ -206,6 +232,7 @@ class TiebaSynthesisNodes:
     ) -> None:
         self._summary_generator = summary_generator
         self._budget = budget
+        self._metrics = metrics
         self._clock = clock
         self._run_context = run_context
         self._run_model_id = run_model_id
@@ -219,6 +246,10 @@ class TiebaSynthesisNodes:
         checks = read_checks(invocation)
         attempts = read_search_attempts(invocation)
         reads = read_outcome(invocation)
+        official_payload = dependency_payload(invocation, NODE_VERIFY_OFFICIAL)
+        official_closeout = str(
+            official_payload.get("closeout_reason") or "completed"
+        )
         time_filter, confirmed, summary_posts, sections = summarize(
             analysis, reads.confirmed
         )
@@ -281,6 +312,23 @@ class TiebaSynthesisNodes:
                     finished_at=finished_at,
                     model_calls=(
                         self._summary_call_count() if self._summary_call_count else 0
+                    ),
+                    official_closeout_reason=official_closeout,
+                    stage_timings_ms=self._metrics.stage_timings_ms(),
+                    remaining_work_ms=(
+                        self._budget.remaining_work_ms()
+                        if self._budget is not None
+                        else None
+                    ),
+                    request_breakdown=(
+                        self._budget.request_breakdown()
+                        if self._budget is not None
+                        else ()
+                    ),
+                    browser_cleanup=(
+                        self._budget.browser_cleanup_summary()
+                        if self._budget is not None
+                        else None
                     ),
                 )
             }

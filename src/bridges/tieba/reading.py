@@ -255,6 +255,7 @@ class HttpTiebaThreadReader:
                 timeout=READ_DEADLINE_SECONDS,
                 allowed_url=_is_tieba_url,
                 deadline=deadline,
+                max_bytes=self._max_bytes,
             )
         except TiebaHttpRequestError as exc:
             raise TiebaReadError(exc.code, exc.message) from exc

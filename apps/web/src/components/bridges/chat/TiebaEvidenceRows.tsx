@@ -7,10 +7,10 @@ import type {
   TiebaOfficialCheck,
   TiebaPostProjection,
   TiebaRejectedCandidate,
-  TiebaRunMetadata,
   TiebaSearchDiscovery,
   TiebaSummaryCitation,
 } from "@/lib/api";
+import { formatTime, scopeExclusionLabel } from "./TiebaRunMetadataRow";
 
 const QUERY_STATUS_LABELS: Record<string, string> = {
   success: "成功",
@@ -39,14 +39,6 @@ const TEMPORAL_SCOPE_LABELS: Record<string, string> = {
   unknown: "时间未知",
 };
 
-const SCOPE_EXCLUSION_LABELS: Record<string, string> = {
-  campus_conflict: "明确其他校区",
-  campus_unconfirmed: "校区未确认",
-  other_topic: "其他话题",
-  topic_mismatch: "话题不相关",
-  out_of_time_range: "时间范围外",
-  unknown_time: "发言时间未知",
-};
 
 const OFFICIAL_STATUS_LABELS: Record<string, string> = {
   verified: "已定位相关段落",
@@ -54,12 +46,6 @@ const OFFICIAL_STATUS_LABELS: Record<string, string> = {
   fetch_failed: "未能取得该页面",
   domain_rejected: "链接不属于学校官方域名，未作为官方依据",
 };
-
-export function formatTime(value: string | null | undefined): string {
-  if (!value) return "时间未知";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "时间未知" : date.toLocaleString("zh-CN");
-}
 
 /** 一条发现路径：主题命中或回复命中、实际检索词与页码。 */
 export function discoveryLabel(discovery: TiebaSearchDiscovery): string {
@@ -108,81 +94,6 @@ export function nestedProgressLabel(progress: TiebaNestedProgress): string {
   }
   parts.push(progress.complete ? "已确认读完" : "未确认读完");
   return parts.join(" · ");
-}
-
-/** 运行记录：真实请求/模型调用计数、版本与未读范围。 */
-/** 排除原因的固定中文说明；未知原因保留原键以便核对。 */
-export function scopeExclusionLabel(reason: string): string {
-  return SCOPE_EXCLUSION_LABELS[reason] ?? reason;
-}
-
-export function RunMetadataRow({ metadata }: { metadata: TiebaRunMetadata }) {
-  const elapsed =
-    metadata.elapsed_ms == null
-      ? "耗时未知"
-      : metadata.elapsed_ms < 1000
-        ? `${metadata.elapsed_ms} 毫秒`
-        : `${(metadata.elapsed_ms / 1000).toFixed(1)} 秒`;
-  const versions = Object.entries(metadata.component_versions ?? {});
-  return (
-    <details data-testid="tieba-run-metadata">
-      <summary style={{ cursor: "pointer", minHeight: "var(--target-size)" }}>
-        运行记录（请求、模型调用与未读范围）
-      </summary>
-      <ul
-        style={{
-          margin: 0,
-          paddingLeft: "var(--space-5)",
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--space-1)",
-          fontSize: "var(--text-xs)",
-        }}
-      >
-        <li>
-          运行 {metadata.run_id} · 配方 {metadata.recipe_version}
-        </li>
-        <li>
-          开始 {formatTime(metadata.started_at)} · 完成 {formatTime(metadata.completed_at)} ·{" "}
-          {elapsed}
-        </li>
-        <li>
-          外部请求 {metadata.request_count} 次：检索 {metadata.search_request_count}、搜索页{" "}
-          {metadata.search_page_count ?? 0}、读取 {metadata.read_request_count}、官方{" "}
-          {metadata.official_request_count}
-        </li>
-        <li>
-          模型调用 {metadata.model_call_count} 次 · 确认帖子 {metadata.confirmed_post_count} 个 ·
-          记录楼层 {metadata.read_reply_count} 条
-        </li>
-        <li data-testid="tieba-evidence-counts">
-          候选 {metadata.candidate_count ?? 0} 条 · 可读取 {metadata.usable_candidate_count ?? 0}{" "}
-          帖 · 已读 {metadata.read_post_count ?? 0} 帖 · 合格证据{" "}
-          {metadata.qualified_evidence_count ?? 0} 条 · 仅上下文{" "}
-          {metadata.context_only_evidence_count ?? 0} 条 · 排除{" "}
-          {metadata.excluded_evidence_count ?? 0} 条
-          {Object.keys(metadata.exclusion_reasons ?? {}).length > 0
-            ? `（${Object.entries(metadata.exclusion_reasons ?? {})
-                .map(([reason, count]) => `${scopeExclusionLabel(reason)} ${count} 条`)
-                .join("、")}）`
-            : ""}
-        </li>
-        {versions.length > 0 && (
-          <li>组件版本：{versions.map(([name, version]) => `${name} ${version}`).join(" · ")}</li>
-        )}
-        {(metadata.unread_scope ?? []).length > 0 && (
-          <li>
-            未读范围：
-            <ul style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
-              {metadata.unread_scope?.map((note, index) => (
-                <li key={`unread-${index}`}>{note}</li>
-              ))}
-            </ul>
-          </li>
-        )}
-      </ul>
-    </details>
-  );
 }
 
 /** 一个帖子本轮真实读到的范围：页数、楼层、时间与读取状态。 */

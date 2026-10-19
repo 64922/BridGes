@@ -313,6 +313,7 @@ class _RunBudgetLedgerCalls(_RunBudgetLedgerStorage):
         outcome_code: str | None = None,
         duration_ms: int | None = None,
         excluded_wait_ms: int = 0,
+        queue_ms: int = 0,
         now: datetime,
     ) -> None:
         """释放一次外部调用的并发占位（结果只记结果码；重复释放安全）。"""
@@ -330,6 +331,7 @@ class _RunBudgetLedgerCalls(_RunBudgetLedgerStorage):
             return {
                 "external_calls_active": max(0, snapshot.external_calls_active - 1),
                 "excluded_wait_ms": max(0, excluded_wait_ms),
+                "queue_ms": max(0, int(queue_ms)),
             }
 
         self._mutate(

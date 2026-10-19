@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -41,6 +42,7 @@ from bridges.tieba.evidence_search import (
     search_candidates,
 )
 from bridges.tieba.evidence_verification import build_evidence_plan
+from bridges.tieba.execution_metrics import TiebaExecutionMetrics
 from bridges.tieba.lexicon import TARGET_FORUM_NAME
 from bridges.tieba.node_flow_resume import resume_payload
 from bridges.tieba.node_flow_support import (
@@ -49,7 +51,6 @@ from bridges.tieba.node_flow_support import (
     read_analysis,
     read_plan,
     read_search_attempts,
-    remaining_seconds,
 )
 from bridges.tieba.node_synthesis import TiebaSynthesisNodes
 from bridges.tieba.official import (
@@ -125,6 +126,8 @@ class TiebaNodeFlow:
             reader = BudgetedReader(reader, budget)
             if official_reader is not None:
                 official_reader = BudgetedOfficialReader(official_reader, budget)
+        self._budget = budget
+        self._metrics = budget.metrics if budget is not None else TiebaExecutionMetrics()
         self._search = search
         self._reader = reader
         self._official_reader = official_reader
@@ -140,6 +143,7 @@ class TiebaNodeFlow:
         self._synthesis_nodes = TiebaSynthesisNodes(
             summary_generator=summary_generator,
             budget=budget,
+            metrics=self._metrics,
             clock=self._clock,
             run_context=run_context,
             run_model_id=run_model_id,
@@ -169,6 +173,7 @@ class TiebaNodeFlow:
             NODE_SYNTHESIZE: self._synthesis_nodes.run_synthesize,
             NODE_VERIFY: self._synthesis_nodes.run_verify,
         }[invocation.spec.name]
+        started = time.monotonic()
         try:
             return handler(invocation)
         except Exception as exc:  # noqa: BLE001 - 未预期异常按可重试失败收敛
@@ -183,6 +188,18 @@ class TiebaNodeFlow:
                 message=f"节点执行出现内部错误（{exc.__class__.__name__}）。",
                 retryable=True,
             )
+        finally:
+            self._metrics.record_stage(
+                invocation.spec.name, int((time.monotonic() - started) * 1000)
+            )
+
+    def _stage_seconds(self, invocation: NodeInvocation, seconds: float) -> float:
+        remaining = seconds
+        if invocation.remaining_budget_ms is not None:
+            remaining = min(remaining, invocation.remaining_budget_ms / 1000.0)
+        if self._budget is not None:
+            remaining = min(remaining, self._budget.remaining_work_ms() / 1000.0)
+        return max(0.0, remaining)
 
     def _run_parse(self, invocation: NodeInvocation) -> NodeExecution:
         wait = self._pending_wait
@@ -251,6 +268,7 @@ class TiebaNodeFlow:
                 "blocked_reason": None,
                 "skipped": True,
                 "partial": False,
+                "closeout_reason": "skipped",
             }
             return NodeExecution(
                 artifact=build_artifact(
@@ -270,6 +288,7 @@ class TiebaNodeFlow:
                 "blocked_reason": plan.official_blocked_reason,
                 "skipped": False,
                 "partial": False,
+                "closeout_reason": "blocked",
             }
             return NodeExecution(
                 artifact=build_artifact(
@@ -291,7 +310,9 @@ class TiebaNodeFlow:
             invocation.account_id,
             analysis,
             stop_event=self._stop_event,
-            deadline_seconds=remaining_seconds(invocation, self._official_deadline_seconds),
+            deadline_seconds=self._stage_seconds(
+                invocation, self._official_deadline_seconds
+            ),
             resume=resume,
         )
         checks = outcome.checks
@@ -301,6 +322,7 @@ class TiebaNodeFlow:
             "blocked_reason": None,
             "skipped": False,
             "partial": outcome.partial,
+            "closeout_reason": outcome.closeout_reason,
             "records": [record.model_dump(mode="json") for record in outcome.records],
             "candidates": outcome.candidates,
         }
@@ -325,7 +347,9 @@ class TiebaNodeFlow:
             invocation.account_id,
             analysis,
             stop_event=self._stop_event,
-            deadline_seconds=remaining_seconds(invocation, self._search_deadline_seconds),
+            deadline_seconds=self._stage_seconds(
+                invocation, self._search_deadline_seconds
+            ),
             resume=resume,
         )
         payload = {
@@ -339,6 +363,7 @@ class TiebaNodeFlow:
                 scope.model_dump(mode="json") for scope in attempts.scope
             ],
             "partial": attempts.partial,
+            "closeout_reason": attempts.closeout_reason,
         }
         return NodeExecution(
             artifact=build_artifact(
@@ -361,7 +386,9 @@ class TiebaNodeFlow:
             attempts,
             analysis=read_analysis(invocation),
             stop_event=self._stop_event,
-            deadline_seconds=remaining_seconds(invocation, self._read_deadline_seconds),
+            deadline_seconds=self._stage_seconds(
+                invocation, self._read_deadline_seconds
+            ),
             resume=resume,
         )
         payload = {
@@ -374,6 +401,9 @@ class TiebaNodeFlow:
             "attempted_urls": list(reads.attempted_urls),
             "retry_urls": list(reads.retry_urls),
             "partial": reads.partial,
+            "first_pass_read_count": reads.first_pass_read_count,
+            "deepened_post_count": reads.deepened_post_count,
+            "closeout_reason": reads.closeout_reason,
         }
         return NodeExecution(
             artifact=build_artifact(
@@ -383,7 +413,8 @@ class TiebaNodeFlow:
                 payload=payload,
                 source_refs=[post.url for post in reads.confirmed],
                 read_scope=(
-                    f"实际读取 {len(reads.attempted_urls)} 个候选页面；"
+                    f"首轮读取 {reads.first_pass_read_count} 个候选页面，"
+                    f"深入 {reads.deepened_post_count} 个；"
                     f"确认 {len(reads.confirmed)} 个属于「{TARGET_FORUM_NAME}」"
                 ),
             ),

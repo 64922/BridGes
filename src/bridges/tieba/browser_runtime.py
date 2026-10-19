@@ -25,6 +25,15 @@ if TYPE_CHECKING:
 
 ACCOUNT_DELETION_MARKER = ".account-deleting"
 
+BROWSER_CLOSE_TIMEOUT_SECONDS = 3.0
+BROWSER_KILL_TIMEOUT_SECONDS = 5.0
+BROWSER_EXIT_TIMEOUT_SECONDS = 5.0
+BROWSER_CLEANUP_TOLERANCE_SECONDS = (
+    BROWSER_CLOSE_TIMEOUT_SECONDS
+    + BROWSER_KILL_TIMEOUT_SECONDS
+    + BROWSER_EXIT_TIMEOUT_SECONDS
+)
+
 
 @dataclass(eq=False)
 class _BrowserWorker:
@@ -157,7 +166,9 @@ class TiebaBrowserRuntime:
                     "tieba_browser_work_time_exhausted",
                     "tieba_browser_request_queue_full",
                 }:
-                    self._drop_worker(account_id, worker)
+                    self._drop_worker(
+                        account_id, worker, request_budget=request_budget
+                    )
                 raise
             with self._lock:
                 self._last_used[account_id] = time.monotonic()
@@ -364,21 +375,31 @@ class TiebaBrowserRuntime:
             send=lambda value: self._send(worker, value),
         )
 
-    def _drop_worker(self, account_id: str, worker: _BrowserWorker) -> None:
+    def _drop_worker(
+        self,
+        account_id: str,
+        worker: _BrowserWorker,
+        *,
+        request_budget: TiebaBudget | None = None,
+    ) -> None:
         with self._lock:
             if self._workers.get(account_id) is worker:
                 self._workers.pop(account_id, None)
                 self._last_used.pop(account_id, None)
-        self._dispose(worker)
+        duration_ms = self._dispose(worker)
+        record_cleanup = getattr(request_budget, "record_browser_cleanup", None)
+        if duration_ms is not None and callable(record_cleanup):
+            record_cleanup(duration_ms)
 
-    def _dispose(self, worker: _BrowserWorker) -> None:
+    def _dispose(self, worker: _BrowserWorker) -> int:
+        started = time.monotonic()
         process = worker.process
         if process.poll() is None:
             try:
                 if process.stdin is not None:
                     process.stdin.write("close\n")
                     process.stdin.flush()
-                process.wait(timeout=3)
+                process.wait(timeout=BROWSER_CLOSE_TIMEOUT_SECONDS)
             except (OSError, subprocess.TimeoutExpired):
                 # 仅终止本运行时启动的进程树，避免 Chrome 在取消后占用专用目录。
                 if os.name == "nt":
@@ -388,17 +409,19 @@ class TiebaBrowserRuntime:
                         stderr=subprocess.DEVNULL,
                         check=False,
                         creationflags=subprocess.CREATE_NO_WINDOW,
-                        timeout=5,
+                        timeout=BROWSER_KILL_TIMEOUT_SECONDS,
                     )
                 else:
                     process.terminate()
-                process.wait(timeout=5)
+                process.wait(timeout=BROWSER_EXIT_TIMEOUT_SECONDS)
         for stream in (process.stdin, process.stdout):
             if stream is not None:
                 stream.close()
+        return max(0, int((time.monotonic() - started) * 1000))
 
 
 __all__ = [
+    "BROWSER_CLEANUP_TOLERANCE_SECONDS",
     "TiebaBrowserError",
     "TiebaBrowserRuntime",
     "account_profile_is_fenced",

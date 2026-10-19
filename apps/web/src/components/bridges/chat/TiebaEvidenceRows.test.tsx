@@ -7,11 +7,8 @@ import type {
   TiebaSummaryCitation,
 } from "@/lib/api";
 
-import {
-  PostRow,
-  RunMetadataRow,
-  citationLocation,
-} from "./TiebaEvidenceRows";
+import { PostRow, citationLocation } from "./TiebaEvidenceRows";
+import { RunMetadataRow } from "./TiebaRunMetadataRow";
 
 afterEach(cleanup);
 
@@ -75,7 +72,7 @@ const post: TiebaPostProjection = {
 };
 
 const metadata: TiebaRunMetadata = {
-  contract_version: "tieba-run-metadata-v2",
+  contract_version: "tieba-run-metadata-v3",
   run_id: "run-1",
   recipe_version: "tieba-recipe-v3",
   component_versions: { browser_protocol: "tieba-browser-protocol-v2" },
@@ -98,6 +95,38 @@ const metadata: TiebaRunMetadata = {
   excluded_evidence_count: 2,
   exclusion_reasons: { out_of_time_range: 1, campus_conflict: 1 },
   source_urls: [post.url],
+  first_pass_post_count: 2,
+  deepened_post_count: 1,
+  physical_request_count: 4,
+  request_breakdown: [
+    {
+      request_type: "search",
+      purpose: "tieba.search",
+      count: 2,
+      network_ms: 1200,
+      queued_ms: 300,
+    },
+    {
+      request_type: "read",
+      purpose: "tieba.read",
+      count: 1,
+      network_ms: 800,
+      queued_ms: 0,
+    },
+  ],
+  stage_timings_ms: { "tieba.search": 1500, "tieba.read": 900 },
+  remaining_work_ms: 175000,
+  closeout_reasons: {
+    search: "completed",
+    read: "evidence_sufficient",
+    official: "skipped",
+  },
+  browser_cleanup: {
+    count: 1,
+    max_ms: 400,
+    tolerance_ms: 13000,
+    timed_out: 0,
+  },
   unread_scope: ["https://tieba.baidu.com/p/8123456789：只读取第 1 页，页面声明共 3 页。"],
 };
 
@@ -237,5 +266,20 @@ describe("贴吧证据行（工单 04）", () => {
     const replies = screen.getByTestId("tieba-post-8123456789-replies");
     expect(replies.textContent).toContain("时间分类：历史");
     expect(replies.textContent).toContain("仅上下文，不作为引用依据");
+  });
+
+  it("运行记录展示请求节奏、阶段耗时、剩余预算与收尾原因", () => {
+    render(<RunMetadataRow metadata={metadata} />);
+    const text = screen.getByTestId("tieba-run-metadata").textContent ?? "";
+    expect(text).toContain("首轮覆盖 2 帖 · 深入 1 帖");
+    expect(text).toContain("剩余工作预算 175.0 秒");
+    expect(text).toContain(
+      "检索（tieba.search） 2 次 · 网络 1.2 秒 · 排队 300 毫秒"
+    );
+    expect(text).toContain("阶段耗时：检索 1.5 秒 · 读取 900 毫秒");
+    expect(text).toContain("收尾：检索 完成 · 读取 证据足够 · 官方 未执行");
+    expect(text).toContain(
+      "浏览器清理 1 次 · 最大 400 毫秒 · 容差 13.0 秒"
+    );
   });
 })

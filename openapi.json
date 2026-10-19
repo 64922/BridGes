@@ -65028,6 +65028,37 @@
         "title": "TemporaryTaskCapsule",
         "description": "Encrypted minimal context for a single task run.\n\nA temporary task capsule binds subject, purpose, objects, run, authorization\nversion, key epoch, and TTL. It is the only long-information carrier that may\nbe sent to cloud workers or model gateways."
       },
+      "TiebaBrowserCleanup": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "已测量的清理次数。",
+            "default": 0
+          },
+          "max_ms": {
+            "type": "integer",
+            "title": "Max Ms",
+            "description": "实际最大清理耗时（毫秒）。",
+            "default": 0
+          },
+          "tolerance_ms": {
+            "type": "integer",
+            "title": "Tolerance Ms",
+            "description": "事先定义的清理容差（毫秒）。",
+            "default": 0
+          },
+          "timed_out": {
+            "type": "integer",
+            "title": "Timed Out",
+            "description": "超过清理容差的次数。",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "TiebaBrowserCleanup",
+        "description": "浏览器 worker 清理的实际耗时与事先定义的上界。"
+      },
       "TiebaCandidateLink": {
         "properties": {
           "url": {
@@ -66012,6 +66043,45 @@
         "title": "TiebaReply",
         "description": "真实读到的楼层；时间与楼层按页面原文记录。"
       },
+      "TiebaRequestBreakdown": {
+        "properties": {
+          "request_type": {
+            "type": "string",
+            "title": "Request Type",
+            "description": "稳定请求类别：search/read/official/browser/other。"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "实际登记的请求用途。"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "完成的物理请求数。",
+            "default": 0
+          },
+          "network_ms": {
+            "type": "integer",
+            "title": "Network Ms",
+            "description": "网络耗时合计（毫秒）。",
+            "default": 0
+          },
+          "queued_ms": {
+            "type": "integer",
+            "title": "Queued Ms",
+            "description": "自动排队等待合计（毫秒）。",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_type",
+          "purpose"
+        ],
+        "title": "TiebaRequestBreakdown",
+        "description": "按真实用途归并的外部请求计数与耗时。"
+      },
       "TiebaResearchProjection": {
         "properties": {
           "status": {
@@ -66361,7 +66431,7 @@
           "contract_version": {
             "type": "string",
             "title": "Contract Version",
-            "default": "tieba-run-metadata-v2"
+            "default": "tieba-run-metadata-v3"
           },
           "run_id": {
             "type": "string",
@@ -66526,6 +66596,71 @@
             "type": "array",
             "title": "Unread Scope",
             "description": "实际未读取的页、楼层或内容范围。"
+          },
+          "first_pass_post_count": {
+            "type": "integer",
+            "title": "First Pass Post Count",
+            "description": "跨帖首轮实际取得页面的帖子数。",
+            "default": 0
+          },
+          "deepened_post_count": {
+            "type": "integer",
+            "title": "Deepened Post Count",
+            "description": "首轮之后成功深入读取的帖子数。",
+            "default": 0
+          },
+          "physical_request_count": {
+            "type": "integer",
+            "title": "Physical Request Count",
+            "description": "账本实际完成的物理外部请求数。",
+            "default": 0
+          },
+          "request_breakdown": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaRequestBreakdown"
+            },
+            "type": "array",
+            "title": "Request Breakdown",
+            "description": "按用途归并的请求数、网络与排队耗时。"
+          },
+          "stage_timings_ms": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Stage Timings Ms",
+            "description": "各节点实际阶段耗时（毫秒）。"
+          },
+          "remaining_work_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Work Ms",
+            "description": "完成投影时账本剩余工作时间（毫秒）。"
+          },
+          "closeout_reasons": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Closeout Reasons",
+            "description": "检索、读取与官方路径的收尾原因。"
+          },
+          "browser_cleanup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TiebaBrowserCleanup"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "浏览器 worker 清理耗时与容差。"
           }
         },
         "type": "object",

@@ -29,6 +29,7 @@ def tracked_get(
     allowed_url: Callable[[str], bool],
     params: Mapping[str, str | int] | None = None,
     deadline: float | None = None,
+    max_bytes: int | None = None,
 ) -> httpx.Response:
     """Register each HTTP GET, checking the run guard before every redirect hop."""
     if not _is_allowed_url(url, allowed_url):
@@ -54,12 +55,26 @@ def tracked_get(
                 )
                 raise TiebaHttpRequestError(denial, message)
             try:
-                response = client.get(
+                with client.stream(
+                    "GET",
                     current_url,
                     params=current_params,
                     timeout=request_timeout,
                     follow_redirects=False,
-                )
+                ) as streamed:
+                    if deadline is not None and monotonic() >= deadline:
+                        raise httpx.TimeoutException(
+                            "request deadline exceeded", request=streamed.request
+                        )
+                    body = b""
+                    if not streamed.is_redirect:
+                        body = _read_stream(streamed, deadline=deadline, max_bytes=max_bytes)
+                    response = httpx.Response(
+                        streamed.status_code,
+                        headers=streamed.headers,
+                        content=body,
+                        request=streamed.request,
+                    )
             except httpx.RemoteProtocolError as exc:
                 if "Invalid URL in location header:" not in str(exc):
                     raise
@@ -100,6 +115,35 @@ def tracked_get(
     raise TiebaHttpRequestError(
         "tieba_external_redirect_limit", "页面跳转次数超过上限，未继续访问。"
     )
+
+
+def _read_stream(
+    response: httpx.Response,
+    *,
+    deadline: float | None,
+    max_bytes: int | None,
+) -> bytes:
+    limit = max(0, int(max_bytes)) if max_bytes is not None else None
+    if limit == 0:
+        return b""
+    chunks: list[bytes] = []
+    size = 0
+    for chunk in response.iter_bytes():
+        if deadline is not None and monotonic() >= deadline:
+            raise httpx.TimeoutException(
+                "request deadline exceeded", request=response.request
+            )
+        if not chunk:
+            continue
+        if limit is not None:
+            chunk = chunk[: max(0, limit - size)]
+        if not chunk:
+            break
+        chunks.append(chunk)
+        size += len(chunk)
+        if limit is not None and size >= limit:
+            break
+    return b"".join(chunks)
 
 
 def _is_allowed_url(url: str, allowed_url: Callable[[str], bool]) -> bool:

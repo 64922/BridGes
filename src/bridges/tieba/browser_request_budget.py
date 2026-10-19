@@ -54,6 +54,7 @@ class _WaitingRequest:
     request_id: int
     call_key: str
     purpose: str
+    queued_at: float
     last_attempt_at: float
     last_decision: ExternalCallDecision
 
@@ -77,7 +78,7 @@ class BrowserRequestBudget:
         self._deadline = deadline
         self._denial_code: str | None = None
         self._terminal = False
-        self._pending: dict[int, tuple[str, int]] = {}
+        self._pending: dict[int, tuple[str, int, int | None]] = {}
         self._waiting: deque[_WaitingRequest] = deque()
         self._clock = time.monotonic
 
@@ -182,12 +183,14 @@ class BrowserRequestBudget:
             self._activate(request_id, call_key)
             return True
         if self._is_waitable(decision):
+            now = self._clock()
             self._waiting.append(
                 _WaitingRequest(
                     request_id=request_id,
                     call_key=call_key,
                     purpose=purpose,
-                    last_attempt_at=self._clock(),
+                    queued_at=now,
+                    last_attempt_at=now,
                     last_decision=decision,
                 )
             )
@@ -205,12 +208,14 @@ class BrowserRequestBudget:
         request_id = int(value.get("request_id", -1))
         call = self._pending.pop(request_id, None)
         if call is not None and self._budget is not None:
-            call_key, started_ns = call
-            self._budget.release_external(
-                call_key,
-                outcome_code=str(value.get("outcome_code") or "request_finished"),
-                duration_ms=max(0, int(value.get("duration_ms") or 0)),
-            )
+            call_key, _started_ns, queued_ms = call
+            values: dict[str, Any] = {
+                "outcome_code": str(value.get("outcome_code") or "request_finished"),
+                "duration_ms": max(0, int(value.get("duration_ms") or 0)),
+            }
+            if queued_ms is not None:
+                values["queue_ms"] = queued_ms
+            self._budget.release_external(call_key, **values)
         self._grant_waiting()
 
     def _grant_waiting(self) -> None:
@@ -227,7 +232,11 @@ class BrowserRequestBudget:
             waiter.last_attempt_at = now
             if decision.allowed:
                 self._waiting.popleft()
-                self._activate(waiter.request_id, waiter.call_key)
+                self._activate(
+                    waiter.request_id,
+                    waiter.call_key,
+                    queued_ms=max(0, int((now - waiter.queued_at) * 1000)),
+                )
                 continue
             if self._is_waitable(decision):
                 return
@@ -240,8 +249,10 @@ class BrowserRequestBudget:
                 decision=decision,
             )
 
-    def _activate(self, request_id: int, call_key: str) -> None:
-        self._pending[request_id] = (call_key, time.monotonic_ns())
+    def _activate(
+        self, request_id: int, call_key: str, *, queued_ms: int | None = None
+    ) -> None:
+        self._pending[request_id] = (call_key, time.monotonic_ns(), queued_ms)
         self._send(
             {
                 "type": "request_decision",
@@ -391,16 +402,18 @@ class BrowserRequestBudget:
         """请求动作结束时释放全部在途占位；等待项不再等待。"""
         pending = list(self._pending.items())
         self._pending.clear()
-        for _request_id, (call_key, started_ns) in pending:
+        for _request_id, (call_key, started_ns, queued_ms) in pending:
             if self._budget is not None:
                 duration_ms = max(
                     0, int((time.monotonic_ns() - started_ns) / 1_000_000)
                 )
-                self._budget.release_external(
-                    call_key,
-                    outcome_code=outcome_code,
-                    duration_ms=duration_ms,
-                )
+                values: dict[str, Any] = {
+                    "outcome_code": outcome_code,
+                    "duration_ms": duration_ms,
+                }
+                if queued_ms is not None:
+                    values["queue_ms"] = queued_ms
+                self._budget.release_external(call_key, **values)
         while self._waiting:
             waiter = self._waiting.popleft()
             self._deny_now(

@@ -67,7 +67,7 @@ def test_confirmed_thread_is_read_with_floors_times_and_sections(
     assert port.queries == list(
         plan_queries(parse_tieba_request("华东交通大学吧 东北电力和华东交通哪个好"))
     )
-    assert reader.read_urls == [CONFIRMED_URL]
+    assert reader.read_urls == [CONFIRMED_URL, CONFIRMED_URL]
     post = tieba["confirmed_posts"][0]
     assert post["url"] == CONFIRMED_URL
     assert post["title"] == "东北电力和华东交通哪个好"

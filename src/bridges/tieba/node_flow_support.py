@@ -112,6 +112,7 @@ def read_search_attempts(invocation: NodeInvocation) -> SearchAttempts:
         rounds=tuple(str(note) for note in payload.get("rounds", [])),
         scope=tuple(scope),
         partial=bool(payload.get("partial")),
+        closeout_reason=str(payload.get("closeout_reason") or "completed"),
     )
 
 
@@ -145,6 +146,9 @@ def read_outcome(invocation: NodeInvocation) -> ReadOutcome:
         attempted_urls=tuple(str(url) for url in payload.get("attempted_urls", [])),
         retry_urls=tuple(str(url) for url in payload.get("retry_urls", [])),
         partial=bool(payload.get("partial")),
+        first_pass_read_count=int(payload.get("first_pass_read_count") or 0),
+        deepened_post_count=int(payload.get("deepened_post_count") or 0),
+        closeout_reason=str(payload.get("closeout_reason") or "completed"),
     )
 
 

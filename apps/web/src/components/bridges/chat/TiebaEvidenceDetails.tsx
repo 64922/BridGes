@@ -12,9 +12,8 @@ import {
   PostRow,
   QueryRecordRow,
   RejectedRow,
-  RunMetadataRow,
-  formatTime,
 } from "./TiebaEvidenceRows";
+import { RunMetadataRow, formatTime } from "./TiebaRunMetadataRow";
 
 function targetForumUrl(forum: string): string {
   return `https://tieba.baidu.com/f?kw=${encodeURIComponent(forum.replace(/吧$/, ""))}`;

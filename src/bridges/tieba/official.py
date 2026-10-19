@@ -158,6 +158,7 @@ class HttpOfficialSiteReader:
                 timeout=OFFICIAL_FETCH_TIMEOUT_SECONDS,
                 allowed_url=is_official_url,
                 deadline=deadline,
+                max_bytes=self._max_bytes,
             )
         except TiebaHttpRequestError as exc:
             return _failed(url, host, fetched_at, exc.code, exc.message)

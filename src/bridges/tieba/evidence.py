@@ -14,21 +14,29 @@ from bridges.tieba.contracts import (
     TiebaQuestionAnalysis,
     TiebaReadResult,
     TiebaRejectedCandidate,
-    TiebaReply,
     TiebaSearchHit,
 )
 from bridges.tieba.evidence_search import SearchAttempts
-from bridges.tieba.lexicon import (
-    CAMPUS_TERMS,
-    PLACE_EVENT_TERMS,
-)
-from bridges.tieba.reading import TiebaThreadReader
-from bridges.tieba.relevance import post_matches_topic, text_matches_topic
+from bridges.tieba.reading import READ_PAGES_LIMIT, TiebaThreadReader
+from bridges.tieba.reading_scope import scope_scoped_result
+from bridges.tieba.relevance import post_matches_topic
 from bridges.tieba.searching import (
     plan_queries,
 )
 
-READ_DEADLINE_SECONDS = 12.0
+READ_DEADLINE_SECONDS = 60.0
+
+#: 首轮每个帖子只取一页，先让多个候选都获得真实页面证据。
+READ_FIRST_PASS_PAGES = 1
+
+#: 单帖首轮或深入读取的墙钟上限；总读取截止仍由阶段预算收紧。
+READ_POST_DEADLINE_SECONDS = 15.0
+
+#: 首轮后最多深入的帖子数，避免单个长帖独占资源。
+DEEP_READ_POSTS_LIMIT = 3
+
+#: 首轮已有这么多确认帖且各自取得原文时，停止追加采集。
+SUFFICIENT_CONFIRMED_POSTS = 3
 
 
 #: 单轮最多读取的帖子数（每个帖子一次真实公开读取）。
@@ -67,6 +75,10 @@ class ReadOutcome:
     #: 认证等待完成后必须重读的链接；失败尝试不能作为完成证据复用。
     retry_urls: tuple[str, ...] = ()
     partial: bool = False
+    #: 首轮实际取得页面的帖子数、首轮后成功深入的帖子数。
+    first_pass_read_count: int = 0
+    deepened_post_count: int = 0
+    closeout_reason: str = "completed"
 
 
 def read_candidates(
@@ -93,11 +105,11 @@ def read_candidates(
     if resume is not None:
         for raw in resume.get("confirmed", []):
             try:
-                post = TiebaPostProjection.model_validate(raw)
+                resumed_post = TiebaPostProjection.model_validate(raw)
             except ValueError:
                 continue
-            confirmed.append(post)
-            attempted.add(post.url)
+            confirmed.append(resumed_post)
+            attempted.add(resumed_post.url)
         for raw in resume.get("rejected", []):
             try:
                 item = TiebaRejectedCandidate.model_validate(raw)
@@ -120,8 +132,13 @@ def read_candidates(
     new_attempted: set[str] = set()
     browser_blocked_error: str | None = None
     stopped_index: int | None = None
+    closeout_reason = "completed"
+    first_pass_read_count = 0
+    deepened_post_count = 0
+    deep_failed = False
     deadline = time.monotonic() + deadline_seconds
-    # 回复命中往往来自标题不含话题的帖子；先给它们读取机会，避免被主题页
+    excluded_wait_seconds = 0.0
+    # 回复命中往往来自标题不含话题的帖子；先给它们读取机会，避免被主题词
     # 的前几条候选永久挤在读取上限之外。
     ordered_hits = tuple(
         sorted(
@@ -130,6 +147,15 @@ def read_candidates(
         )
     )
     read_hits = ordered_hits[:READ_POSTS_LIMIT]
+    topic_terms = list(
+        dict.fromkeys(
+            term
+            for query in plan_queries(analysis)
+            for term in query.split()[2:]
+            if term not in analysis.campus_terms and term != "贴吧"
+        )
+    )
+    topic_analysis = analysis.model_copy(update={"topic_terms": topic_terms})
     for index, hit in enumerate(read_hits):
         if hit.url in attempted:
             prior = prior_links.get(hit.url)
@@ -138,16 +164,29 @@ def read_candidates(
             continue
         if stop_event is not None and stop_event.is_set():
             partial = True
+            closeout_reason = "stopped"
             stopped_index = index - 1
             break
-        result = reader.read(hit.url, stop_event=stop_event, deadline=deadline)
-        deadline += max(0, result.excluded_wait_ms) / 1000
+        if time.monotonic() >= deadline:
+            partial = True
+            closeout_reason = "deadline"
+            stopped_index = index - 1
+            break
+        result = reader.read(
+            hit.url,
+            pages_limit=READ_FIRST_PASS_PAGES,
+            stop_event=stop_event,
+            deadline=_slice_deadline(
+                deadline,
+                len(read_hits) - index,
+                extra_seconds=excluded_wait_seconds,
+            ),
+        )
+        wait_seconds = max(0, result.excluded_wait_ms) / 1000
+        deadline += wait_seconds
+        excluded_wait_seconds += wait_seconds
         new_attempted.add(hit.url)
-        if result.error_code in {
-            "tieba_browser_auth_required",
-            "tieba_browser_auth_interrupted",
-            "tieba_browser_auth_unverified",
-        }:
+        if _auth_blocked(result.error_code):
             links.append(
                 _unconfirmed_link(
                     hit,
@@ -158,50 +197,93 @@ def read_candidates(
             retry_urls.add(hit.url)
             browser_blocked_error = result.error_code
             partial = True
+            closeout_reason = "auth_required"
+            stopped_index = index
+            break
+        if _budget_blocked(result.error_code):
+            unreadable += 1
+            links.append(
+                _unconfirmed_link(
+                    hit,
+                    "未读取：本轮工作预算已耗尽",
+                    read_error_code=result.error_code,
+                )
+            )
+            partial = True
+            closeout_reason = "budget_exhausted"
             stopped_index = index
             break
         retry_urls.discard(hit.url)
-        if result.forum_matches_target:
-            topic_terms = list(
-                dict.fromkeys(
-                    term
-                    for query in plan_queries(analysis)
-                    for term in query.split()[2:]
-                    if term not in analysis.campus_terms and term != "贴吧"
+        action, post, rejected_item = _classify_read(hit, result, topic_analysis)
+        if action == "confirmed" and post is not None:
+            confirmed.append(post)
+            first_pass_read_count += 1
+        elif action == "rejected" and rejected_item is not None:
+            rejected.append(rejected_item)
+        else:
+            unreadable += 1
+            links.append(
+                _unconfirmed_link(
+                    hit,
+                    _read_block_reason(result),
+                    read_error_code=result.error_code,
                 )
             )
-            topic_analysis = analysis.model_copy(update={"topic_terms": topic_terms})
-            result = _scope_scoped_result(result, topic_analysis)
-            if not result.replies or not post_matches_topic(result, topic_analysis):
-                rejected.append(
-                    TiebaRejectedCandidate(
-                        url=result.url,
-                        title=result.title or hit.title,
-                        evidence="已读取目标贴吧页面，但没有符合本轮话题及明确校区条件的原文。",
-                    )
+    if closeout_reason == "completed":
+        if len(confirmed) >= SUFFICIENT_CONFIRMED_POSTS and all(
+            post.replies_obtained for post in confirmed
+        ):
+            closeout_reason = "evidence_sufficient"
+        else:
+            deep_candidates = [
+                post
+                for post in confirmed
+                if post.url not in attempted and _needs_deepening(post)
+            ][:DEEP_READ_POSTS_LIMIT]
+            for index, post in enumerate(deep_candidates):
+                if stop_event is not None and stop_event.is_set():
+                    partial = True
+                    closeout_reason = "stopped"
+                    break
+                if time.monotonic() >= deadline:
+                    partial = True
+                    closeout_reason = "deadline"
+                    break
+                deep_hit = next(
+                    (item for item in read_hits if item.url == post.url), None
                 )
-                continue
-            confirmed.append(confirmed_post(hit, result))
-            continue
-        if result.forum_name and result.status in {ReadStatus.READ, ReadStatus.PARTIAL}:
-            rejected.append(
-                TiebaRejectedCandidate(
-                    url=result.url,
-                    title=result.title or hit.title,
-                    evidence=(
-                        f"已读取帖子页面，页面声明所属贴吧为「{result.forum_name}」，不是目标贴吧"
+                if deep_hit is None:
+                    continue
+                result = reader.read(
+                    post.url,
+                    pages_limit=READ_PAGES_LIMIT,
+                    stop_event=stop_event,
+                    deadline=_slice_deadline(
+                        deadline,
+                        len(deep_candidates) - index,
+                        extra_seconds=excluded_wait_seconds,
                     ),
                 )
-            )
-            continue
-        unreadable += 1
-        links.append(
-            _unconfirmed_link(
-                hit,
-                _read_block_reason(result),
-                read_error_code=result.error_code,
-            )
-        )
+                wait_seconds = max(0, result.excluded_wait_ms) / 1000
+                deadline += wait_seconds
+                excluded_wait_seconds += wait_seconds
+                if _auth_blocked(result.error_code):
+                    deep_failed = True
+                    closeout_reason = "deepen_incomplete"
+                    break
+                if _budget_blocked(result.error_code):
+                    partial = True
+                    closeout_reason = "budget_exhausted"
+                    break
+                action, deeper, _ = _classify_read(deep_hit, result, topic_analysis)
+                if action == "confirmed" and deeper is not None:
+                    if _improved(post, deeper):
+                        confirmed[confirmed.index(post)] = deeper
+                        deepened_post_count += 1
+                else:
+                    deep_failed = True
+            if closeout_reason == "completed" and deep_failed:
+                closeout_reason = "deepen_incomplete"
     not_attempted = 0
     remaining_hits = list(read_hits[stopped_index + 1 :] if stopped_index is not None else [])
     remaining_hits.extend(ordered_hits[READ_POSTS_LIMIT:])
@@ -245,154 +327,96 @@ def read_candidates(
         attempted_urls=tuple(sorted(attempted | new_attempted)),
         retry_urls=tuple(sorted(retry_urls)),
         partial=partial,
+        first_pass_read_count=first_pass_read_count,
+        deepened_post_count=deepened_post_count,
+        closeout_reason=closeout_reason,
     )
 
 
-def _scope_scoped_result(
+def _slice_deadline(
+    global_deadline: float, slots: int, *, extra_seconds: float = 0.0
+) -> float:
+    """给当前帖子一个有界时间片，避免慢帖吃光后续首轮覆盖。
+
+    人工登录等待已从总预算中排除，因此给剩余帖子的工作时间上限也按等待时长
+    顺延，但仍不能越过已经顺延的总截止。
+    """
+    now = time.monotonic()
+    remaining = global_deadline - now
+    if remaining <= 0:
+        return global_deadline
+    cap = min(READ_POST_DEADLINE_SECONDS + max(0.0, extra_seconds), remaining)
+    share = remaining / max(1, slots)
+    return now + min(cap, share)
+
+
+def _auth_blocked(code: str | None) -> bool:
+    return code in {
+        "tieba_browser_auth_required",
+        "tieba_browser_auth_interrupted",
+        "tieba_browser_auth_unverified",
+    }
+
+
+def _budget_blocked(code: str | None) -> bool:
+    return code in {
+        "run_budget_exhausted",
+        "tieba_browser_work_time_exhausted",
+        "tieba_browser_request_queue_full",
+    }
+
+
+def _classify_read(
+    hit: TiebaSearchHit,
     result: TiebaReadResult,
     analysis: TiebaQuestionAnalysis,
-) -> TiebaReadResult:
-    """按用户点名的明确校区收敛已读发言，保留无冲突的必要上下文。
-
-    直接证据必须由发言正文确认该校区；同校区但明确谈论其他话题的发言排除。
-    与直接证据相连的父回复或继续回复即使没有关键词也保留：父回复只作上下文、
-    不能成为引用，继续回复（反驳、否定、纠正）仍是可核对的观点依据。
-    """
-    if not analysis.campus_terms:
-        return result
-    requested = set(analysis.campus_terms)
-    reasons: dict[str, int] = {}
-    kept_keys: set[int] = set()
-    changed = True
-    while changed:
-        changed = False
-        kept_ids = _kept_reply_ids(result, kept_keys)
-        for index, reply in enumerate(result.replies):
-            if index in kept_keys:
-                continue
-            verdict = _scope_verdict(reply, analysis, requested)
-            if verdict == "direct" or (
-                verdict == "context"
-                and reply.parent_reply_id
-                and reply.parent_reply_id in kept_ids
-            ):
-                kept_keys.add(index)
-                changed = True
-    by_id = {
-        reply.reply_id: (index, reply)
-        for index, reply in enumerate(result.replies)
-        if reply.reply_id
-    }
-    context_keys: set[int] = set()
-    pending_parents = [
-        result.replies[index].parent_reply_id
-        for index in kept_keys
-        if result.replies[index].parent_reply_id
-    ]
-    while pending_parents:
-        parent_id = pending_parents.pop()
-        found = by_id.get(parent_id or "")
-        if found is None:
-            continue
-        index, parent = found
-        if index in kept_keys:
-            continue
-        if _scope_verdict(parent, analysis, requested) in {
-            "campus_conflict",
-            "other_topic",
-        }:
-            continue
-        kept_keys.add(index)
-        context_keys.add(index)
-        if parent.parent_reply_id:
-            pending_parents.append(parent.parent_reply_id)
-    for index, reply in enumerate(result.replies):
-        if index in kept_keys:
-            continue
-        verdict = _scope_verdict(reply, analysis, requested)
-        if verdict == "context":
-            verdict = (
-                "campus_unconfirmed"
-                if requested and not {term for term in CAMPUS_TERMS if term in reply.content}
-                else "topic_mismatch"
+) -> tuple[str, TiebaPostProjection | None, TiebaRejectedCandidate | None]:
+    if result.forum_matches_target:
+        scoped = scope_scoped_result(result, analysis)
+        if not scoped.replies or not post_matches_topic(scoped, analysis):
+            return (
+                "rejected",
+                None,
+                TiebaRejectedCandidate(
+                    url=scoped.url,
+                    title=scoped.title or hit.title,
+                    evidence="已读取目标贴吧页面，但没有符合本轮话题及明确校区条件的原文。",
+                ),
             )
-        _count_reason(reasons, verdict)
-    ordered = [
-        reply.model_copy(update={"context_only": True})
-        if index in context_keys
-        else reply
-        for index, reply in enumerate(result.replies)
-        if index in kept_keys
-    ]
-    excluded = len(result.replies) - len(ordered)
-    if not excluded and not context_keys:
-        return result
-    parts = [result.error_message]
-    if excluded:
-        detail = "、".join(
-            f"{_SCOPE_REASON_LABELS.get(reason, reason)} {count} 条"
-            for reason, count in reasons.items()
+        return "confirmed", confirmed_post(hit, scoped), None
+    if result.forum_name and result.status in {ReadStatus.READ, ReadStatus.PARTIAL}:
+        return (
+            "rejected",
+            None,
+            TiebaRejectedCandidate(
+                url=result.url,
+                title=result.title or hit.title,
+                evidence=(
+                    f"已读取帖子页面，页面声明所属贴吧为「{result.forum_name}」，不是目标贴吧"
+                ),
+            ),
         )
-        parts.append(
-            f"已按话题条件或明确校区条件排除 {excluded} 条不匹配的发言"
-            + (f"（{detail}）。" if detail else "。")
-        )
-    if context_keys:
-        parts.append(f"另有 {len(context_keys)} 条无冲突父回复仅作理解上下文，不作为引用依据。")
-    return result.model_copy(
-        update={
-            "replies": ordered,
-            "status": ReadStatus.PARTIAL,
-            "scope_excluded_reasons": reasons,
-            "error_message": "；".join(filter(None, parts)),
-        }
+    return "unreadable", None, None
+
+
+def _needs_deepening(post: TiebaPostProjection) -> bool:
+    if not post.replies_obtained:
+        return False
+    if post.pages_read <= 0:
+        return post.nested_incomplete_count > 0
+    if post.total_pages is not None and post.pages_read < post.total_pages:
+        return True
+    if post.pages_read < READ_PAGES_LIMIT and not post.pages_complete:
+        return True
+    return post.nested_incomplete_count > 0
+
+
+def _improved(previous: TiebaPostProjection, current: TiebaPostProjection) -> bool:
+    return (
+        current.pages_read > previous.pages_read
+        or len(current.replies) > len(previous.replies)
+        or (current.nested_complete and not previous.nested_complete)
     )
-
-
-_SCOPE_REASON_LABELS = {
-    "campus_conflict": "明确其他校区",
-    "campus_unconfirmed": "校区未确认",
-    "other_topic": "其他话题",
-    "topic_mismatch": "话题不相关",
-}
-
-
-def _scope_verdict(
-    reply: TiebaReply, analysis: TiebaQuestionAnalysis, requested: set[str]
-) -> str:
-    named = {term for term in CAMPUS_TERMS if term in reply.content}
-    topic_match = text_matches_topic(reply.content, analysis.topic_terms)
-    other_topic = not topic_match and _mentions_other_topic(reply.content, analysis)
-    if requested and named and not requested.issubset(named):
-        return "campus_conflict"
-    if requested and not requested.issubset(named):
-        if named:
-            return "campus_conflict"
-        return "context" if not other_topic else "other_topic"
-    if other_topic:
-        return "other_topic"
-    return "direct"
-
-
-def _kept_reply_ids(result: TiebaReadResult, kept_keys: set[int]) -> set[str]:
-    ids: set[str] = set()
-    for index in kept_keys:
-        reply_id = result.replies[index].reply_id
-        if reply_id:
-            ids.add(reply_id)
-    return ids
-
-
-def _count_reason(reasons: dict[str, int], reason: str) -> None:
-    if reason in {"direct", "context"}:
-        return
-    reasons[reason] = reasons.get(reason, 0) + 1
-
-
-def _mentions_other_topic(content: str, analysis: TiebaQuestionAnalysis) -> bool:
-    """Reject an unrelated known campus topic from otherwise matching context."""
-    requested = set(analysis.topic_terms) | set(analysis.campus_terms)
-    return any(term in content for term in PLACE_EVENT_TERMS - requested)
 
 
 def confirmed_post(hit: TiebaSearchHit, result: TiebaReadResult) -> TiebaPostProjection:

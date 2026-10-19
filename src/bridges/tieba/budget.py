@@ -24,10 +24,12 @@ from bridges.tieba.contracts import (
     TiebaOfficialCheck,
     TiebaReadResult,
 )
+from bridges.tieba.execution_metrics import TiebaExecutionMetrics
 from bridges.tieba.official import (
     TiebaOfficialReader,
 )
 from bridges.tieba.reading import TiebaThreadReader
+from bridges.tieba.run_metadata import TiebaBrowserCleanup, TiebaRequestBreakdown
 from bridges.tieba.searching import (
     HitDiagnostics,
     SearchOutcome,
@@ -104,10 +106,22 @@ class TiebaBudget:
         self.model_budget = model_budget
         self._request_guard = request_guard
         self._keys = _CallKeys()
+        self.metrics = TiebaExecutionMetrics()
 
     def remaining_work_ms(self, now: datetime | None = None) -> int:
         moment = now or datetime.now(UTC)
         return max(0, int((self._work_deadline - moment).total_seconds() * 1000))
+
+    def request_breakdown(self) -> list[TiebaRequestBreakdown]:
+        return self.metrics.request_breakdown(
+            self._ledger, self._account_id, self._run_id
+        )
+
+    def record_browser_cleanup(self, duration_ms: int) -> None:
+        self.metrics.record_cleanup(duration_ms)
+
+    def browser_cleanup_summary(self) -> TiebaBrowserCleanup | None:
+        return self.metrics.browser_cleanup_summary()
 
     def request_block_reason(self) -> str | None:
         """执行逐请求守卫；不允许已停止或任务已变化的运行继续联网。"""
@@ -234,16 +248,20 @@ class TiebaBudget:
         outcome_code: str,
         excluded_wait_ms: int = 0,
         duration_ms: int | None = None,
+        queue_ms: int | None = None,
     ) -> None:
-        self._ledger.record_external_call_result(
-            account_id=self._account_id,
-            run_id=self._run_id,
-            call_key=call_key,
-            outcome_code=outcome_code,
-            duration_ms=duration_ms,
-            excluded_wait_ms=excluded_wait_ms,
-            now=datetime.now(UTC),
-        )
+        values: dict[str, Any] = {
+            "account_id": self._account_id,
+            "run_id": self._run_id,
+            "call_key": call_key,
+            "outcome_code": outcome_code,
+            "duration_ms": duration_ms,
+            "excluded_wait_ms": excluded_wait_ms,
+            "now": datetime.now(UTC),
+        }
+        if queue_ms is not None:
+            values["queue_ms"] = max(0, int(queue_ms))
+        self._ledger.record_external_call_result(**values)
         if excluded_wait_ms > 0:
             self._work_deadline += timedelta(milliseconds=excluded_wait_ms)
             if self.model_budget is not None:

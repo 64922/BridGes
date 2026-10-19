@@ -13,10 +13,10 @@ import styles from "./TiebaEvidencePanel.module.css";
 import {
   OfficialCheckRow,
   READ_STATUS_LABELS,
-  formatTime,
   nestedProgressLabel,
   postReadScope,
 } from "./TiebaEvidenceRows";
+import { formatTime } from "./TiebaRunMetadataRow";
 
 export interface TiebaEvidenceSelection {
   conversationId: string;

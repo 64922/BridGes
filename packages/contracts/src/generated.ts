@@ -28789,6 +28789,36 @@ export interface components {
             status: components["schemas"]["CapsuleStatus"];
         };
         /**
+         * TiebaBrowserCleanup
+         * @description 浏览器 worker 清理的实际耗时与事先定义的上界。
+         */
+        TiebaBrowserCleanup: {
+            /**
+             * Count
+             * @description 已测量的清理次数。
+             * @default 0
+             */
+            count: number;
+            /**
+             * Max Ms
+             * @description 实际最大清理耗时（毫秒）。
+             * @default 0
+             */
+            max_ms: number;
+            /**
+             * Tolerance Ms
+             * @description 事先定义的清理容差（毫秒）。
+             * @default 0
+             */
+            tolerance_ms: number;
+            /**
+             * Timed Out
+             * @description 超过清理容差的次数。
+             * @default 0
+             */
+            timed_out: number;
+        };
+        /**
          * TiebaCandidateLink
          * @description 仅有搜索摘要时的帖链降级（归属未确认，不含任何回复内容）。
          */
@@ -29402,6 +29432,40 @@ export interface components {
             context_only: boolean;
         };
         /**
+         * TiebaRequestBreakdown
+         * @description 按真实用途归并的外部请求计数与耗时。
+         */
+        TiebaRequestBreakdown: {
+            /**
+             * Request Type
+             * @description 稳定请求类别：search/read/official/browser/other。
+             */
+            request_type: string;
+            /**
+             * Purpose
+             * @description 实际登记的请求用途。
+             */
+            purpose: string;
+            /**
+             * Count
+             * @description 完成的物理请求数。
+             * @default 0
+             */
+            count: number;
+            /**
+             * Network Ms
+             * @description 网络耗时合计（毫秒）。
+             * @default 0
+             */
+            network_ms: number;
+            /**
+             * Queued Ms
+             * @description 自动排队等待合计（毫秒）。
+             * @default 0
+             */
+            queued_ms: number;
+        };
+        /**
          * TiebaResearchProjection
          * @description 贴吧模块对外的完整投影。
          */
@@ -29597,7 +29661,7 @@ export interface components {
         TiebaRunMetadata: {
             /**
              * Contract Version
-             * @default tieba-run-metadata-v2
+             * @default tieba-run-metadata-v3
              */
             contract_version: string;
             /**
@@ -29733,6 +29797,50 @@ export interface components {
              * @description 实际未读取的页、楼层或内容范围。
              */
             unread_scope?: string[];
+            /**
+             * First Pass Post Count
+             * @description 跨帖首轮实际取得页面的帖子数。
+             * @default 0
+             */
+            first_pass_post_count: number;
+            /**
+             * Deepened Post Count
+             * @description 首轮之后成功深入读取的帖子数。
+             * @default 0
+             */
+            deepened_post_count: number;
+            /**
+             * Physical Request Count
+             * @description 账本实际完成的物理外部请求数。
+             * @default 0
+             */
+            physical_request_count: number;
+            /**
+             * Request Breakdown
+             * @description 按用途归并的请求数、网络与排队耗时。
+             */
+            request_breakdown?: components["schemas"]["TiebaRequestBreakdown"][];
+            /**
+             * Stage Timings Ms
+             * @description 各节点实际阶段耗时（毫秒）。
+             */
+            stage_timings_ms?: {
+                [key: string]: number;
+            };
+            /**
+             * Remaining Work Ms
+             * @description 完成投影时账本剩余工作时间（毫秒）。
+             */
+            remaining_work_ms?: number | null;
+            /**
+             * Closeout Reasons
+             * @description 检索、读取与官方路径的收尾原因。
+             */
+            closeout_reasons?: {
+                [key: string]: string;
+            };
+            /** @description 浏览器 worker 清理耗时与容差。 */
+            browser_cleanup?: components["schemas"]["TiebaBrowserCleanup"] | null;
         };
         /**
          * TiebaSearchDiscovery

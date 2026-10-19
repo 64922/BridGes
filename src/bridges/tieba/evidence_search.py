@@ -47,7 +47,26 @@ FAILED_QUERY_STATUSES: frozenset[ModuleQueryStatus] = frozenset(
 
 
 #: 归零终止：这些查询状态下不再跑计划内的后续查询。
-STOP_QUERY_STATUSES: frozenset[ModuleQueryStatus] = frozenset({ModuleQueryStatus.CANCELLED})
+STOP_QUERY_STATUSES: frozenset[ModuleQueryStatus] = frozenset(
+    {ModuleQueryStatus.CANCELLED, ModuleQueryStatus.RATE_LIMITED}
+)
+
+AUTH_ERROR_CODES: frozenset[str] = frozenset(
+    {
+        "tieba_browser_auth_required",
+        "tieba_browser_auth_interrupted",
+        "tieba_browser_auth_unverified",
+        "tieba_browser_auth_status_unknown",
+    }
+)
+
+BUDGET_ERROR_CODES: frozenset[str] = frozenset(
+    {
+        "run_budget_exhausted",
+        "tieba_browser_work_time_exhausted",
+        "tieba_browser_request_queue_full",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -62,6 +81,7 @@ class SearchAttempts:
     scope: tuple[TiebaSearchScope, ...] = ()
     #: 是否因停止／预算／可重试失败而没有跑完计划（供恢复续作）。
     partial: bool = False
+    closeout_reason: str = "completed"
 
 
 def search_candidates(
@@ -122,6 +142,7 @@ def search_candidates(
         raw_hits += int(resume.get("raw_hits") or 0)
         usable += int(resume.get("usable", len(seeded_hits)) or 0)
     partial = False
+    closeout_reason = "completed"
     found_by_url: dict[str, TiebaSearchHit] = {}
     for hit in seeded_hits:
         if hit.url in found_by_url:
@@ -139,6 +160,11 @@ def search_candidates(
         if position and budget_exhausted(stop_event, deadline):
             rounds.append(_skipped_round_note(query_round.goal, stop_event))
             partial = True
+            closeout_reason = (
+                "stopped"
+                if stop_event is not None and stop_event.is_set()
+                else "deadline"
+            )
             break
         outcome = port.search_public(
             account_id,
@@ -167,19 +193,20 @@ def search_candidates(
             else:
                 found_by_url[hit.url] = hit
         if not _plan_continues(outcome.record):
-            browser_blocked = outcome.record.error_code in {
-                "tieba_browser_auth_required",
-                "tieba_browser_auth_interrupted",
-                "tieba_browser_auth_unverified",
-            }
+            browser_blocked = outcome.record.error_code in AUTH_ERROR_CODES
             partial = browser_blocked or (
                 outcome.record.retryable and outcome.record.status in FAILED_QUERY_STATUSES
+            )
+            closeout_reason = _closeout_reason(
+                outcome.record, stop_event=stop_event, deadline=deadline
             )
             break
     if len(records) < len(query_rounds) and not any(
         record.status in STOP_QUERY_STATUSES for record in records
     ):
         partial = partial or len(found_by_url) > 0
+    if closeout_reason == "completed" and not query_rounds:
+        closeout_reason = "no_planned_queries"
     return SearchAttempts(
         hits=tuple(found_by_url.values()),
         rejected=tuple(rejected),
@@ -189,6 +216,7 @@ def search_candidates(
         scope=tuple(scopes.values()),
         partial=partial
         or any(record.retryable for record in records if record.status in FAILED_QUERY_STATUSES),
+        closeout_reason=closeout_reason,
     )
 
 
@@ -229,6 +257,29 @@ def _plan_continues(record: ModuleQueryRecord) -> bool:
     if record.status in FAILED_QUERY_STATUSES:
         return record.retryable
     return True
+
+
+def _closeout_reason(
+    record: ModuleQueryRecord,
+    *,
+    stop_event: threading.Event | None,
+    deadline: float,
+) -> str:
+    if stop_event is not None and stop_event.is_set():
+        return "stopped"
+    if time.monotonic() >= deadline:
+        return "deadline"
+    if record.status is ModuleQueryStatus.RATE_LIMITED:
+        return "rate_limited"
+    if record.error_code in AUTH_ERROR_CODES:
+        return "auth_required"
+    if record.error_code in BUDGET_ERROR_CODES:
+        return "budget_exhausted"
+    if record.status is ModuleQueryStatus.CANCELLED:
+        return "cancelled"
+    if record.retryable:
+        return "transient_error"
+    return "permanent_error"
 
 
 def _round_note(goal: str, outcome: SearchOutcome) -> str:

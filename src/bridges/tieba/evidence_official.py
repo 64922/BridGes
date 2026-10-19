@@ -21,7 +21,12 @@ from bridges.tieba.contracts import (
     TiebaQuestionAnalysis,
     TiebaSearchHit,
 )
-from bridges.tieba.evidence_search import FAILED_QUERY_STATUSES, budget_exhausted
+from bridges.tieba.evidence_search import (
+    AUTH_ERROR_CODES,
+    BUDGET_ERROR_CODES,
+    FAILED_QUERY_STATUSES,
+    budget_exhausted,
+)
 from bridges.tieba.evidence_time_rules import (
     DATE_PATTERN,
     expired_notice,
@@ -100,6 +105,7 @@ class OfficialOutcome:
     records: list[ModuleQueryRecord]
     candidates: list[str]
     partial: bool = False
+    closeout_reason: str = "completed"
 
 
 def verify_official(
@@ -119,7 +125,7 @@ def verify_official(
     ``resume`` 是上一轮的部分核验产物：已取得的页面按原结果续用。
     """
     if blocked or reader is None:
-        return OfficialOutcome([], [], [])
+        return OfficialOutcome([], [], [], closeout_reason="skipped")
     checks: list[TiebaOfficialCheck] = []
     records: list[ModuleQueryRecord] = []
     candidates: list[str] = []
@@ -155,7 +161,17 @@ def verify_official(
         if query in completed:
             continue
         if budget_exhausted(stop_event, deadline):
-            return OfficialOutcome(checks, records, candidates, partial=True)
+            return OfficialOutcome(
+                checks,
+                records,
+                candidates,
+                partial=True,
+                closeout_reason=(
+                    "stopped"
+                    if stop_event is not None and stop_event.is_set()
+                    else "deadline"
+                ),
+            )
         outcome = port.search_public(
             account_id,
             query=query,
@@ -185,7 +201,28 @@ def verify_official(
         budget_exhausted(stop_event, deadline)
         or any(record.retryable for record in records if record.status in FAILED_QUERY_STATUSES)
     )
-    return OfficialOutcome(checks, records, candidates, partial=partial)
+    failed = next(
+        (
+            record
+            for record in reversed(records)
+            if record.status in FAILED_QUERY_STATUSES
+        ),
+        None,
+    )
+    closeout_reason = "completed"
+    if stop_event is not None and stop_event.is_set():
+        closeout_reason = "stopped"
+    elif failed is not None and failed.error_code in AUTH_ERROR_CODES:
+        closeout_reason = "auth_required"
+    elif failed is not None and failed.error_code in BUDGET_ERROR_CODES:
+        closeout_reason = "budget_exhausted"
+    elif failed is not None and failed.retryable:
+        closeout_reason = "transient_error"
+    elif failed is not None:
+        closeout_reason = "permanent_error"
+    return OfficialOutcome(
+        checks, records, candidates, partial=partial, closeout_reason=closeout_reason
+    )
 
 
 def assess_applicability(
