@@ -44,14 +44,14 @@
 - 2026-10-18：用户确认拆分，正式发布为 ready-for-agent；编号、内容范围和依赖保持已批准方案，未开始业务开发。
 
 - 2026-10-19T12:45:00+08:00：实现与受控验证完成，转 `ready-for-human`。
-  - 工作树 `D:\BridGes\.worktrees\09-coverage-and-deadline`；分支 `09-coverage-and-deadline`；基线 `c25502ac`（main，已含 08）。前置 05、07、08 仍为 `ready-for-human`，本票不把前置当作已人工验收。
+  - 工作树 `D:\BridGes\.worktrees\09-coverage-and-deadline`；分支 `09-coverage-and-deadline`；基线 `c25502ac`（已含 08）；实现后合并 `main` 的 `f81ec2df`（含 11 的总结计量）。前置 05、07、08 仍为 `ready-for-human`，本票不把前置当作已人工验收。
   - 读取节奏：首轮最多 8 帖、每帖 `pages_limit=1`，按剩余时间和剩余帖数分配单帖时间片（单帖上限 15 秒，全局读取预算 60 秒），先取得跨帖首轮证据；首轮后最多深入 3 帖、`pages_limit=2`。首轮已有至少 3 个确认帖且均有原文时跳过深入并记录 `evidence_sufficient`；深入失败保留首轮成功页并记录 `deepen_incomplete`。
   - 截止与清理：HTTP 读取改为流式逐块检查墙钟截止，并受响应体上限约束；worker 无输出、持续小块传输和清理均有界终止。清理容差按 `3 + 5 + 5 = 13` 秒事先定义，测量实际清理次数、最大耗时与超时次数。人工登录等待从总预算排除并顺延剩余读取时间，但不越过顺延后的总截止。
   - 限流与收尾：`RATE_LIMITED` 直接终止计划内后续查询；鉴权失败、预算耗尽、取消和截止分别收敛，不盲目 fallback 或重试。搜索、读取、官方路径均记录 `closeout_reason`。
   - 运行记录与界面：新增首轮/深入帖数、物理请求数、按用途归并的请求数/网络/排队耗时、节点阶段耗时、剩余工作预算、三路收尾原因和浏览器清理摘要；中文运行记录 UI 展示这些字段。为保持单文件不超过 500 行，运行记录组件拆到 `TiebaRunMetadataRow.tsx`，读取范围过滤拆到 `reading_scope.py`。
-  - 公开契约与版本：`TiebaRunMetadata` 契约升为 `tieba-run-metadata-v3`；recipe 升为 `tieba-recipe-v11`，检索 `tieba-search-v11`、读取 `tieba-read-v12`、官方 `tieba-official-v6`、总结 `tieba-synthesize-v11`。已同步 `openapi.json` 与 `packages/contracts/src/generated.ts`；无数据表/schema 或存量数据迁移。
-  - 测试：`python -m pytest tests/tieba tests/contracts -q` 为 `404 passed`，退出码 0；本票新增 `tests/tieba/test_coverage_deadline.py` 为 `11 passed`；`ruff check src/bridges/tieba src/bridges/chat/run_budget_ledger_calls.py tests/tieba` 通过；本票 mypy 文件无错误（仍有既有跨模块错误）。前端 `npm run test:unit` 为 54 文件 / 418 通过，`npm run typecheck` 通过，`npm run build` 成功生成 23 个静态页；worktree `node_modules` junction 仍触发 standalone trace 符号链接 EPERM 警告。
-  - 全仓检查：`pytest -q` 仍在收集期被 4 个既有 `tests/career_plan` 导入错误阻断；`pytest -q --ignore=tests/career_plan` 为 330 failed / 6006 passed / 37 skipped，失败均不在 `tests/tieba` 或 `tests/contracts`，按既有工作树基线不归入本票。
+  - 公开契约与版本：`TiebaRunMetadata` 契约升为 `tieba-run-metadata-v3`；recipe 升为 `tieba-recipe-v11`，检索 `tieba-search-v11`、读取 `tieba-read-v12`、官方 `tieba-official-v6`、总结 `tieba-synthesize-v11`、核验 `tieba-verify-v7`。已同步 `openapi.json` 与 `packages/contracts/src/generated.ts`；无数据表/schema 或存量数据迁移。
+  - 测试：`python -m pytest tests/tieba tests/contracts -q` 为 `412 passed`，退出码 0；本票新增 `tests/tieba/test_coverage_deadline.py` 为 `11 passed`；`ruff check src/bridges/tieba src/bridges/chat/run_budget_ledger_calls.py tests/tieba` 通过；本票 mypy 文件无错误（仍有既有跨模块错误）。前端 `npm run test:unit` 为 54 文件 / 419 通过，`npm run typecheck` 通过，`npm run build` 成功生成 23 个静态页；worktree `node_modules` junction 仍触发 standalone trace 符号链接 EPERM 警告。
+  - 全仓检查：合并 main 前 `pytest -q` 仍在收集期被 4 个既有 `tests/career_plan` 导入错误阻断；`pytest -q --ignore=tests/career_plan` 为 330 failed / 6006 passed / 37 skipped，失败均不在 `tests/tieba` 或 `tests/contracts`。合并后已重跑本票回归范围 `412 passed`，未再次运行全仓大范围套件。
   - 真实/模拟证据：本票使用可控慢流、固定时钟、限流、排队和清理替身验证行为；**未重新执行真实专用浏览器会话 + 生产模型的五分钟旅程**，也未实测真实上游限流/页面节奏。真实协议、登录态与模型总结仍需人工复核。
   - 未验证/剩余：真实五分钟后端到端节奏；真实限流与临时错误的上游表现；真实浏览器清理耗时；上游页面持续传输的更多变体；全仓既有失败基线。
   - 回滚：回退本票提交即可；recipe、检索、读取、官方、总结与运行元数据版本须成组回退，旧代码不应恢复新版本产物。历史投影缺少新字段时按默认值读取，无需数据迁移。
