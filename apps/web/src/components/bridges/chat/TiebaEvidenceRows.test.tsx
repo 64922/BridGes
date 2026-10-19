@@ -7,7 +7,7 @@ import type {
   TiebaSummaryCitation,
 } from "@/lib/api";
 
-import { PostRow, citationLocation } from "./TiebaEvidenceRows";
+import { PostRow, citationLocation, postReadScope } from "./TiebaEvidenceRows";
 import { RunMetadataRow } from "./TiebaRunMetadataRow";
 
 afterEach(cleanup);
@@ -209,6 +209,17 @@ describe("贴吧证据行（工单 04）", () => {
     );
     expect(replies.textContent).toContain("吧友甲");
     expect(replies.textContent).toContain("第 3 楼");
+  });
+
+  it("旧记录没有分页字段时不伪装成 0/0 页成果", () => {
+    const legacy = { ...post, pages_read: 0, pages_limit: 0 };
+    expect(postReadScope(legacy)).toContain("旧记录未保存分页范围");
+    expect(postReadScope(legacy)).not.toContain("0/0");
+
+    render(<PostRow post={legacy} />);
+    const text = screen.getByTestId("tieba-post-8123456789").textContent ?? "";
+    expect(text).toContain("旧记录未保存分页范围");
+    expect(text).not.toContain("已读 0/0 页");
   });
 
   it("帖子展示主题与回复两条发现路径", () => {

@@ -96,14 +96,27 @@ export function nestedProgressLabel(progress: TiebaNestedProgress): string {
   return parts.join(" · ");
 }
 
+/** 旧记录缺少分页字段时如实说明，不把缺失字段显示成 0/0 页成果。 */
+function readPagesLabel(post: TiebaPostProjection): string {
+  if (post.pages_limit > 0) {
+    return `已读 ${post.pages_read}/${post.pages_limit} 页`;
+  }
+  if (post.pages_read > 0) {
+    return `已读 ${post.pages_read} 页（旧记录未保存分页上限）`;
+  }
+  return "旧记录未保存分页范围";
+}
+
 /** 一个帖子本轮真实读到的范围：页数、楼层、时间与读取状态。 */
 export function postReadScope(post: TiebaPostProjection): string {
-  const parts = [
-    `已读 ${post.pages_read}/${post.pages_limit} 页`,
-  ];
+  const parts = [readPagesLabel(post)];
   const pages = (post.page_evidence ?? []).map((item) => item.page);
   if (pages.length > 0) parts.push(`已成功读取第 ${pages.join("、")} 页`);
-  parts.push(post.pages_complete ? "普通楼层页已全部读取" : "普通楼层页未读完");
+  if (post.pages_limit > 0) {
+    parts.push(
+      post.pages_complete ? "普通楼层页已全部读取" : "普通楼层页未读完"
+    );
+  }
   if (post.scroll_rounds_limit) {
     parts.push(`向下加载 ${post.scroll_rounds}/${post.scroll_rounds_limit} 轮`);
   }
@@ -173,12 +186,16 @@ export function PostRow({ post }: { post: TiebaPostProjection }) {
       </a>
       <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
         归属确认：{post.affiliation_evidence} ·{" "}
-        {READ_STATUS_LABELS[post.read_status] ?? post.read_status} · 已读{" "}
-        {post.pages_read}/{post.pages_limit} 页
+        {READ_STATUS_LABELS[post.read_status] ?? post.read_status} ·{" "}
+        {readPagesLabel(post)}
         {post.page_evidence?.length
           ? ` · 已成功读取第 ${post.page_evidence.map((item) => item.page).join("、")} 页`
           : ""}
-        {post.pages_complete ? " · 普通楼层页已全部读取" : " · 普通楼层页未读完"}
+        {post.pages_limit > 0
+          ? post.pages_complete
+            ? " · 普通楼层页已全部读取"
+            : " · 普通楼层页未读完"
+          : ""}
         {post.total_pages ? `（页面声明共 ${post.total_pages} 页）` : ""}
         {(post.nested_incomplete_count ?? 0) > 0
           ? ` · 楼中楼有 ${post.nested_incomplete_count} 个父楼层未读完`

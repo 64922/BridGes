@@ -36,6 +36,9 @@ function safeOpenUrl(value: string | null | undefined): string | null {
 
 function locationOf(citation: TiebaSummaryCitation): string {
   const parts = [`引用 ${citation.citation_id}`];
+  parts.push(
+    citation.author ? `发言者 ${citation.author}` : "发言者未给出"
+  );
   const location =
     citation.floor != null
       ? citation.nested
@@ -45,7 +48,11 @@ function locationOf(citation: TiebaSummaryCitation): string {
         ? "楼中楼（父楼层未知）"
         : "楼层未知";
   parts.push(location);
-  if (citation.posted_at) parts.push(`发言时间 ${citation.posted_at}`);
+  parts.push(
+    citation.posted_at
+      ? `发言时间 ${citation.posted_at}`
+      : "发言时间未给出"
+  );
   return parts.join(" · ");
 }
 
