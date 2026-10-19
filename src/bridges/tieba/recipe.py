@@ -29,16 +29,16 @@ NODE_VERIFY = "tieba.verify"
 
 TIEBA_RECIPE_ID = "tieba-research"
 
-TIEBA_RECIPE_VERSION = "tieba-recipe-v11"
+TIEBA_RECIPE_VERSION = "tieba-recipe-v12"
 
 #: 各节点能力版本（产物兼容性与收据键的一部分）。
 TIEBA_CAPABILITY_VERSIONS: dict[str, str] = {
     "tieba.parse_request": "tieba-parse-v6",
     "tieba.plan_evidence": "tieba-plan-v6",
     "tieba.verify_official_pages": "tieba-official-v6",
-    "tieba.search_threads": "tieba-search-v11",
-    "tieba.read_threads": "tieba-read-v12",
-    "tieba.synthesize_evidence": "tieba-synthesize-v11",
+    "tieba.search_threads": "tieba-search-v12",
+    "tieba.read_threads": "tieba-read-v13",
+    "tieba.synthesize_evidence": "tieba-synthesize-v12",
     "tieba.verify_evidence": "tieba-verify-v7",
 }
 
@@ -85,6 +85,7 @@ def _parse_key(inputs: Any) -> str:
             "content": inputs.user_content,
             "wait": inputs.wait_identity,
             "prior": inputs.prior_digest,
+            "task": [inputs.task_id, inputs.task_version],
         }
     )
 

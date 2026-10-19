@@ -362,6 +362,31 @@ class TiebaSummaryCitation(BaseModel):
     quote: str
 
 
+class TiebaRecoveryAction(StrEnum):
+    """服务端明确给出的恢复动作。"""
+
+    NONE = "none"
+    CONTINUE_AUTH = "continue_auth"
+    RETRY_INCOMPLETE_STAGE = "retry_incomplete_stage"
+    RETRY_RUN = "retry_run"
+
+
+class TiebaRecovery(BaseModel):
+    """恢复入口的真实范围：是否自动、是否复用已保存证据、失败阶段。"""
+
+    action: TiebaRecoveryAction = Field(
+        default=TiebaRecoveryAction.NONE, description="恢复动作类型。"
+    )
+    automatic: bool = Field(default=False, description="是否会自行续接。")
+    reuses_saved_evidence: bool = Field(
+        default=False, description="恢复时是否复用已保存的检索或页面证据。"
+    )
+    failed_stage: str | None = Field(default=None, description="失败或未完成的节点。")
+    scope_note: str | None = Field(
+        default=None, description="面向用户的中文恢复范围说明。"
+    )
+
+
 class TiebaResearchProjection(BaseModel):
     """贴吧模块对外的完整投影。"""
 
@@ -436,6 +461,9 @@ class TiebaResearchProjection(BaseModel):
     )
     empty_reason: str | None = Field(default=None, description="没有结果时的中文原因。")
     retryable: bool = Field(default=False, description="失败是否可重试。")
+    recovery: TiebaRecovery | None = Field(
+        default=None, description="服务端给出的恢复动作与真实复用范围。"
+    )
     error_code: str | None = Field(default=None, description="失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文错误说明。")
     completed_at: datetime | None = Field(default=None, description="本轮收敛时间。")

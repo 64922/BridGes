@@ -65,8 +65,10 @@ def parse_tieba_request(
     if pending and (not _has_substantive(terms) or continue_only) and resumed_question:
         terms = extract_topic_terms(resumed_question)
     task_topic = _task_topic(module_context)
-    if task_topic and not _has_substantive(terms):
-        merged = list(terms)
+    if task_topic and (
+        not _has_substantive(terms) or (continue_only and not resumed_question)
+    ):
+        merged = [] if continue_only else list(terms)
         for term in extract_topic_terms(task_topic):
             if term not in merged:
                 merged.append(term)
@@ -133,9 +135,17 @@ def is_continue_request(content: str) -> bool:
     return normalized in {"继续", "接着", "继续刚才", "恢复刚才"}
 
 
-def pending_payload(analysis: TiebaQuestionAnalysis) -> dict[str, Any]:
-    """把等待中的问题写成可持久化的恢复载荷。"""
-    return {PENDING_ORIGINAL_QUESTION: analysis.original_question}
+def pending_payload(
+    analysis: TiebaQuestionAnalysis,
+    task_ref: tuple[str | None, int | None] | None = None,
+) -> dict[str, Any]:
+    """把等待中的问题与任务版本写成可持久化的恢复载荷。"""
+    task_id, task_version = task_ref if task_ref is not None else (None, None)
+    return {
+        PENDING_ORIGINAL_QUESTION: analysis.original_question,
+        "task_id": task_id,
+        "task_version": task_version,
+    }
 
 
 def _classify(official_topics: list[str], experience_signals: list[str]) -> TiebaQuestionKind:

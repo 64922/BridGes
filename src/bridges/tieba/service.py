@@ -85,6 +85,17 @@ def _browser_request_block_code(guard: RunCommitGuard) -> str | None:
     return "tieba_browser_run_invalidated"
 
 
+def _pending_matches_task(
+    pending: ModuleWaitState, task_ref: tuple[str | None, int | None] | None
+) -> bool:
+    """旧等待只在原任务版本仍有效时续接；任务变化后不复活旧话题。"""
+    context = pending.context if isinstance(pending.context, dict) else {}
+    if "task_id" not in context and "task_version" not in context:
+        return task_ref is None
+    expected = task_ref if task_ref is not None else (None, None)
+    return (context.get("task_id"), context.get("task_version")) == expected
+
+
 class TiebaResearchService:
     """贴吧信息搜集编排服务（节点内核驱动）。"""
 
@@ -153,7 +164,10 @@ class TiebaResearchService:
             )
         run_id = getattr(run_context, "run_id", None)
         run_started_at = self._clock()
+        task_ref = self._current_task_ref(account_id, conversation_id)
         pending = self._pending_wait(repo, account_id, conversation_id)
+        if pending is not None and not _pending_matches_task(pending, task_ref):
+            pending = None
         if (
             pending is not None
             and pending.kind == WAIT_KIND_AUTH
@@ -167,7 +181,6 @@ class TiebaResearchService:
             and isinstance(pending.context, dict)
         ):
             remaining_budget_ms = pending.context.get("remaining_work_ms")
-        task_ref = self._current_task_ref(account_id, conversation_id)
         guard = RunCommitGuard(
             repo,
             account_id=account_id,
@@ -221,6 +234,7 @@ class TiebaResearchService:
             read_deadline_seconds=self._read_deadline_seconds,
             official_deadline_seconds=self._official_deadline_seconds,
             repository=NodeKernelRepository(repo.database),
+            checkpoint_guard=lambda: guard.verify().ok,
             summary_generator=(
                 TiebaSummaryGenerator(self._model_gateway, on_result=record_summary_call)
                 if self._model_gateway is not None
@@ -283,6 +297,7 @@ class TiebaResearchService:
                     remaining_budget_ms=(
                         budget.remaining_work_ms() if budget is not None else None
                     ),
+                    task_ref=task_ref,
                 )
             except TiebaModuleError as error:
                 # 失败投影提交后，再通知父图收敛错误，避免异常回滚投影。

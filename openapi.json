@@ -65903,6 +65903,65 @@
         "title": "TiebaQuestionKind",
         "description": "问题类型：规定、体验与混合（决定取证顺序与来源范围）。\n\n``POLICY`` 以学校官方规定为第一来源（贴吧提供实际办理经历）；\n``EXPERIENCE`` 以目标贴吧的真实帖子与回复为主；``MIXED`` 两路独立\n取证后再综合。类型只由确定性词表判定，不调用模型推断。"
       },
+      "TiebaRecovery": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/TiebaRecoveryAction",
+            "description": "恢复动作类型。",
+            "default": "none"
+          },
+          "automatic": {
+            "type": "boolean",
+            "title": "Automatic",
+            "description": "是否会自行续接。",
+            "default": false
+          },
+          "reuses_saved_evidence": {
+            "type": "boolean",
+            "title": "Reuses Saved Evidence",
+            "description": "恢复时是否复用已保存的检索或页面证据。",
+            "default": false
+          },
+          "failed_stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Stage",
+            "description": "失败或未完成的节点。"
+          },
+          "scope_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope Note",
+            "description": "面向用户的中文恢复范围说明。"
+          }
+        },
+        "type": "object",
+        "title": "TiebaRecovery",
+        "description": "恢复入口的真实范围：是否自动、是否复用已保存证据、失败阶段。"
+      },
+      "TiebaRecoveryAction": {
+        "type": "string",
+        "enum": [
+          "none",
+          "continue_auth",
+          "retry_incomplete_stage",
+          "retry_run"
+        ],
+        "title": "TiebaRecoveryAction",
+        "description": "服务端明确给出的恢复动作。"
+      },
       "TiebaRejectedCandidate": {
         "properties": {
           "url": {
@@ -66340,6 +66399,17 @@
             "title": "Retryable",
             "description": "失败是否可重试。",
             "default": false
+          },
+          "recovery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TiebaRecovery"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "服务端给出的恢复动作与真实复用范围。"
           },
           "error_code": {
             "anyOf": [

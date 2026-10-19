@@ -49,8 +49,10 @@ from bridges.tieba.node_flow_support import (
     build_artifact,
     failure_execution,
     read_analysis,
+    read_outcome_payload,
     read_plan,
     read_search_attempts,
+    search_attempts_payload,
 )
 from bridges.tieba.node_synthesis import TiebaSynthesisNodes
 from bridges.tieba.official import (
@@ -78,6 +80,16 @@ __all__ = ["TiebaNodeFlow", "TIEBA_ONLY_OFFICIAL_BLOCKED"]
 
 if TYPE_CHECKING:
     from bridges.chat.task_materials import ModuleTaskContext
+
+
+def _checkpoint_sources(
+    invocation: NodeInvocation, payload: dict[str, Any]
+) -> tuple[str, ...]:
+    if invocation.spec.name == NODE_SEARCH:
+        return tuple(str(item.get("url")) for item in payload.get("candidates", ()))
+    if invocation.spec.name == NODE_READ:
+        return tuple(str(item.get("url")) for item in payload.get("confirmed", ()))
+    return ()
 
 
 #: 各节点能力版本（产物兼容性与收据键的一部分）。
@@ -114,6 +126,7 @@ class TiebaNodeFlow:
         read_deadline_seconds: float = READ_DEADLINE_SECONDS,
         official_deadline_seconds: float = OFFICIAL_DEADLINE_SECONDS,
         repository: Any = None,
+        checkpoint_guard: Callable[[], bool] | None = None,
         summary_generator: TiebaSummaryGenerator | None = None,
         run_context: Any = None,
         run_model_id: str | None = None,
@@ -140,6 +153,7 @@ class TiebaNodeFlow:
         self._read_deadline_seconds = read_deadline_seconds
         self._official_deadline_seconds = official_deadline_seconds
         self._repository = repository
+        self._checkpoint_guard = checkpoint_guard
         self._synthesis_nodes = TiebaSynthesisNodes(
             summary_generator=summary_generator,
             budget=budget,
@@ -150,6 +164,7 @@ class TiebaNodeFlow:
             model_quota=model_quota,
             run_started_at=run_started_at,
             summary_call_count=summary_call_count,
+            stop_event=stop_event,
         )
 
     @property
@@ -200,6 +215,28 @@ class TiebaNodeFlow:
         if self._budget is not None:
             remaining = min(remaining, self._budget.remaining_work_ms() / 1000.0)
         return max(0.0, remaining)
+
+    def _save_checkpoint(
+        self, invocation: NodeInvocation, payload: dict[str, Any]
+    ) -> None:
+        """提交节点中途证据检查点：只写部分产物，不写完成收据。"""
+        if self._repository is None or self._checkpoint_guard is None:
+            return
+        if not self._checkpoint_guard():
+            return
+        checkpoint_payload = {**payload, "partial": True}
+        artifact = build_artifact(
+            invocation,
+            clock=self._clock,
+            trust_state=ArtifactTrust.EVIDENCE_BOUND,
+            payload=checkpoint_payload,
+            source_refs=_checkpoint_sources(invocation, checkpoint_payload),
+            read_scope="运行中的部分证据检查点",
+        )
+        with self._repository.transaction():
+            if not self._checkpoint_guard():
+                return
+            self._repository.save_artifact(artifact)
 
     def _run_parse(self, invocation: NodeInvocation) -> NodeExecution:
         wait = self._pending_wait
@@ -301,9 +338,7 @@ class TiebaNodeFlow:
                 verdict=QualityVerdict.PASS,
                 status=NodeReceiptStatus.COMPLETED,
             )
-        resume = resume_payload(
-            self._repository, self._pending_wait, invocation, NODE_VERIFY_OFFICIAL
-        )
+        resume = resume_payload(self._repository, invocation, NODE_VERIFY_OFFICIAL)
         outcome = verify_official(
             self._search,
             self._official_reader,
@@ -341,7 +376,7 @@ class TiebaNodeFlow:
 
     def _run_search(self, invocation: NodeInvocation) -> NodeExecution:
         analysis = read_analysis(invocation)
-        resume = resume_payload(self._repository, self._pending_wait, invocation, NODE_SEARCH)
+        resume = resume_payload(self._repository, invocation, NODE_SEARCH)
         attempts = search_candidates(
             self._search,
             invocation.account_id,
@@ -351,20 +386,11 @@ class TiebaNodeFlow:
                 invocation, self._search_deadline_seconds
             ),
             resume=resume,
+            checkpoint=lambda outcome: self._save_checkpoint(
+                invocation, search_attempts_payload(outcome)
+            ),
         )
-        payload = {
-            "candidates": [hit.model_dump(mode="json") for hit in attempts.hits],
-            "rejected": [item.model_dump(mode="json") for item in attempts.rejected],
-            "records": [record.model_dump(mode="json") for record in attempts.records],
-            "rounds": list(attempts.rounds),
-            "raw_hits": attempts.diagnostics.raw_hits,
-            "usable": attempts.diagnostics.usable,
-            "search_scope": [
-                scope.model_dump(mode="json") for scope in attempts.scope
-            ],
-            "partial": attempts.partial,
-            "closeout_reason": attempts.closeout_reason,
-        }
+        payload = search_attempts_payload(attempts)
         return NodeExecution(
             artifact=build_artifact(
                 invocation,
@@ -380,7 +406,7 @@ class TiebaNodeFlow:
 
     def _run_read(self, invocation: NodeInvocation) -> NodeExecution:
         attempts = read_search_attempts(invocation)
-        resume = resume_payload(self._repository, self._pending_wait, invocation, NODE_READ)
+        resume = resume_payload(self._repository, invocation, NODE_READ)
         reads = read_candidates(
             self._reader,
             attempts,
@@ -390,21 +416,11 @@ class TiebaNodeFlow:
                 invocation, self._read_deadline_seconds
             ),
             resume=resume,
+            checkpoint=lambda outcome: self._save_checkpoint(
+                invocation, read_outcome_payload(outcome)
+            ),
         )
-        payload = {
-            "confirmed": [post.model_dump(mode="json") for post in reads.confirmed],
-            "rejected": [item.model_dump(mode="json") for item in reads.rejected],
-            "unconfirmed": [link.model_dump(mode="json") for link in reads.unconfirmed],
-            "unreadable": reads.unreadable,
-            "not_attempted": reads.not_attempted,
-            "unconfirmed_total": reads.unconfirmed_total,
-            "attempted_urls": list(reads.attempted_urls),
-            "retry_urls": list(reads.retry_urls),
-            "partial": reads.partial,
-            "first_pass_read_count": reads.first_pass_read_count,
-            "deepened_post_count": reads.deepened_post_count,
-            "closeout_reason": reads.closeout_reason,
-        }
+        payload = read_outcome_payload(reads)
         return NodeExecution(
             artifact=build_artifact(
                 invocation,

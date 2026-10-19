@@ -187,6 +187,89 @@ describe("贴吧回答正文与依据（工单 10）", () => {
     expect(screen.queryByRole("button", { name: /打开专用贴吧浏览器|绕过/ })).toBeNull();
   });
 
+  it("使用服务端恢复投影说明登录等待、停止与局部重试范围", () => {
+    const { unmount } = render(
+      <TiebaAnswer
+        research={tiebaResearch({
+          status: "waiting_auth",
+          recovery: {
+            action: "continue_auth",
+            automatic: true,
+            reuses_saved_evidence: true,
+            failed_stage: null,
+            scope_note: "服务端：完成验证后自动续接，已读页面直接复用。",
+          },
+          pending: {
+            module_id: "tieba",
+            kind: "authentication",
+            question: "请完成专用贴吧会话的登录或安全验证。",
+            origin_message_id: "a-1",
+            context: {},
+            created_at: "2026-10-11T00:00:00Z",
+          },
+        })}
+        streaming={false}
+      />
+    );
+
+    expect(screen.getByTestId("tieba-pending").textContent).toContain(
+      "完成验证后自动续接，已读页面直接复用"
+    );
+    unmount();
+
+    render(
+      <TiebaAnswer
+        research={tiebaResearch({
+          status: "stopped",
+          recovery: {
+            action: "none",
+            automatic: false,
+            reuses_saved_evidence: true,
+            failed_stage: null,
+            scope_note: "服务端：已停止，不会自动继续；再次发送会复用已保存证据。",
+          },
+        })}
+        streaming={false}
+      />
+    );
+
+    expect(screen.getByTestId("tieba-stopped").textContent).toContain(
+      "再次发送会复用已保存证据"
+    );
+  });
+
+  it("局部重试显示服务端范围，不伪装成整轮重跑", () => {
+    const onRetry = vi.fn();
+    render(
+      <TiebaAnswer
+        research={tiebaResearch({
+          status: "success",
+          summary: null,
+          retryable: true,
+          recovery: {
+            action: "retry_incomplete_stage",
+            automatic: false,
+            reuses_saved_evidence: true,
+            failed_stage: "tieba.synthesize",
+            scope_note: "服务端：只会重做未完成的总结阶段，已保存页面与检索会复用。",
+          },
+        })}
+        streaming={false}
+        showRetry
+        onRetry={onRetry}
+      />
+    );
+
+    expect(screen.getByTestId("tieba-recovery").textContent).toContain(
+      "只会重做未完成的总结阶段"
+    );
+    fireEvent.click(screen.getByTestId("tieba-legacy-retry"));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("tieba-legacy-retry").textContent).toContain(
+      "重试未完成阶段"
+    );
+  });
+
   it("官方核验保留独立语义：有可适用原文才展示摘录，不适用时不说官方确认", () => {
     const { unmount } = render(
       <TiebaAnswer

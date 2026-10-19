@@ -15,7 +15,8 @@ from bridges.tieba.contracts import (
     TiebaPostProjection,
     TiebaReply,
 )
-from bridges.tieba.summary import SUMMARY_PROMPT_VERSION, TiebaSummaryGenerator
+from bridges.tieba.summary import TiebaSummaryGenerator
+from bridges.tieba.summary_contracts import SUMMARY_PROMPT_VERSION
 from bridges.tieba.summary_material import sources
 
 URL = "https://tieba.baidu.com/p/10897336006"

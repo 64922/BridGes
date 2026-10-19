@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -92,6 +92,7 @@ def search_candidates(
     stop_event: threading.Event | None,
     deadline_seconds: float,
     resume: dict[str, Any] | None = None,
+    checkpoint: Callable[[SearchAttempts], None] | None = None,
 ) -> SearchAttempts:
     """有界检索：先精确词，没有可用候选时再用一条放宽词。
 
@@ -154,6 +155,28 @@ def search_candidates(
         item.execution_terms for item in query_rounds if item.query in completed
     }
     deadline = time.monotonic() + deadline_seconds
+
+    def snapshot(
+        *, checkpoint_partial: bool, checkpoint_reason: str
+    ) -> SearchAttempts:
+        return SearchAttempts(
+            hits=tuple(found_by_url.values()),
+            rejected=tuple(rejected),
+            records=list(records),
+            diagnostics=_deduped_diagnostics(
+                rejected, raw_hits=raw_hits, usable=usable
+            ),
+            rounds=tuple(rounds),
+            scope=tuple(scopes.values()),
+            partial=checkpoint_partial
+            or any(
+                record.retryable
+                for record in records
+                if record.status in FAILED_QUERY_STATUSES
+            ),
+            closeout_reason=checkpoint_reason,
+        )
+
     for position, query_round in enumerate(query_rounds):
         if query_round.query in completed or query_round.execution_terms in executed_expressions:
             continue
@@ -192,6 +215,8 @@ def search_candidates(
                 found_by_url[hit.url] = merge_search_hit(found_by_url[hit.url], hit)
             else:
                 found_by_url[hit.url] = hit
+        if checkpoint is not None:
+            checkpoint(snapshot(checkpoint_partial=True, checkpoint_reason="checkpoint"))
         if not _plan_continues(outcome.record):
             browser_blocked = outcome.record.error_code in AUTH_ERROR_CODES
             partial = browser_blocked or (
@@ -207,16 +232,8 @@ def search_candidates(
         partial = partial or len(found_by_url) > 0
     if closeout_reason == "completed" and not query_rounds:
         closeout_reason = "no_planned_queries"
-    return SearchAttempts(
-        hits=tuple(found_by_url.values()),
-        rejected=tuple(rejected),
-        records=records,
-        diagnostics=_deduped_diagnostics(rejected, raw_hits=raw_hits, usable=usable),
-        rounds=tuple(rounds),
-        scope=tuple(scopes.values()),
-        partial=partial
-        or any(record.retryable for record in records if record.status in FAILED_QUERY_STATUSES),
-        closeout_reason=closeout_reason,
+    return snapshot(
+        checkpoint_partial=partial, checkpoint_reason=closeout_reason
     )
 
 

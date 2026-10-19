@@ -16,8 +16,17 @@ from bridges.kernel.contracts import (
 )
 from bridges.tieba.contracts import (
     TiebaQuestionAnalysis,
+    TiebaRecovery,
     TiebaResearchProjection,
     TiebaResearchStatus,
+)
+from bridges.tieba.delivery_recovery import (
+    auth_wait_question as _auth_wait_question,
+)
+from bridges.tieba.delivery_recovery import (
+    auth_wait_recovery,
+    failure_recovery,
+    stopped_recovery,
 )
 from bridges.tieba.evidence_projection import topic_of
 from bridges.tieba.evidence_search import FORUM_NAME
@@ -71,6 +80,7 @@ class TiebaResultDelivery:
         result: KernelResult,
         stop_event: threading.Event | None,
         remaining_budget_ms: int | None,
+        task_ref: tuple[str | None, int | None] | None = None,
     ) -> TiebaRunOutcome:
         if result.status is KernelStatus.COMPLETED:
             return self._deliver_completed(
@@ -79,9 +89,16 @@ class TiebaResultDelivery:
                 assistant_message_id,
                 result,
                 remaining_budget_ms=remaining_budget_ms,
+                task_ref=task_ref,
             )
         if result.status is KernelStatus.NEEDS_INPUT:
-            return self._deliver_clarification(repo, account_id, assistant_message_id, result)
+            return self._deliver_clarification(
+                repo,
+                account_id,
+                assistant_message_id,
+                result,
+                task_ref=task_ref,
+            )
         if result.status in {KernelStatus.STOPPED, KernelStatus.INVALIDATED} or (
             stop_event is not None and stop_event.is_set()
         ):
@@ -103,6 +120,7 @@ class TiebaResultDelivery:
         result: KernelResult,
         *,
         remaining_budget_ms: int | None,
+        task_ref: tuple[str | None, int | None] | None = None,
     ) -> TiebaRunOutcome:
         projection = verified_projection(result)
         if projection is None:
@@ -127,6 +145,7 @@ class TiebaResultDelivery:
                     projection,
                     analysis,
                     remaining_budget_ms=remaining_budget_ms,
+                    task_ref=task_ref,
                 )
         if projection.status is TiebaResearchStatus.ERROR:
             self._finalize(
@@ -170,9 +189,10 @@ class TiebaResultDelivery:
         analysis: TiebaQuestionAnalysis,
         *,
         remaining_budget_ms: int | None,
+        task_ref: tuple[str | None, int | None] | None = None,
     ) -> TiebaRunOutcome:
         now = self._clock()
-        context = pending_payload(analysis)
+        context = pending_payload(analysis, task_ref)
         context["remaining_work_ms"] = max(
             0,
             min(
@@ -197,6 +217,7 @@ class TiebaResultDelivery:
                 "error_code": None,
                 "error_message": None,
                 "retryable": False,
+                "recovery": auth_wait_recovery(),
             }
         )
         self._finalize(
@@ -219,6 +240,8 @@ class TiebaResultDelivery:
         account_id: str,
         assistant_message_id: str,
         result: KernelResult,
+        *,
+        task_ref: tuple[str | None, int | None] | None = None,
     ) -> TiebaRunOutcome:
         analysis = _analysis_of(result)
         if analysis is None or analysis.clarification is None:
@@ -232,7 +255,7 @@ class TiebaResultDelivery:
                 kind=WAIT_KIND_CLARIFICATION,
                 question=analysis.clarification.question,
                 origin_message_id=assistant_message_id,
-                context=pending_payload(analysis),
+                context=pending_payload(analysis, task_ref),
                 created_at=now,
             ),
             completed_at=now,
@@ -268,6 +291,11 @@ class TiebaResultDelivery:
             confirmed=_confirmed_of(result),
             evidence_boundary=["你已停止本轮搜集，未继续读取页面。"],
             completed_at=self._clock(),
+            recovery=stopped_recovery(
+                reuses_saved_evidence=bool(
+                    _confirmed_of(result) or _records_of(result)
+                )
+            ),
         )
         self._finalize(
             repo,
@@ -303,6 +331,10 @@ class TiebaResultDelivery:
                 error_message=(failure.message if failure else "")
                 or "贴吧信息搜集失败，请稍后重试。",
                 retryable=failure.retryable if failure else True,
+            )
+        if projection.recovery is None:
+            projection = projection.model_copy(
+                update={"recovery": failure_recovery(result)}
             )
         self._finalize(
             repo,
@@ -352,32 +384,6 @@ class TiebaResultDelivery:
             final_content=content or None,
             tieba_research=projection.model_dump(mode="json"),
         )
-
-
-def _auth_wait_question(projection: TiebaResearchProjection) -> str:
-    """保留真实等待原因（登录或安全验证），并给出可执行的恢复方式。"""
-    messages = [
-        record.error_message
-        for record in projection.queries
-        if is_auth_wait_error(record.error_code) and record.error_message
-    ]
-    messages.extend(
-        post.read_error_message
-        for post in projection.confirmed_posts
-        if is_auth_wait_error(post.read_error_code) and post.read_error_message
-    )
-    messages.extend(
-        link.unconfirmed_reason
-        for link in projection.candidate_links
-        if is_auth_wait_error(link.read_error_code) and link.unconfirmed_reason
-    )
-    question = next((message for message in messages if message), "")
-    if not question:
-        question = "请在当前账户专用的贴吧会话中完成登录或安全验证。"
-    if "继续" not in question:
-        question += " 任务已保留；完成后在聊天中说“继续”，我会接着原话题检索。"
-    return question
-
 
 def _delivery_artifact(result: KernelResult) -> Any:
     return result.artifact(NODE_VERIFY) or result.artifact(NODE_SYNTHESIZE)
@@ -449,6 +455,7 @@ def _base_projection(
     error_code: str | None = None,
     error_message: str | None = None,
     retryable: bool = False,
+    recovery: TiebaRecovery | None = None,
 ) -> TiebaResearchProjection:
     return TiebaResearchProjection(
         status=status,
@@ -469,6 +476,7 @@ def _base_projection(
         error_code=error_code,
         error_message=error_message,
         retryable=retryable,
+        recovery=recovery,
     )
 
 
