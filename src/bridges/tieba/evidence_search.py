@@ -290,6 +290,8 @@ def _closeout_reason(
         return "rate_limited"
     if record.error_code in AUTH_ERROR_CODES:
         return "auth_required"
+    if record.error_code == "tieba_browser_account_deleting":
+        return "account_deleting"
     if record.error_code in BUDGET_ERROR_CODES:
         return "budget_exhausted"
     if record.status is ModuleQueryStatus.CANCELLED:

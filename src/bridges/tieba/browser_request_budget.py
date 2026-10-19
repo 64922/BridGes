@@ -42,6 +42,7 @@ _DENIAL_MESSAGES = {
     "tieba_browser_work_time_exhausted": "本轮剩余贴吧工作预算已耗尽，未发起后续页面请求。",
     "tieba_browser_request_queue_full": "同时等待的贴吧页面请求过多，已停止继续加载。",
     "tieba_browser_timeout": "贴吧浏览器读取超时，请稍后重试。",
+    "tieba_browser_account_deleting": "账户正在删除，已停止贴吧专用会话。",
 }
 
 

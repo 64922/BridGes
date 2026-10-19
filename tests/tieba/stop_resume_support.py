@@ -178,12 +178,19 @@ class _SummaryGateway:
         )
 
 
-def _service(*, search: Any, reader: Any, gateway: Any) -> TiebaResearchService:
+def _service(
+    *,
+    search: Any,
+    reader: Any,
+    gateway: Any,
+    account_deleting: Any = None,
+) -> TiebaResearchService:
     return TiebaResearchService(
         search=search,
         reader=reader,
         model_gateway=gateway,
         clock=lambda: NOW,
+        account_deleting=account_deleting,
     )
 
 

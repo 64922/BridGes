@@ -51,6 +51,8 @@ def tracked_get(
                 message = (
                     "本轮运行预算已用尽，未发起新的外部请求。"
                     if denial == "run_budget_exhausted"
+                    else "账户正在删除，未发起新的外部请求。"
+                    if denial == "tieba_browser_account_deleting"
                     else "任务已停止或发生变化，未发起新的外部请求。"
                 )
                 raise TiebaHttpRequestError(denial, message)

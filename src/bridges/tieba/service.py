@@ -87,7 +87,18 @@ def _browser_request_block_code(guard: RunCommitGuard) -> str | None:
         return "tieba_browser_cancelled"
     if decision.code == "task_version_changed":
         return "tieba_browser_task_changed"
+    if decision.code == "account_deleting":
+        return "tieba_browser_account_deleting"
     return "tieba_browser_run_invalidated"
+
+
+def _account_deletion_error() -> TiebaModuleError:
+    return TiebaModuleError(
+        NODE_PARSE,
+        "account_deleting",
+        "账户正在删除，贴吧搜集已停止。",
+        retryable=False,
+    )
 
 
 def _pending_matches_task(
@@ -119,6 +130,7 @@ class TiebaResearchService:
         ) = None,
         clock: Callable[[], datetime] | None = None,
         model_gateway: Any = None,
+        account_deleting: Callable[[str], bool] | None = None,
     ) -> None:
         self._search = search
         self._reader = reader
@@ -130,6 +142,7 @@ class TiebaResearchService:
         self._task_version_provider = task_version_provider
         self._clock = clock or (lambda: datetime.now(UTC))
         self._model_gateway = model_gateway
+        self._account_deleting = account_deleting
         self._registry = tieba_recipe_registry()
         self._recipe = build_tieba_recipe()
         self._delivery = TiebaResultDelivery(clock=self._clock)
@@ -159,6 +172,14 @@ class TiebaResearchService:
         official_blocked_reason: str | None = None,
     ) -> TiebaRunOutcome:
         """执行一轮贴吧信息搜集；终态全部写回同一条助手消息。"""
+
+        def account_deletion_code() -> str | None:
+            if self._account_deleting is not None and self._account_deleting(account_id):
+                return "account_deleting"
+            return None
+
+        if account_deletion_code() is not None:
+            raise _account_deletion_error()
         user_message = repo.get_message(account_id, user_message_id)
         if user_message is None:
             raise TiebaModuleError(
@@ -186,6 +207,7 @@ class TiebaResearchService:
             and isinstance(pending.context, dict)
         ):
             remaining_budget_ms = pending.context.get("remaining_work_ms")
+
         guard = RunCommitGuard(
             repo,
             account_id=account_id,
@@ -196,6 +218,7 @@ class TiebaResearchService:
             task_version_provider=self._task_version_provider,
             stop_event=stop_event,
             clock=self._clock,
+            external_guard=account_deletion_code,
         )
         budget = self._load_budget(
             repo,
@@ -289,6 +312,8 @@ class TiebaResearchService:
         with NodeKernelRepository(repo.database).transaction():
             decision = guard.verify()
             if not decision.ok:
+                if decision.code == "account_deleting":
+                    raise _account_deletion_error()
                 if decision.code != "run_stopped":
                     raise TiebaModuleError(
                         NODE_PARSE,

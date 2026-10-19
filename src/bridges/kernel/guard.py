@@ -38,7 +38,7 @@ class CommitDecision:
 
 
 class RunCommitGuard:
-    """一次内核执行的租约/停止/版本快照与提交校验。"""
+    """一次内核执行的租约/停止/版本与外部条件快照及提交校验。"""
 
     def __init__(
         self,
@@ -52,6 +52,7 @@ class RunCommitGuard:
         task_version_provider: TaskVersionProvider | None = None,
         stop_event: threading.Event | None = None,
         clock: Callable[[], datetime] | None = None,
+        external_guard: Callable[[], str | None] | None = None,
     ) -> None:
         self._scope = scope
         self._account_id = account_id
@@ -61,6 +62,7 @@ class RunCommitGuard:
         self._task_version_provider = task_version_provider
         self._stop_event = stop_event
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._external_guard = external_guard
         #: 运行启动时的授权快照（capture 填充）。
         self._lease_owner: str | None = None
         self._task_ref: tuple[str | None, int | None] | None = task_ref
@@ -108,6 +110,12 @@ class RunCommitGuard:
             if current != self._task_ref:
                 return CommitDecision(
                     False, "task_version_changed", "任务版本已变化，迟到结果被拒绝。"
+                )
+        if self._external_guard is not None:
+            external_code = self._external_guard()
+            if external_code is not None:
+                return CommitDecision(
+                    False, external_code, "执行条件已失效，本轮结果不再提交。"
                 )
         # 停止也只能由仍拥有租约且版本有效的执行者收敛。
         if run.stop_requested or (
