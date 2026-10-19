@@ -55,4 +55,14 @@ describe("贴吧搜索页范围（工单 05）", () => {
     expect(scope.textContent).toContain("页面声明还有后续结果");
     expect(scope.textContent).toContain("达到翻页上限");
   });
+
+  it("零证据时给出可执行下一步，不把未召回说成吧内没有", () => {
+    render(<TiebaEvidenceDetails research={research} />);
+
+    const guidance = screen.getByTestId("tieba-empty-guidance").textContent ?? "";
+    expect(guidance).toContain("补充校区");
+    expect(guidance).toContain("时间范围");
+    expect(guidance).toContain("吧内常用说法");
+    expect(guidance).toContain("未召回不代表吧内没有相关讨论");
+  });
 });

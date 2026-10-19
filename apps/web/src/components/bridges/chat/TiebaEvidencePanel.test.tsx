@@ -347,6 +347,22 @@ describe("贴吧引用右侧资料面板（工单 10）", () => {
     );
   });
 
+  it("引用定位显示发言者，缺失发言时间时如实标注", () => {
+    renderPanel({
+      citation: { ...citation, author: "吧友甲", posted_at: null },
+    });
+
+    const location = screen.getByTestId("tieba-evidence-location").textContent;
+    expect(location).toContain("发言者 吧友甲");
+    expect(location).toContain("发言时间未给出");
+    cleanup();
+
+    renderPanel({ citation: { ...citation, author: null } });
+    expect(screen.getByTestId("tieba-evidence-location").textContent).toContain(
+      "发言者未给出"
+    );
+  });
+
   it("引用楼层不在已读原文时说明无法展开，不编造楼层内容", () => {
     renderPanel({ citation: { ...citation, floor: 9 } });
 

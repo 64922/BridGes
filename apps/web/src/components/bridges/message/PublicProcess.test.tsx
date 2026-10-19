@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { ContextNoteProjection, ImageTaskProjection } from "@/lib/api";
 import type { ChatMessageView } from "@/lib/chat-message-view";
+import { tiebaResearch } from "@/lib/chat-modules.test-support";
 
 import { PublicProcess, publicProcessLabel } from "./PublicProcess";
 
@@ -274,6 +275,71 @@ describe("单行公开过程（工单 06）", () => {
         })
       )
     ).toBe("检索学术来源…");
+  });
+
+  it("贴吧真实节点都投影为可读阶段，不落回通用生成文案", () => {
+    for (const [node, label] of [
+      ["tieba.plan", "制定贴吧取证计划…"],
+      ["tieba.synthesize", "整理吧友说法…"],
+      ["tieba.verify", "核验贴吧证据…"],
+      ["tieba.auth", "等待贴吧登录或安全验证…"],
+    ] as const) {
+      expect(
+        publicProcessLabel(
+          assistant({
+            status: "streaming",
+            node: {
+              kind: "node",
+              message_id: "assistant-1",
+              node,
+              status: "started",
+            },
+          })
+        )
+      ).toBe(label);
+    }
+  });
+
+  it("贴吧等待状态不伪装成回答已生成，并作为状态播报", () => {
+    const waiting = assistant({
+      status: "done",
+      thinking: {
+        steps: [],
+        evidence: [],
+        tools: [],
+        quality: [],
+        seconds: 4,
+      },
+      tiebaResearch: tiebaResearch({ status: "waiting_auth" }),
+    });
+    expect(publicProcessLabel(waiting)).toBe(
+      "等待你完成贴吧登录或安全验证"
+    );
+    expect(
+      publicProcessLabel(
+        assistant({
+          status: "done",
+          tiebaResearch: tiebaResearch({ status: "clarification" }),
+        })
+      )
+    ).toBe("等待你补充贴吧问题");
+
+    render(
+      <PublicProcess
+        message={assistant({
+          status: "streaming",
+          node: {
+            kind: "node",
+            message_id: "assistant-1",
+            node: "tieba.auth",
+            status: "started",
+          },
+        })}
+      />
+    );
+    const label = screen.getByTestId("public-process-label");
+    expect(label.getAttribute("role")).toBe("status");
+    expect(label.getAttribute("aria-live")).toBe("polite");
   });
 
   it("媒体任务的真实状态进入统一过程入口", () => {

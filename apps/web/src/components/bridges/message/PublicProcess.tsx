@@ -41,10 +41,14 @@ const NODE_LABEL: Record<string, string> = {
   "paper.rank": "筛选与排序论文",
   "paper.present": "整理论文结果",
   "tieba.parse": "理解贴吧问题",
+  "tieba.plan": "制定贴吧取证计划",
   "tieba.search": "检索贴吧帖子",
   "tieba.read": "读取帖子页面",
   "tieba.summarize": "整理吧友说法",
+  "tieba.synthesize": "整理吧友说法",
+  "tieba.verify": "核验贴吧证据",
   "tieba.verify_official": "核对学校官方页面",
+  "tieba.auth": "等待贴吧登录或安全验证",
   "github.parse": "理解项目想法",
   "github.search": "检索公开仓库",
   "github.inspect": "核对仓库证据",
@@ -109,6 +113,12 @@ export function publicProcessLabel(message: ChatMessageView): string {
   }
   if (message.status === "error") return "本轮生成失败";
   if (message.status === "stopped") return "本轮已停止";
+  if (message.tiebaResearch?.status === "waiting_auth") {
+    return "等待你完成贴吧登录或安全验证";
+  }
+  if (message.tiebaResearch?.status === "clarification") {
+    return "等待你补充贴吧问题";
+  }
   if (message.thinking?.seconds != null) {
     return `回答已生成 · 用时 ${message.thinking.seconds} 秒`;
   }
@@ -254,7 +264,13 @@ export function PublicProcess({
         }}
       >
         {streaming && <ThinkingSpinner />}
-        <span data-testid="public-process-label">{publicProcessLabel(message)}</span>
+        <span
+          data-testid="public-process-label"
+          role={streaming ? "status" : undefined}
+          aria-live={streaming ? "polite" : undefined}
+        >
+          {publicProcessLabel(message)}
+        </span>
         <span
           aria-hidden="true"
           style={{

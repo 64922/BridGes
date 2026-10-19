@@ -37,6 +37,11 @@ from bridges.tieba.kernel import TiebaNodeFlow
 from bridges.tieba.message_audit import verify_tieba_message
 from bridges.tieba.official import TiebaOfficialReader
 from bridges.tieba.parsing import is_continue_request
+from bridges.tieba.progress import (
+    AuthWaitProgress,
+    bind_auth_wait_progress,
+    reset_auth_wait_progress,
+)
 from bridges.tieba.quality_gates import TIEBA_GATE_HANDLERS
 from bridges.tieba.reading import TiebaThreadReader
 from bridges.tieba.recipe import (
@@ -254,27 +259,32 @@ class TiebaResearchService:
             runner=flow.run_node,
             clock=self._clock,
         )
+        progress = AuthWaitProgress(emit_node)
         with bind_request_guard(lambda: _browser_request_block_code(guard)):
-            result = kernel.execute(
-                recipe=self._recipe,
-                inputs=RecipeInputs(
-                    account_id=account_id,
-                    conversation_id=conversation_id,
-                    run_id=run_id or "",
-                    user_message_id=user_message_id,
-                    user_content=user_message.content,
-                    task_id=task_ref[0] if task_ref is not None else None,
-                    task_version=task_ref[1] if task_ref is not None else None,
-                    wait_identity=self._wait_identity(pending),
-                    artifacts={},
-                    prior_digest=flow.prior_digest,
-                ),
-                remaining_budget_ms=(
-                    budget.remaining_work_ms() if budget is not None else None
-                ),
-                event_sink=emit_node,
-                stop_event=stop_event,
-            )
+            progress_token = bind_auth_wait_progress(progress)
+            try:
+                result = kernel.execute(
+                    recipe=self._recipe,
+                    inputs=RecipeInputs(
+                        account_id=account_id,
+                        conversation_id=conversation_id,
+                        run_id=run_id or "",
+                        user_message_id=user_message_id,
+                        user_content=user_message.content,
+                        task_id=task_ref[0] if task_ref is not None else None,
+                        task_version=task_ref[1] if task_ref is not None else None,
+                        wait_identity=self._wait_identity(pending),
+                        artifacts={},
+                        prior_digest=flow.prior_digest,
+                    ),
+                    remaining_budget_ms=(
+                        budget.remaining_work_ms() if budget is not None else None
+                    ),
+                    event_sink=progress.emit,
+                    stop_event=stop_event,
+                )
+            finally:
+                reset_auth_wait_progress(progress_token)
         # 最终消息写入与守卫复核共用写事务，拒绝核验后转租约或改版本的结果。
         with NodeKernelRepository(repo.database).transaction():
             decision = guard.verify()

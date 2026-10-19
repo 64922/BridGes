@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from bridges.contracts.modules import ModuleQueryRecord
 from bridges.tieba.contracts import TiebaResearchStatus
 
+NODE_AUTH_WAIT = "tieba.auth"
+
 TIEBA_NODE_LABELS: dict[str, str] = {
     "tieba.parse": "贴吧解析",
     "tieba.plan": "取证计划",
@@ -15,6 +17,7 @@ TIEBA_NODE_LABELS: dict[str, str] = {
     "tieba.read": "贴吧读取",
     "tieba.synthesize": "贴吧归纳",
     "tieba.verify": "证据核验",
+    NODE_AUTH_WAIT: "等待贴吧登录或安全验证",
 }
 
 TIEBA_MODULE_ID = "tieba"
