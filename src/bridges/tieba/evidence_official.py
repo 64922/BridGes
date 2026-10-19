@@ -258,6 +258,9 @@ def assess_applicability(
         if purpose_confirmed
         else "未定位到相关规定用途，不能把新闻或经历当作规定。"
     )
+    date_basis = _date_basis_note(check, text)
+    if date_basis:
+        parts.append(date_basis)
     if campus:
         parts.append(
             f"页面点名了「{campus}」。"
@@ -283,6 +286,22 @@ def assess_applicability(
         applicable=applicable,
         note="".join(parts) if parts else "未核对到可确认的适用性依据。",
     )
+
+
+def _date_basis_note(check: TiebaOfficialCheck, text: str) -> str:
+    """把页面的发布日期／生效范围写进适用性说明；没有时如实说明。"""
+    if check.status != STATUS_VERIFIED:
+        return ""
+    effective = _EFFECTIVE_DATE.search(text)
+    if effective:
+        return f"页面注明自 {effective.group(1)} 起执行（生效依据）。"
+    absolute = DATE_PATTERN.search(text)
+    if absolute:
+        return f"页面日期线索为 {absolute.group(0)}，未找到更明确的生效表述。"
+    year = year_of(text)
+    if year is not None:
+        return f"页面日期线索为 {year} 年（仅年份），未找到更明确的生效日期。"
+    return "页面未标注发布日期或生效范围，已按已取得原文核对。"
 
 
 def detect_conflicts(

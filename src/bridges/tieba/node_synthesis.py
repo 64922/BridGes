@@ -22,12 +22,13 @@ from bridges.tieba.contracts import (
     TiebaPostProjection,
     TiebaQuestionAnalysis,
     TiebaResearchProjection,
+    TiebaSearchScope,
 )
 from bridges.tieba.evidence import ReadOutcome
 from bridges.tieba.evidence_official import (
     detect_conflicts,
 )
-from bridges.tieba.evidence_projection import build_projection
+from bridges.tieba.evidence_projection import _search_scope_notes, build_projection
 from bridges.tieba.evidence_search import SearchAttempts
 from bridges.tieba.evidence_time import summarize
 from bridges.tieba.evidence_verification import run_verification
@@ -88,6 +89,7 @@ def _run_metadata(
     model_calls: int,
 ) -> TiebaRunMetadata:
     search_count = len(attempts.records)
+    scope = getattr(attempts, "scope", ())
     read_count = len(reads.attempted_urls)
     official_count = len(checks)
     elapsed_ms = max(0, int((finished_at - started_at).total_seconds() * 1000))
@@ -103,20 +105,25 @@ def _run_metadata(
         elapsed_ms=elapsed_ms,
         request_count=search_count + read_count + official_count,
         search_request_count=search_count,
+        search_page_count=sum(item.pages_read for item in scope),
         read_request_count=read_count,
         official_request_count=official_count,
         model_call_count=model_calls,
         confirmed_post_count=len(confirmed),
         read_reply_count=sum(len(post.replies) for post in confirmed),
         source_urls=[post.url for post in confirmed],
-        unread_scope=_unread_scope(confirmed),
+        unread_scope=_unread_scope(confirmed, scope),
     )
 
 
-def _unread_scope(confirmed: Sequence[TiebaPostProjection]) -> list[str]:
+def _unread_scope(
+    confirmed: Sequence[TiebaPostProjection],
+    scope: Sequence[TiebaSearchScope] = (),
+) -> list[str]:
+    notes = _search_scope_notes(scope)
     if not confirmed:
-        return ["本轮没有确认任何帖子，未读范围覆盖全部候选帖链。"]
-    notes: list[str] = []
+        notes.append("本轮没有确认任何帖子，未读范围覆盖全部候选帖链。")
+        return notes
     for post in confirmed:
         pages_complete = post.pages_complete or (
             post.total_pages is not None and post.pages_read >= post.total_pages

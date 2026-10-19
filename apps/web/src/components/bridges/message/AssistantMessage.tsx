@@ -11,6 +11,7 @@ import type {
   CommuteRouteProjection,
   PaperSearchProjection,
   TiebaPostProjection,
+  TiebaResearchProjection,
   TiebaSummaryCitation,
 } from "@/lib/api";
 import type { ChatMediaTarget } from "@/lib/chat-media";
@@ -70,6 +71,7 @@ export function AssistantMessage({
     messageId: string,
     citation: TiebaSummaryCitation,
     post: TiebaPostProjection | null,
+    research: TiebaResearchProjection,
     trigger: HTMLButtonElement
   ) => void;
   /** 在右侧打开该条消息的真实图片或视频详情 */
@@ -136,8 +138,8 @@ export function AssistantMessage({
           onRetry={onRetry}
           onOpenTiebaEvidence={
             onOpenTiebaEvidence
-              ? (citation, post, trigger) =>
-                  onOpenTiebaEvidence(message.id, citation, post, trigger)
+              ? (citation, post, trigger, research) =>
+                  onOpenTiebaEvidence(message.id, citation, post, research, trigger)
               : undefined
           }
         />

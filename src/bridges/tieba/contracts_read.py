@@ -8,6 +8,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from bridges.tieba.lexicon import TARGET_FORUM_NAME
+from bridges.tieba.search_contracts import TiebaSearchDiscovery
 
 
 class ReadStatus(StrEnum):
@@ -132,6 +133,9 @@ class TiebaPostProjection(BaseModel):
     )
     pagination_error_message: str | None = Field(
         default=None, description="分页未完成时的中文原因。"
+    )
+    discoveries: list[TiebaSearchDiscovery] = Field(
+        default_factory=list, description="该帖在搜索阶段的发现路径。"
     )
     retrieved_at: datetime = Field(description="读取时间。")
 

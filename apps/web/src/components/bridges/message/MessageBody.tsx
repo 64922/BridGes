@@ -7,6 +7,7 @@ import {
 } from "@/components/bridges/chat/TiebaAnswer";
 import type {
   TiebaPostProjection,
+  TiebaResearchProjection,
   TiebaSummaryCitation,
   TurnResultProjection,
 } from "@/lib/api";
@@ -100,7 +101,8 @@ export function AssistantBody({
   onOpenTiebaEvidence?: (
     citation: TiebaSummaryCitation,
     post: TiebaPostProjection | null,
-    trigger: HTMLButtonElement
+    trigger: HTMLButtonElement,
+    research: TiebaResearchProjection
   ) => void;
   onRetry?: (id: string) => void;
 }) {

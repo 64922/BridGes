@@ -7,6 +7,7 @@ import type {
   TiebaPostProjection,
   TiebaRejectedCandidate,
   TiebaRunMetadata,
+  TiebaSearchDiscovery,
   TiebaSummaryCitation,
 } from "@/lib/api";
 
@@ -42,6 +43,15 @@ export function formatTime(value: string | null | undefined): string {
   if (!value) return "时间未知";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "时间未知" : date.toLocaleString("zh-CN");
+}
+
+/** 一条发现路径：主题命中或回复命中、实际检索词与页码。 */
+export function discoveryLabel(discovery: TiebaSearchDiscovery): string {
+  const kind = discovery.discovery_type === "reply" ? "回复命中" : "主题命中";
+  const query = discovery.query ? `「${discovery.query}」` : "";
+  const page =
+    discovery.search_page != null ? `第 ${discovery.search_page} 页` : "页码未知";
+  return `${kind}${query} · ${page}`;
 }
 
 /** 引用在帖子里的定位：发言者、楼层与发言时间；缺失处如实标注。 */
@@ -86,8 +96,9 @@ export function RunMetadataRow({ metadata }: { metadata: TiebaRunMetadata }) {
           {elapsed}
         </li>
         <li>
-          外部请求 {metadata.request_count} 次：检索 {metadata.search_request_count}、读取{" "}
-          {metadata.read_request_count}、官方 {metadata.official_request_count}
+          外部请求 {metadata.request_count} 次：检索 {metadata.search_request_count}、搜索页{" "}
+          {metadata.search_page_count ?? 0}、读取 {metadata.read_request_count}、官方{" "}
+          {metadata.official_request_count}
         </li>
         <li>
           模型调用 {metadata.model_call_count} 次 · 确认帖子 {metadata.confirmed_post_count} 个 ·
@@ -195,6 +206,14 @@ export function PostRow({ post }: { post: TiebaPostProjection }) {
             {post.pagination_error_message}
           </span>
         )}
+      {(post.discoveries ?? []).length > 0 && (
+        <span
+          data-testid={`tieba-post-${post.thread_id ?? post.url}-discoveries`}
+          style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}
+        >
+          发现路径：{(post.discoveries ?? []).map(discoveryLabel).join("、")}
+        </span>
+      )}
       {post.read_status === "partial" && post.read_error_message && (
         <span style={{ color: "var(--color-status-wait)", fontSize: "var(--text-xs)" }}>{post.read_error_message}</span>
       )}
@@ -260,6 +279,12 @@ export function CandidateLinkRow({ link }: { link: TiebaCandidateLink }) {
         · {link.source}
         {reason} · 归属未确认
       </span>
+      {(link.discoveries ?? []).length > 0 && (
+        <span style={{ color: "var(--color-text-tertiary)" }}>
+          {" "}
+          · 发现路径：{(link.discoveries ?? []).map(discoveryLabel).join("；")}
+        </span>
+      )}
     </li>
   );
 }

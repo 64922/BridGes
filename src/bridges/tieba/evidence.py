@@ -120,7 +120,15 @@ def read_candidates(
     browser_blocked_error: str | None = None
     stopped_index: int | None = None
     deadline = time.monotonic() + deadline_seconds
-    read_hits = attempts.hits[:READ_POSTS_LIMIT]
+    # 回复命中往往来自标题不含话题的帖子；先给它们读取机会，避免被主题页
+    # 的前几条候选永久挤在读取上限之外。
+    ordered_hits = tuple(
+        sorted(
+            attempts.hits,
+            key=lambda hit: 0 if hit.discovery_type == "reply" else 1,
+        )
+    )
+    read_hits = ordered_hits[:READ_POSTS_LIMIT]
     for index, hit in enumerate(read_hits):
         if hit.url in attempted:
             prior = prior_links.get(hit.url)
@@ -195,7 +203,7 @@ def read_candidates(
         )
     not_attempted = 0
     remaining_hits = list(read_hits[stopped_index + 1 :] if stopped_index is not None else [])
-    remaining_hits.extend(attempts.hits[READ_POSTS_LIMIT:])
+    remaining_hits.extend(ordered_hits[READ_POSTS_LIMIT:])
     for hit in remaining_hits:
         if hit.url in attempted or hit.url in new_attempted:
             prior = prior_links.get(hit.url)
@@ -337,6 +345,7 @@ def confirmed_post(hit: TiebaSearchHit, result: TiebaReadResult) -> TiebaPostPro
         read_error_message=result.error_message,
         pagination_error_code=result.pagination_error_code,
         pagination_error_message=result.pagination_error_message,
+        discoveries=list(hit.discoveries),
         retrieved_at=result.retrieved_at,
     )
 
@@ -351,6 +360,7 @@ def _unconfirmed_link(
         source=hit.source,
         unconfirmed_reason=reason,
         read_error_code=read_error_code,
+        discoveries=list(hit.discoveries),
     )
 
 

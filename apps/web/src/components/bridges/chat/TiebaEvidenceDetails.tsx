@@ -28,6 +28,19 @@ function officialIsApplicable(check: TiebaOfficialCheck): boolean {
   );
 }
 
+const SEARCH_STOP_LABELS: Record<string, string> = {
+  pages_limit: "达到翻页上限",
+  duplicate_page: "重复页，已停止",
+  abnormal_page: "页码未前进，已停止",
+  page_gap: "页码跳号，已停止",
+  abnormal_empty_page: "空页但声明还有后续页，已停止",
+  no_scroll_container: "未找到翻页容器",
+  timeout: "翻页等待超时",
+  cancelled: "已停止",
+  access_restricted: "翻页触发访问限制",
+  dom_fallback: "使用页面卡片兜底，未确认分页",
+};
+
 function unreadReason(post: TiebaPostProjection): string | null {
   if (post.pagination_error_message) {
     return post.pagination_error_message;
@@ -59,6 +72,7 @@ export function TiebaEvidenceDetails({
   const official = research.official_checks ?? [];
   const queries = research.queries ?? [];
   const sections = research.sections ?? [];
+  const searchScope = research.search_scope ?? [];
   const notes = research.evidence_boundary ?? [];
   const terms = research.topic_terms ?? [];
   const rounds = research.query_rounds ?? [];
@@ -95,6 +109,40 @@ export function TiebaEvidenceDetails({
         {terms.length > 0 ? ` · 原始名词：${terms.join("、")}` : ""}
         {research.official_check_requested ? " · 学校官方域名核验" : ""}
       </p>
+      {searchScope.length > 0 && (
+        <details open data-testid="tieba-search-scope">
+          <summary style={{ cursor: "pointer", minHeight: "var(--target-size)" }}>
+            搜索页范围（{searchScope.length} 个页签）
+          </summary>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: "var(--space-5)",
+              listStyle: "disc",
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-1)",
+              fontSize: "var(--text-xs)",
+            }}
+          >
+            {searchScope.map((scope, index) => (
+              <li key={`${scope.tab}-${scope.query}-${index}`}>
+                搜索页签「{scope.tab === "reply" ? "回复" : "主题"}」 · 查询「{scope.query}
+                」：已读 {scope.pages_read}/{scope.pages_limit} 页
+                {scope.visited_pages?.length
+                  ? `（第 ${scope.visited_pages.join("、")} 页）`
+                  : ""}
+                {scope.has_more === true ? " · 页面声明还有后续结果" : ""}
+                {scope.has_more === false ? " · 页面声明没有更多结果" : ""}
+                {scope.stop_reason
+                  ? ` · ${SEARCH_STOP_LABELS[scope.stop_reason] ?? scope.stop_reason}`
+                  : ""}
+                {scope.note ? ` · ${scope.note}` : ""}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <p data-testid="tieba-time-filter" style={{ margin: 0 }}>
         时间条件：{timeFilter.requirement ? `「${timeFilter.requirement}」` : "未提出"} ·{" "}
         {timeFilter.note}

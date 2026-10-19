@@ -4,6 +4,10 @@ export type TiebaResearchStatus = components["schemas"]["TiebaResearchStatus"];
 
 export type TiebaTimeFilter = components["schemas"]["TiebaTimeFilter"];
 
+export type TiebaSearchDiscovery = components["schemas"]["TiebaSearchDiscovery"];
+
+export type TiebaSearchScope = components["schemas"]["TiebaSearchScope"];
+
 export type TiebaPostProjection = components["schemas"]["TiebaPostProjection"];
 
 export type TiebaSummaryCitation = components["schemas"]["TiebaSummaryCitation"];

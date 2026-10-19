@@ -9,6 +9,7 @@ from typing import Any
 from bridges.contracts.modules import ModuleQueryStatus
 from bridges.tieba.browser_pagination import MAX_MERGED_REPLIES
 from bridges.tieba.browser_runtime import TiebaBrowserError, TiebaBrowserRuntime
+from bridges.tieba.browser_search_scope import scope_detail, search_status
 from bridges.tieba.budget import current_request_budget, current_request_guard
 from bridges.tieba.contracts import (
     ReadStatus,
@@ -16,6 +17,7 @@ from bridges.tieba.contracts import (
     TiebaReadResult,
     TiebaReply,
     TiebaSearchHit,
+    TiebaSearchScope,
 )
 from bridges.tieba.searching import (
     QUERY_SCOPE_PREFIX,
@@ -25,6 +27,7 @@ from bridges.tieba.searching import (
     canonical_url,
     classify_hits_with_diagnostics,
     execution_terms,
+    merge_search_hits,
     query_record,
     thread_id_of,
 )
@@ -265,23 +268,38 @@ class BrowserTiebaSearch:
                 request_budget=current_request_budget(),
                 request_guard=current_request_guard(),
             )
-            hits = tuple(
-                TiebaSearchHit.model_validate({**item, "source": "tieba_browser"})
-                for item in value.get("hits", [])
+            hits = merge_search_hits(
+                tuple(
+                    TiebaSearchHit.model_validate({**item, "source": "tieba_browser"})
+                    for item in value.get("hits", [])
+                )
+            )
+            scope = tuple(
+                TiebaSearchScope.model_validate(item)
+                for item in value.get("search_scope", [])
+                if isinstance(item, dict)
             )
             kept, rejected, diagnostics = classify_hits_with_diagnostics(hits)
+            status, error_code, error_message, retryable = search_status(value)
             return SearchOutcome(
                 record=query_record(
                     query=query,
-                    status=ModuleQueryStatus.SUCCESS,
+                    status=status,
                     evidence_count=len(hits),
                     source="tieba_browser",
-                    detail=f"固定华东交通大学吧内检索；实际吧内检索词：{terms}。归属由读取阶段确认。",
+                    error_code=error_code,
+                    error_message=error_message,
+                    retryable=retryable,
+                    detail=(
+                        f"固定华东交通大学吧内检索；实际吧内检索词：{terms}。"
+                        f"{scope_detail(scope)}归属由读取阶段确认。"
+                    ),
                 ),
                 hits=hits,
                 candidates=kept,
                 rejected=rejected,
                 diagnostics=diagnostics,
+                scope=scope,
                 excluded_wait_ms=int(value.get("excluded_wait_ms") or 0),
             )
         except TiebaBrowserError as error:
