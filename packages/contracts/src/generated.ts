@@ -29597,7 +29597,7 @@ export interface components {
         TiebaRunMetadata: {
             /**
              * Contract Version
-             * @default tieba-run-metadata-v2
+             * @default tieba-run-metadata-v3
              */
             contract_version: string;
             /**
@@ -29733,6 +29733,8 @@ export interface components {
              * @description 实际未读取的页、楼层或内容范围。
              */
             unread_scope?: string[];
+            /** @description 模型总结的版本、调用、批次与证据计量；未生成时为 None。 */
+            summary?: components["schemas"]["TiebaSummaryRunMetadata"] | null;
         };
         /**
          * TiebaSearchDiscovery
@@ -29885,6 +29887,97 @@ export interface components {
              * @description 引用的已读证据 ID。
              */
             citation_ids?: string[];
+        };
+        /**
+         * TiebaSummaryRunMetadata
+         * @description 一次总结的版本、调用与证据计数（只含标识和数字，不含正文）。
+         */
+        TiebaSummaryRunMetadata: {
+            /**
+             * Contract Version
+             * @default tieba-summary-run-v1
+             */
+            contract_version: string;
+            /**
+             * Model Id
+             * @description 本轮实际使用的主模型 ID。
+             */
+            model_id?: string | null;
+            /**
+             * Prompt Version
+             * @description 总结提示词版本。
+             */
+            prompt_version: string;
+            /**
+             * Input Schema Version
+             * @description 送入模型的证据输入合同版本。
+             */
+            input_schema_version: string;
+            /**
+             * Output Schema Version
+             * @description 模型观点的输出合同版本。
+             */
+            output_schema_version: string;
+            /**
+             * Read Evidence Count
+             * @description 时间范围内可总结的已读证据数。
+             * @default 0
+             */
+            read_evidence_count: number;
+            /**
+             * Model Evidence Count
+             * @description 实际送入模型的证据数。
+             * @default 0
+             */
+            model_evidence_count: number;
+            /**
+             * Omitted Evidence Count
+             * @description 已读但未送入模型或未进入总结的证据数。
+             * @default 0
+             */
+            omitted_evidence_count: number;
+            /**
+             * Batch Count
+             * @description 总结批次数（含拆分与未发送批次）。
+             * @default 0
+             */
+            batch_count: number;
+            /**
+             * Succeeded Batch Count
+             * @description 成功完成的批次调用数。
+             * @default 0
+             */
+            succeeded_batch_count: number;
+            /**
+             * Failed Batch Count
+             * @description 失败的批次调用数。
+             * @default 0
+             */
+            failed_batch_count: number;
+            /**
+             * Model Call Count
+             * @description 总结相关模型调用总数。
+             * @default 0
+             */
+            model_call_count: number;
+            /**
+             * Claim Count
+             * @description 送入支持核验的观点数。
+             * @default 0
+             */
+            claim_count: number;
+            /**
+             * Supported Claim Count
+             * @description 通过支持核验并交付的观点数。
+             * @default 0
+             */
+            supported_claim_count: number;
+            /**
+             * Summary Supported
+             * @description 连贯总结正文是否通过语义支持核验。
+             * @default false
+             */
+            summary_supported: boolean;
         };
         /**
          * TiebaTemporalScope

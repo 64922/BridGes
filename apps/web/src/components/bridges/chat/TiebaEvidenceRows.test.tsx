@@ -208,6 +208,41 @@ describe("贴吧证据行（工单 04）", () => {
     expect(text).toContain("只读取第 1 页");
   });
 
+  it("运行记录展示总结版本、证据与调用计量", () => {
+    render(
+      <RunMetadataRow
+        metadata={{
+          ...metadata,
+          contract_version: "tieba-run-metadata-v3",
+          summary: {
+            contract_version: "tieba-summary-run-v1",
+            prompt_version: "tieba-summary-v8",
+            input_schema_version: "tieba-read-evidence-v4",
+            output_schema_version: "tieba-summary-claims-v3",
+            read_evidence_count: 10,
+            model_evidence_count: 8,
+            omitted_evidence_count: 2,
+            batch_count: 2,
+            succeeded_batch_count: 1,
+            failed_batch_count: 1,
+            model_call_count: 4,
+            claim_count: 3,
+            supported_claim_count: 2,
+            summary_supported: false,
+          },
+        }}
+      />
+    );
+    const text = screen.getByTestId("tieba-summary-metrics").textContent ?? "";
+    expect(text).toContain("总结提示词 tieba-summary-v8");
+    expect(text).toContain("送入证据 8/10 条");
+    expect(text).toContain("省略 2 条");
+    expect(text).toContain("批次 1/2（失败 1）");
+    expect(text).toContain("总结模型调用 4 次");
+    expect(text).toContain("观点 2/3");
+    expect(text).toContain("仅观点通过核验");
+  });
+
   it("帖子展示排除原因与仅上下文发言", () => {
     render(
       <PostRow

@@ -7,10 +7,34 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+class TiebaSummaryRunMetadata(BaseModel):
+    """一次总结的版本、调用与证据计数（只含标识和数字，不含正文）。"""
+
+    contract_version: str = Field(default="tieba-summary-run-v1")
+    model_id: str | None = Field(default=None, description="本轮实际使用的主模型 ID。")
+    prompt_version: str = Field(description="总结提示词版本。")
+    input_schema_version: str = Field(description="送入模型的证据输入合同版本。")
+    output_schema_version: str = Field(description="模型观点的输出合同版本。")
+    read_evidence_count: int = Field(default=0, description="时间范围内可总结的已读证据数。")
+    model_evidence_count: int = Field(default=0, description="实际送入模型的证据数。")
+    omitted_evidence_count: int = Field(
+        default=0, description="已读但未送入模型或未进入总结的证据数。"
+    )
+    batch_count: int = Field(default=0, description="总结批次数（含拆分与未发送批次）。")
+    succeeded_batch_count: int = Field(default=0, description="成功完成的批次调用数。")
+    failed_batch_count: int = Field(default=0, description="失败的批次调用数。")
+    model_call_count: int = Field(default=0, description="总结相关模型调用总数。")
+    claim_count: int = Field(default=0, description="送入支持核验的观点数。")
+    supported_claim_count: int = Field(default=0, description="通过支持核验并交付的观点数。")
+    summary_supported: bool = Field(
+        default=False, description="连贯总结正文是否通过语义支持核验。"
+    )
+
+
 class TiebaRunMetadata(BaseModel):
     """一轮贴吧采集的可核对运行记录（不含会话秘密或原始响应）。"""
 
-    contract_version: str = Field(default="tieba-run-metadata-v2")
+    contract_version: str = Field(default="tieba-run-metadata-v3")
     run_id: str = Field(description="本轮运行的稳定标识。")
     recipe_version: str = Field(description="执行的贴吧配方版本。")
     component_versions: dict[str, str] = Field(
@@ -46,6 +70,9 @@ class TiebaRunMetadata(BaseModel):
     unread_scope: list[str] = Field(
         default_factory=list, description="实际未读取的页、楼层或内容范围。"
     )
+    summary: TiebaSummaryRunMetadata | None = Field(
+        default=None, description="模型总结的版本、调用、批次与证据计量；未生成时为 None。"
+    )
 
 
-__all__ = ["TiebaRunMetadata"]
+__all__ = ["TiebaRunMetadata", "TiebaSummaryRunMetadata"]

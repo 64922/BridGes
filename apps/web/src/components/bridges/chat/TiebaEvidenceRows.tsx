@@ -116,6 +116,15 @@ export function scopeExclusionLabel(reason: string): string {
   return SCOPE_EXCLUSION_LABELS[reason] ?? reason;
 }
 
+function summaryMetricsText(
+  summary: NonNullable<TiebaRunMetadata["summary"]>
+): string {
+  const omitted = summary.omitted_evidence_count > 0 ? ` · 省略 ${summary.omitted_evidence_count} 条` : "";
+  const failed = summary.failed_batch_count > 0 ? `（失败 ${summary.failed_batch_count}）` : "";
+  const verdict = summary.summary_supported ? "正文通过核验" : "仅观点通过核验";
+  return `总结提示词 ${summary.prompt_version} · 送入证据 ${summary.model_evidence_count}/${summary.read_evidence_count} 条${omitted} · 批次 ${summary.succeeded_batch_count}/${summary.batch_count}${failed} · 总结模型调用 ${summary.model_call_count} 次 · 观点 ${summary.supported_claim_count}/${summary.claim_count} · ${verdict}`;
+}
+
 export function RunMetadataRow({ metadata }: { metadata: TiebaRunMetadata }) {
   const elapsed =
     metadata.elapsed_ms == null
@@ -155,6 +164,11 @@ export function RunMetadataRow({ metadata }: { metadata: TiebaRunMetadata }) {
           模型调用 {metadata.model_call_count} 次 · 确认帖子 {metadata.confirmed_post_count} 个 ·
           记录楼层 {metadata.read_reply_count} 条
         </li>
+        {metadata.summary && (
+          <li data-testid="tieba-summary-metrics">
+            {summaryMetricsText(metadata.summary)}
+          </li>
+        )}
         <li data-testid="tieba-evidence-counts">
           候选 {metadata.candidate_count ?? 0} 条 · 可读取 {metadata.usable_candidate_count ?? 0}{" "}
           帖 · 已读 {metadata.read_post_count ?? 0} 帖 · 合格证据{" "}
