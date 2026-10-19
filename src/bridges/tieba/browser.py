@@ -7,10 +7,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from bridges.contracts.modules import ModuleQueryStatus
+from bridges.tieba.browser_pagination import MAX_MERGED_REPLIES
 from bridges.tieba.browser_runtime import TiebaBrowserError, TiebaBrowserRuntime
 from bridges.tieba.budget import current_request_budget, current_request_guard
 from bridges.tieba.contracts import (
     ReadStatus,
+    TiebaPageEvidence,
     TiebaReadResult,
     TiebaReply,
     TiebaSearchHit,
@@ -54,7 +56,7 @@ def read_projection(url: str, value: dict[str, Any]) -> TiebaReadResult:
                 is_original_poster=True,
             )
         )
-    for item in value.get("replies", [])[:120]:
+    for item in value.get("replies", [])[:MAX_MERGED_REPLIES]:
         replies.append(
             TiebaReply(
                 content=str(item.get("content") or "")[:600],
@@ -75,10 +77,14 @@ def read_projection(url: str, value: dict[str, Any]) -> TiebaReadResult:
     pages_read = int(value.get("pages_read") or 1)
     pages_limit = int(value.get("pages_limit") or 1)
     total_pages = _optional_int(value.get("total_pages"))
+    page_evidence = _page_evidence(value.get("page_evidence"))
+    pages_complete = _pages_complete(value, pages_read, total_pages)
+    pagination_error_code = _optional_str(value.get("pagination_error_code"))
+    pagination_error_message = _optional_str(value.get("pagination_error_message"))
     scroll_rounds = int(value.get("scroll_rounds") or 0)
     scroll_rounds_limit = int(value.get("scroll_rounds_limit") or 0)
     has_more_pages = total_pages is not None and pages_read < total_pages
-    partial = not complete or has_more_pages
+    partial = not complete or has_more_pages or not pages_complete
     return TiebaReadResult(
         url=canonical_url(url),
         thread_id=thread_id_of(url),
@@ -88,6 +94,8 @@ def read_projection(url: str, value: dict[str, Any]) -> TiebaReadResult:
         replies=replies,
         pages_read=pages_read,
         pages_limit=pages_limit,
+        pages_complete=pages_complete,
+        page_evidence=page_evidence,
         scroll_rounds=scroll_rounds,
         scroll_rounds_limit=scroll_rounds_limit,
         total_pages=total_pages,
@@ -96,16 +104,29 @@ def read_projection(url: str, value: dict[str, Any]) -> TiebaReadResult:
         floor_max=max((reply.floor for reply in replies if reply.floor is not None), default=None),
         retrieved_at=retrieved_at,
         excluded_wait_ms=int(value.get("excluded_wait_ms") or 0),
-        error_code=None if not partial else "tieba_browser_partial_replies",
-        error_message=None if not partial else _partial_message(
-            value,
-            loaded_reply_count=loaded_reply_count,
-            total_replies=total_replies,
-            pages_read=pages_read,
-            total_pages=total_pages,
-            scroll_rounds=scroll_rounds,
-            scroll_rounds_limit=scroll_rounds_limit,
+        error_code=(
+            None
+            if not partial
+            else pagination_error_code or "tieba_browser_partial_replies"
         ),
+        error_message=(
+            None
+            if not partial
+            else _partial_message(
+                value,
+                loaded_reply_count=loaded_reply_count,
+                total_replies=total_replies,
+                pages_read=pages_read,
+                total_pages=total_pages,
+                page_evidence=page_evidence,
+                pages_complete=pages_complete,
+                pagination_error_message=pagination_error_message,
+                scroll_rounds=scroll_rounds,
+                scroll_rounds_limit=scroll_rounds_limit,
+            )
+        ),
+        pagination_error_code=None if not partial else pagination_error_code,
+        pagination_error_message=None if not partial else pagination_error_message,
     )
 
 
@@ -116,27 +137,61 @@ def _partial_message(
     total_replies: int | None,
     pages_read: int,
     total_pages: int | None,
+    page_evidence: list[TiebaPageEvidence],
+    pages_complete: bool,
+    pagination_error_message: str | None,
     scroll_rounds: int,
     scroll_rounds_limit: int,
 ) -> str:
+    prefix = f"{pagination_error_message}；" if pagination_error_message else ""
     if value.get("source") == "structured":
         declared = total_pages if total_pages is not None else "未知"
         pages = (
-            f"已读取第 {pages_read} 页（页面声明共 {declared} 页）"
-            if total_pages is not None and pages_read < total_pages
-            else f"已读取 {pages_read}/{pages_read} 页"
+            f"已成功读取 {pages_read} 页（页面声明共 {declared} 页）"
+            if total_pages is not None
+            else f"已成功读取 {pages_read} 页"
         )
+        if page_evidence:
+            read_pages = "、".join(str(item.page) for item in page_evidence)
+            pages += f"；成功页：第 {read_pages} 页"
+        state = "普通楼层页已全部读取" if pages_complete else "普通楼层页未读完"
         return (
+            f"{prefix}{state}；{pages}；"
             f"结构化响应记录 {loaded_reply_count} 条普通楼层，"
             f"页面声明 {total_replies if total_replies is not None else '未知'} 条；"
-            f"{pages}；未读取的后续页、楼中楼或图片内容不作推断。"
+            "未读取的后续页、楼中楼或图片内容不作推断。"
         )
     return (
-        f"已读取 {loaded_reply_count} 条普通楼层，"
+        f"{prefix}已读取 {loaded_reply_count} 条普通楼层，"
         f"页面声明 {total_replies if total_replies is not None else '未知'} 条；"
         f"向下加载 {scroll_rounds}/{scroll_rounds_limit} 轮；"
-        "页面路径不提供楼中楼全量状态，未穷尽全部回复、楼中楼或图片内容，"
-        "不作未读取内容的推断。"
+        "DOM 有限滚动不能替代分页完成判定，页面路径不提供楼中楼全量状态，"
+        "未穷尽全部回复、楼中楼或图片内容，不作未读取内容的推断。"
+    )
+
+
+def _page_evidence(value: Any) -> list[TiebaPageEvidence]:
+    evidence: list[TiebaPageEvidence] = []
+    if not isinstance(value, list):
+        return evidence
+    for raw in value:
+        try:
+            evidence.append(TiebaPageEvidence.model_validate(raw))
+        except ValueError:
+            continue
+    return evidence
+
+
+def _pages_complete(
+    value: dict[str, Any], pages_read: int, total_pages: int | None
+) -> bool:
+    if "pages_complete" in value:
+        return value.get("pages_complete") is True
+    if total_pages is not None:
+        return pages_read >= total_pages
+    return (
+        int(value.get("total_replies") or 0) == 0
+        and int(value.get("loaded_reply_count") or 0) == 0
     )
 
 
@@ -380,6 +435,7 @@ class BrowserTiebaThreadReader:
             payload: dict[str, Any] = {
                 "action": "read",
                 "url": canonical_url(url),
+                "pages_limit": max(1, int(pages_limit)),
                 "scroll_rounds_limit": BROWSER_SCROLL_ROUNDS_LIMIT,
             }
             if deadline is not None:

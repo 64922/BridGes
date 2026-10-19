@@ -118,10 +118,31 @@ def _unread_scope(confirmed: Sequence[TiebaPostProjection]) -> list[str]:
         return ["本轮没有确认任何帖子，未读范围覆盖全部候选帖链。"]
     notes: list[str] = []
     for post in confirmed:
-        if post.total_pages is not None and post.pages_read < post.total_pages:
-            notes.append(
-                f"{post.url}：只读取第 {post.pages_read} 页，页面声明共 {post.total_pages} 页。"
+        pages_complete = post.pages_complete or (
+            post.total_pages is not None and post.pages_read >= post.total_pages
+        )
+        if not pages_complete:
+            declared = (
+                f"，页面声明共 {post.total_pages} 页"
+                if post.total_pages is not None
+                else ""
             )
+            span = (
+                f"第 1–{post.pages_read} 页"
+                if post.pages_read > 1
+                else f"第 {post.pages_read} 页"
+            )
+            detail = (
+                f"；{post.pagination_error_message}"
+                if post.pagination_error_message
+                else ""
+            )
+            unread = f"只读取{span}{declared}{detail}。"
+            if post.page_evidence:
+                success = "、".join(str(item.page) for item in post.page_evidence)
+                notes.append(f"{post.url}：已成功读取第 {success} 页；{unread}")
+            else:
+                notes.append(f"{post.url}：{unread}")
         if post.total_replies is not None:
             notes.append(
                 f"{post.url}：页面声明 {post.total_replies} 条回复，"

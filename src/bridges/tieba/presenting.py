@@ -333,6 +333,13 @@ def _rejected_lines(projection: TiebaResearchProjection) -> list[str]:
 
 def _read_scope(post: TiebaPostProjection) -> str:
     parts = [f"已读取 {post.pages_read}/{post.pages_limit} 页"]
+    if post.page_evidence:
+        parts.append(
+            "成功页 " + "、".join(str(item.page) for item in post.page_evidence)
+        )
+    parts.append(
+        "普通楼层页已全部读取" if post.pages_complete else "普通楼层页未读完"
+    )
     if post.scroll_rounds_limit:
         parts.append(f"向下加载 {post.scroll_rounds}/{post.scroll_rounds_limit} 轮")
     if post.total_pages is not None:
@@ -342,6 +349,8 @@ def _read_scope(post: TiebaPostProjection) -> str:
     times = [reply.posted_at for reply in post.replies if reply.posted_at]
     if times:
         parts.append(f"时间 {min(times)}–{max(times)}")
+    if post.pagination_error_message:
+        parts.append(post.pagination_error_message)
     if post.read_status != ReadStatus.READ and post.read_error_message:
         parts.append(post.read_error_message)
     return "；".join(parts)

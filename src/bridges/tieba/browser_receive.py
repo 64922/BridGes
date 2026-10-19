@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from bridges.tieba.browser_auth import AUTH_INTERRUPTED, AUTH_WAIT_LIMIT_SECONDS
 from bridges.tieba.browser_auth_wait import AuthWaitTracker
 from bridges.tieba.browser_errors import TiebaBrowserError
+from bridges.tieba.browser_pagination import WORKER_EXITED
 from bridges.tieba.browser_request_budget import (
     BrowserRequestBudget,
     request_denial_message,
@@ -53,6 +54,7 @@ def receive_result(
             request_budget.record_manual_wait(waited_ms)
         deadline += waited_ms / 1000.0
 
+    last_progress: dict[str, Any] | None = None
     try:
         while True:
             checker = getattr(stop_event, "is_set", None)
@@ -89,6 +91,8 @@ def receive_result(
                 continue
             if line is None:
                 finish_auth_wait("interrupted")
+                if last_progress is not None:
+                    return _partial_progress(last_progress, auth_wait.total_ms)
                 raise TiebaBrowserError(
                     "tieba_browser_unavailable", "专用浏览器未返回可读取内容。"
                 )
@@ -101,6 +105,10 @@ def receive_result(
                 raise TiebaBrowserError(
                     "tieba_browser_unavailable", "专用浏览器未返回可读取内容。"
                 ) from None
+            progress = value.get("progress")
+            if isinstance(progress, dict):
+                last_progress = progress
+                continue
             auth_event = value.get("auth_wait")
             if auth_event == "started":
                 auth_wait.start(str(value.get("reason") or ""), now)
@@ -147,6 +155,25 @@ def receive_result(
         if request_ledger.has_pending:
             request_ledger.finish_pending("browser_action_interrupted")
         finish_auth_wait("interrupted")
+
+
+def _partial_progress(
+    progress: dict[str, Any], excluded_wait_ms: int
+) -> dict[str, Any]:
+    """worker 退出时保留最后一页进度；未完成时明确标注退出原因。"""
+    value = dict(progress)
+    if value.get("pages_complete") is not True:
+        value["pages_complete"] = False
+        if not value.get("pagination_error_code"):
+            pages = int(value.get("pages_read") or 0)
+            value["pagination_error_code"] = WORKER_EXITED
+            value["pagination_error_message"] = (
+                f"专用浏览器在完成前退出；已保留前 {pages} 页证据，"
+                "未读取的后续页不作推断。"
+            )
+    if excluded_wait_ms:
+        value["excluded_wait_ms"] = excluded_wait_ms
+    return value
 
 
 __all__ = ["receive_result"]

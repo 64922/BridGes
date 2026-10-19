@@ -26,6 +26,7 @@ const post: TiebaPostProjection = {
   read_status: "partial",
   pages_read: 1,
   pages_limit: 2,
+  pages_complete: false,
   scroll_rounds: 0,
   scroll_rounds_limit: 0,
   total_pages: 3,
@@ -105,6 +106,64 @@ describe("贴吧引用右侧资料面板（工单 10）", () => {
     );
     expect(screen.getByTestId("tieba-evidence-open").getAttribute("href")).toBe(
       "https://tieba.baidu.com/p/8123456789"
+    );
+  });
+
+  it("第二页引用能展开对应楼层，并显示成功页与部分范围", () => {
+    const pageTwoCitation: TiebaSummaryCitation = {
+      ...citation,
+      citation_id: "E2",
+      floor: 17,
+      reply_id: "reply-17",
+      posted_at: "2026-09-21 08:30",
+      quote: "第二页补充：晚上十一点后热水会停。",
+    };
+    const pageTwoPost: TiebaPostProjection = {
+      ...post,
+      pages_read: 2,
+      pages_complete: false,
+      page_evidence: [
+        {
+          page: 1,
+          total_pages: 10,
+          has_more: true,
+          top_level_count: 14,
+          reply_count: 20,
+        },
+        {
+          page: 2,
+          total_pages: 10,
+          has_more: true,
+          top_level_count: 15,
+          reply_count: 18,
+        },
+      ],
+      pagination_error_message:
+        "已读取第 1–2 页，页面声明共 10 页；从第 3 页起未读取。",
+      read_error_message:
+        "普通楼层页未读完；已成功读取 2 页（页面声明共 10 页）；从第 3 页起未读取。",
+      replies: [
+        ...(post.replies ?? []),
+        {
+          floor: 17,
+          reply_id: "reply-17",
+          parent_reply_id: null,
+          temporal_scope: "unknown",
+          posted_at: "2026-09-21 08:30",
+          is_original_poster: false,
+          content: "第二页补充：晚上十一点后热水会停。",
+        },
+      ],
+    };
+
+    renderPanel({ citation: pageTwoCitation, post: pageTwoPost });
+
+    const scope = screen.getByTestId("tieba-evidence-scope");
+    expect(scope.textContent).toContain("已成功读取第 1、2 页");
+    expect(scope.textContent).toContain("普通楼层页未读完");
+    expect(scope.textContent).toContain("从第 3 页起未读取");
+    expect(screen.getByTestId("tieba-evidence-reply-17").getAttribute("data-active")).toBe(
+      "true"
     );
   });
 

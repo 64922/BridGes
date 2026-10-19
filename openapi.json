@@ -65418,6 +65418,57 @@
         "title": "TiebaOfficialCheck",
         "description": "学校官方页面核验结果（与吧友经历分开展示）。"
       },
+      "TiebaPageEvidence": {
+        "properties": {
+          "page": {
+            "type": "integer",
+            "title": "Page",
+            "description": "实际成功读取的页码。"
+          },
+          "total_pages": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Pages",
+            "description": "该页声明的总页数。"
+          },
+          "has_more": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has More",
+            "description": "该页是否声明有后继页。"
+          },
+          "top_level_count": {
+            "type": "integer",
+            "title": "Top Level Count",
+            "description": "该页 post_list 的条目数。",
+            "default": 0
+          },
+          "reply_count": {
+            "type": "integer",
+            "title": "Reply Count",
+            "description": "该页实际记录的楼层数（含楼中楼）。",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "page"
+        ],
+        "title": "TiebaPageEvidence",
+        "description": "一页成功读取的真实范围；未成功页不会出现在这里。"
+      },
       "TiebaPostProjection": {
         "properties": {
           "thread_id": {
@@ -65469,6 +65520,20 @@
             "title": "Pages Limit",
             "description": "本轮页数上限。",
             "default": 0
+          },
+          "pages_complete": {
+            "type": "boolean",
+            "title": "Pages Complete",
+            "description": "普通楼层分页是否已按页面声明完整读取。",
+            "default": false
+          },
+          "page_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/TiebaPageEvidence"
+            },
+            "type": "array",
+            "title": "Page Evidence",
+            "description": "每页成功读取的范围证据。"
           },
           "scroll_rounds": {
             "type": "integer",
@@ -65566,6 +65631,30 @@
             ],
             "title": "Read Error Message",
             "description": "未取得内容时的中文原因说明。"
+          },
+          "pagination_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagination Error Code",
+            "description": "分页未完成时的稳定分类码。"
+          },
+          "pagination_error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagination Error Message",
+            "description": "分页未完成时的中文原因。"
           },
           "retrieved_at": {
             "type": "string",

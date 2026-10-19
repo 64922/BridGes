@@ -28,6 +28,7 @@ const post: TiebaPostProjection = {
   read_status: "read",
   pages_read: 1,
   pages_limit: 2,
+  pages_complete: false,
   scroll_rounds: 0,
   scroll_rounds_limit: 0,
   total_pages: 3,

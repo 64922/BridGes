@@ -29028,6 +29028,39 @@ export interface components {
             error_message?: string | null;
         };
         /**
+         * TiebaPageEvidence
+         * @description 一页成功读取的真实范围；未成功页不会出现在这里。
+         */
+        TiebaPageEvidence: {
+            /**
+             * Page
+             * @description 实际成功读取的页码。
+             */
+            page: number;
+            /**
+             * Total Pages
+             * @description 该页声明的总页数。
+             */
+            total_pages?: number | null;
+            /**
+             * Has More
+             * @description 该页是否声明有后继页。
+             */
+            has_more?: boolean | null;
+            /**
+             * Top Level Count
+             * @description 该页 post_list 的条目数。
+             * @default 0
+             */
+            top_level_count: number;
+            /**
+             * Reply Count
+             * @description 该页实际记录的楼层数（含楼中楼）。
+             * @default 0
+             */
+            reply_count: number;
+        };
+        /**
          * TiebaPostProjection
          * @description 一个真实读到并确认属于目标贴吧的帖子。
          */
@@ -29066,6 +29099,17 @@ export interface components {
              * @default 0
              */
             pages_limit: number;
+            /**
+             * Pages Complete
+             * @description 普通楼层分页是否已按页面声明完整读取。
+             * @default false
+             */
+            pages_complete: boolean;
+            /**
+             * Page Evidence
+             * @description 每页成功读取的范围证据。
+             */
+            page_evidence?: components["schemas"]["TiebaPageEvidence"][];
             /**
              * Scroll Rounds
              * @description 实际执行的页面向下加载轮数。
@@ -29118,6 +29162,16 @@ export interface components {
              * @description 未取得内容时的中文原因说明。
              */
             read_error_message?: string | null;
+            /**
+             * Pagination Error Code
+             * @description 分页未完成时的稳定分类码。
+             */
+            pagination_error_code?: string | null;
+            /**
+             * Pagination Error Message
+             * @description 分页未完成时的中文原因。
+             */
+            pagination_error_message?: string | null;
             /**
              * Retrieved At
              * Format: date-time

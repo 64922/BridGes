@@ -29,6 +29,9 @@ function officialIsApplicable(check: TiebaOfficialCheck): boolean {
 }
 
 function unreadReason(post: TiebaPostProjection): string | null {
+  if (post.pagination_error_message) {
+    return post.pagination_error_message;
+  }
   if (!post.replies_obtained) {
     return post.read_error_message || "本轮未取得回复文本。";
   }

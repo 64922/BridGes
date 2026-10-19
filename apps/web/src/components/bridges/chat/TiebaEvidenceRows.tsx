@@ -116,6 +116,9 @@ export function postReadScope(post: TiebaPostProjection): string {
   const parts = [
     `已读 ${post.pages_read}/${post.pages_limit} 页`,
   ];
+  const pages = (post.page_evidence ?? []).map((item) => item.page);
+  if (pages.length > 0) parts.push(`已成功读取第 ${pages.join("、")} 页`);
+  parts.push(post.pages_complete ? "普通楼层页已全部读取" : "普通楼层页未读完");
   if (post.scroll_rounds_limit) {
     parts.push(`向下加载 ${post.scroll_rounds}/${post.scroll_rounds_limit} 轮`);
   }
@@ -179,9 +182,19 @@ export function PostRow({ post }: { post: TiebaPostProjection }) {
         归属确认：{post.affiliation_evidence} ·{" "}
         {READ_STATUS_LABELS[post.read_status] ?? post.read_status} · 已读{" "}
         {post.pages_read}/{post.pages_limit} 页
+        {post.page_evidence?.length
+          ? ` · 已成功读取第 ${post.page_evidence.map((item) => item.page).join("、")} 页`
+          : ""}
+        {post.pages_complete ? " · 普通楼层页已全部读取" : " · 普通楼层页未读完"}
         {post.total_pages ? `（页面声明共 ${post.total_pages} 页）` : ""}
         {floors ? ` · ${floors}` : ""} · 读取于 {formatTime(post.retrieved_at)}
       </span>
+      {post.pagination_error_message &&
+        !(post.read_error_message ?? "").includes(post.pagination_error_message) && (
+          <span style={{ color: "var(--color-status-wait)", fontSize: "var(--text-xs)" }}>
+            {post.pagination_error_message}
+          </span>
+        )}
       {post.read_status === "partial" && post.read_error_message && (
         <span style={{ color: "var(--color-status-wait)", fontSize: "var(--text-xs)" }}>{post.read_error_message}</span>
       )}

@@ -28,38 +28,21 @@ from bridges.tieba.browser_capture import (
     search_structured,
     wait_for_payloads,
 )
-from bridges.tieba.browser_dom import SEARCH_DOM, THREAD_DOM, THREAD_FLOORS
+from bridges.tieba.browser_dom import SEARCH_DOM
 from bridges.tieba.browser_requests import BrowserRequestTracker
 from bridges.tieba.browser_runtime import account_profile_is_fenced
-from bridges.tieba.browser_scroll import (
-    expand_thread_nested_replies,
-    scroll_thread_replies,
+from bridges.tieba.browser_structured import StructuredResponseError
+from bridges.tieba.browser_thread_read import (
+    read_thread,
 )
-from bridges.tieba.browser_structured import (
-    StructuredResponseError,
-    parse_thread_payload,
+from bridges.tieba.browser_thread_read import (
+    wait_for_thread_page_or_auth as wait_for_thread_page_or_auth,
 )
 from bridges.tieba.lexicon import TARGET_FORUM_URL
 
 
 def emit(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False), flush=True)
-
-
-def wait_for_thread_page_or_auth(
-    page: Page,
-    closed: threading.Event,
-    deadline: float | None = None,
-) -> str | None:
-    """帖子主体和认证标记任一出现后再分类，避免登录页被误报为超时。"""
-    page.wait_for_function(
-        """() => document.querySelector(
-            '.pb-content-wrap, .login-guide-placeholder, #captcha, .pass-sms-wrap'
-        ) ||
-        /百度安全验证/.test(document.title)""",
-        timeout=request_timeout_ms(closed, deadline, 9000),
-    )
-    return auth_required(page)
 
 
 def _search_tab(
@@ -139,94 +122,6 @@ def search(
     return list(found.values())
 
 
-def _read_dom(
-    page: Page,
-    scroll_rounds_limit: int,
-    closed: threading.Event,
-    deadline: float | None,
-) -> dict[str, object]:
-    limit = max(1, min(int(scroll_rounds_limit or 1), 8))
-    scroll_rounds = scroll_thread_replies(page, limit, closed, deadline)
-    expand_thread_nested_replies(page, closed, deadline)
-    result = page.evaluate(THREAD_DOM)
-    if not isinstance(result, dict):
-        raise StructuredResponseError("帖子页面未返回可识别的 DOM 内容")
-    forum = str(result.get("forum") or "").strip()
-    title = str(result.get("title") or "").strip()
-    replies = result.get("replies")
-    original = str(result.get("original") or "").strip()
-    if not forum or not (title or original or (isinstance(replies, list) and replies)):
-        raise StructuredResponseError("帖子页面 DOM 缺少吧名、标题或正文")
-    return {
-        **{str(key): value for key, value in result.items()},
-        "scroll_rounds": scroll_rounds,
-        "scroll_rounds_limit": limit,
-        "pages_read": 1,
-        "pages_limit": 1,
-        "response_valid": True,
-        "source": "dom",
-    }
-
-
-def read_thread(
-    page: Page,
-    url: str,
-    scroll_rounds_limit: int,
-    closed: threading.Event,
-    auth: AuthSession,
-) -> dict[str, object]:
-    parsed = urlparse(url)
-    if parsed.hostname != "tieba.baidu.com" or not parsed.path.startswith("/p/"):
-        raise ValueError("只允许读取贴吧帖子")
-    deadline = auth.deadline
-    capture = StructuredCapture(page, "/c/f/pb/page_pc").start()
-    try:
-        page.goto(
-            url,
-            wait_until="domcontentloaded",
-            timeout=request_timeout_ms(closed, deadline, 16000),
-        )
-        reason = wait_for_thread_page_or_auth(page, closed, deadline)
-        if reason:
-            capture.stop()
-            page = auth.recover(page, reason=reason, target_url=url)
-            capture = StructuredCapture(page, "/c/f/pb/page_pc").start()
-            deadline = auth.deadline
-            page.goto(
-                url,
-                wait_until="domcontentloaded",
-                timeout=request_timeout_ms(closed, deadline, 16000),
-            )
-            if wait_for_thread_page_or_auth(page, closed, deadline):
-                raise AuthWaitError(COLLECTION_RESTRICTED, reason="collection")
-        page.wait_for_selector(
-            ".pb-content-wrap", timeout=request_timeout_ms(closed, deadline, 9000)
-        )
-        wait_for_payloads(capture.payloads, page, closed, deadline, 2500)
-    finally:
-        capture.stop()
-    floors = page.evaluate(THREAD_FLOORS)
-    if not isinstance(floors, dict):
-        floors = {}
-    failure: StructuredResponseError | None = None
-    for payload in capture.payloads:
-        try:
-            return parse_thread_payload(
-                payload,
-                url=url,
-                floors={str(key): int(value) for key, value in floors.items()},
-            )
-        except (StructuredResponseError, TypeError, ValueError) as error:
-            if isinstance(error, StructuredResponseError):
-                failure = failure or error
-            else:
-                failure = failure or StructuredResponseError("帖子响应字段类型不符")
-    try:
-        return _read_dom(page, scroll_rounds_limit, closed, deadline)
-    except StructuredResponseError as error:
-        raise failure or error from error
-
-
 def _run_action(
     context: BrowserContext,
     page: Page,
@@ -252,12 +147,16 @@ def _run_action(
     elif action == "read":
         raw_scroll_limit = payload.get("scroll_rounds_limit")
         scroll_limit = int(str(raw_scroll_limit or 8))
+        raw_pages_limit = payload.get("pages_limit")
+        pages_limit = int(str(raw_pages_limit or 2))
         result = read_thread(
             page,
             str(payload["url"]),
             scroll_limit,
             closed,
             auth,
+            pages_limit=pages_limit,
+            progress=lambda value: emit({"progress": value}),
         )
     else:
         raise ValueError("不支持的动作")

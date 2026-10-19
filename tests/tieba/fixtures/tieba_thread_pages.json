@@ -1,0 +1,219 @@
+{
+  "thread_page_1": {
+    "no": 0,
+    "error": "success",
+    "data": {
+      "forum": {
+        "id": 195707,
+        "name": "华东交通大学"
+      },
+      "user_list": [
+        {
+          "id": 910000000001,
+          "name": "example-user-a",
+          "name_show": "示例发言人甲"
+        },
+        {
+          "id": 910000000002,
+          "name": "example-user-b",
+          "name_show": "示例发言人乙"
+        },
+        {
+          "id": 910000000003,
+          "name": "example-user-c",
+          "name_show": "示例发言人丙"
+        }
+      ],
+      "thread": {
+        "id": 10897336006,
+        "title": "宿舍热水和查寝情况",
+        "reply_num": 242,
+        "author": {
+          "id": 910000000001,
+          "name": "example-user-a",
+          "name_show": "示例发言人甲"
+        }
+      },
+      "first_floor": {
+        "id": 153700000001,
+        "floor": 1,
+        "time": 1785100000,
+        "author_id": 910000000001,
+        "title": "宿舍热水和查寝情况",
+        "content": [
+          {
+            "type": 0,
+            "text": "想问问北区宿舍的热水和周末查寝情况。"
+          }
+        ]
+      },
+      "post_list": [
+        {
+          "id": 153764903877,
+          "floor": 3,
+          "time": 1785109218,
+          "author_id": 910000000002,
+          "content": [
+            {
+              "type": 0,
+              "text": "北区宿舍晚上热水有时不稳定，周末偶尔查寝。"
+            }
+          ],
+          "sub_post_list": []
+        },
+        {
+          "id": 153765210147,
+          "floor": 4,
+          "time": 1785116860,
+          "author_id": 910000000003,
+          "content": [
+            {
+              "type": 0,
+              "text": "南区有独立卫生间，但周末查寝比较严格。"
+            }
+          ],
+          "sub_post_list": []
+        },
+        {
+          "id": 153765230585,
+          "floor": 5,
+          "time": 1785117299,
+          "author_id": 910000000002,
+          "content": [
+            {
+              "type": 0,
+              "text": "热水问题暑假刚修过，具体还要看楼栋。"
+            }
+          ],
+          "sub_post_list": {
+            "pid": 153765230585,
+            "sub_post_list": [
+              {
+                "id": 153765230586,
+                "floor": 0,
+                "time": 1785117301,
+                "author_id": 910000000003,
+                "content": [
+                  {
+                    "type": 0,
+                    "text": "补充一下，北区高层晚上水压也会低一些。"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "page": {
+        "has_more": 1,
+        "has_prev": 0,
+        "current_page": 1,
+        "total_page": 10
+      },
+      "error_code": 0,
+      "error_msg": ""
+    }
+  },
+  "thread_page_2": {
+    "no": 0,
+    "error": "success",
+    "data": {
+      "forum": {
+        "id": 195707,
+        "name": "华东交通大学"
+      },
+      "user_list": [
+        {
+          "id": 910000000001,
+          "name": "example-user-a",
+          "name_show": "示例发言人甲"
+        },
+        {
+          "id": 910000000002,
+          "name": "example-user-b",
+          "name_show": "示例发言人乙"
+        },
+        {
+          "id": 910000000003,
+          "name": "example-user-c",
+          "name_show": "示例发言人丙"
+        }
+      ],
+      "thread": {
+        "id": 10897336006,
+        "title": "宿舍热水和查寝情况",
+        "reply_num": 242,
+        "author": {
+          "id": 910000000001,
+          "name": "example-user-a",
+          "name_show": "示例发言人甲"
+        }
+      },
+      "post_list": [
+        {
+          "id": 153766936409,
+          "floor": 17,
+          "time": 1785151238,
+          "author_id": 910000000002,
+          "content": [
+            {
+              "type": 0,
+              "text": "第二页补充：北区宿舍晚上十一点后热水会停。"
+            }
+          ],
+          "sub_post_list": []
+        },
+        {
+          "id": 153767040106,
+          "floor": 18,
+          "time": 1785153427,
+          "author_id": 910000000003,
+          "content": [
+            {
+              "type": 0,
+              "text": "周末查寝一般提前在群里通知。"
+            }
+          ],
+          "sub_post_list": {
+            "pid": 153767040106,
+            "sub_post_list": [
+              {
+                "id": 153767040107,
+                "floor": 0,
+                "time": 1785153429,
+                "author_id": 910000000002,
+                "content": [
+                  {
+                    "type": 0,
+                    "text": "补充：检查主要看违规电器。"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 153767062764,
+          "floor": 19,
+          "time": 1785153893,
+          "author_id": 910000000002,
+          "content": [
+            {
+              "type": 0,
+              "text": "南区热水白天也会停一段时间。"
+            }
+          ],
+          "sub_post_list": []
+        }
+      ],
+      "page": {
+        "has_more": 1,
+        "has_prev": 1,
+        "current_page": 2,
+        "total_page": 10
+      },
+      "error_code": 0,
+      "error_msg": ""
+    }
+  }
+}

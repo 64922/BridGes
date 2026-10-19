@@ -150,10 +150,14 @@ def _read_scope_consistent(
         if (
             item.pages_read != source.pages_read
             or item.pages_limit != source.pages_limit
+            or item.pages_complete != source.pages_complete
+            or item.page_evidence != source.page_evidence
             or item.scroll_rounds != source.scroll_rounds
             or item.scroll_rounds_limit != source.scroll_rounds_limit
             or item.total_pages != source.total_pages
             or item.read_status != source.read_status
+            or item.pagination_error_code != source.pagination_error_code
+            or item.pagination_error_message != source.pagination_error_message
             or item.retrieved_at != source.retrieved_at
             or item.title != source.title
             or item.thread_id != source.thread_id

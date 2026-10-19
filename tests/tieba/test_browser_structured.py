@@ -108,13 +108,29 @@ def test_empty_search_payload_is_a_valid_empty_result(payloads: dict[str, object
     assert parse_search_payload(payload, discovery_type="thread") == []
 
 
+def test_later_pages_may_omit_the_repeated_first_floor(
+    payloads: dict[str, object],
+) -> None:
+    payload = json.loads(json.dumps(payloads["thread"]))
+    payload.pop("first_floor")
+
+    result = parse_thread_payload(
+        payload,
+        url="https://tieba.baidu.com/p/9100000001?pn=2",
+    )
+
+    assert result["title"] == payload["thread"]["title"]
+    assert result["original"] == ""
+    assert result["author"] is None
+    assert result["original_floor"] is None
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
         lambda value: value.pop("forum"),
-        lambda value: value.pop("first_floor"),
         lambda value: value.pop("post_list"),
-        lambda value: value.update({"error_msg": "帖子不存在"}),
+        lambda value: value.update({"error_msg": "thread not found"}),
         lambda value: value.update({"error_code": 336}),
     ],
 )

@@ -6,17 +6,14 @@ from collections.abc import Iterator
 
 import pytest
 from playwright.sync_api import Page, Route, sync_playwright
+from playwright.sync_api import TimeoutError as BrowserTimeoutError
 
+from bridges.tieba.browser_dom import SEARCH_DOM, THREAD_DOM
 from bridges.tieba.browser_scroll import (
     expand_thread_nested_replies,
     scroll_thread_replies,
 )
-from bridges.tieba.browser_worker import (
-    SEARCH_DOM,
-    THREAD_DOM,
-    BrowserTimeoutError,
-    search,
-)
+from bridges.tieba.browser_worker import search
 
 
 @pytest.fixture

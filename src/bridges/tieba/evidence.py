@@ -323,6 +323,8 @@ def confirmed_post(hit: TiebaSearchHit, result: TiebaReadResult) -> TiebaPostPro
         read_status=result.status,
         pages_read=result.pages_read,
         pages_limit=result.pages_limit,
+        pages_complete=result.pages_complete,
+        page_evidence=list(result.page_evidence),
         scroll_rounds=result.scroll_rounds,
         scroll_rounds_limit=result.scroll_rounds_limit,
         total_pages=result.total_pages,
@@ -333,6 +335,8 @@ def confirmed_post(hit: TiebaSearchHit, result: TiebaReadResult) -> TiebaPostPro
         replies=list(result.replies),
         read_error_code=result.error_code,
         read_error_message=result.error_message,
+        pagination_error_code=result.pagination_error_code,
+        pagination_error_message=result.pagination_error_message,
         retrieved_at=result.retrieved_at,
     )
 

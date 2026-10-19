@@ -13,7 +13,9 @@ from urllib.parse import urlparse
 
 from bridges.tieba.lexicon import TARGET_FORUM_NAME
 
-BROWSER_PROTOCOL_VERSION = "tieba-browser-protocol-v1"
+BROWSER_PROTOCOL_VERSION = "tieba-browser-protocol-v2"
+
+MAX_PAGE_REPLIES = 120
 
 _CHINA_TZ = timezone(timedelta(hours=8))
 
@@ -73,9 +75,8 @@ def parse_thread_payload(
     if not forum_name:
         raise StructuredResponseError("帖子响应缺少吧名")
     thread = _mapping(root.get("thread"))
-    first_floor = root.get("first_floor")
-    if not isinstance(first_floor, dict):
-        raise StructuredResponseError("帖子响应缺少主帖 first_floor")
+    raw_first_floor = root.get("first_floor")
+    first_floor = raw_first_floor if isinstance(raw_first_floor, dict) else {}
     posts = root.get("post_list")
     if not isinstance(posts, list):
         raise StructuredResponseError("帖子响应缺少 post_list")
@@ -141,9 +142,13 @@ def parse_thread_payload(
         "loaded_reply_count": loaded_reply_count,
         "total_replies": total_replies,
         "total_pages": total_pages,
+        "current_page": _positive_int(page.get("current_page")),
+        "has_more": _flag(page.get("has_more")),
+        "top_level_count": loaded_reply_count,
+        "page_reply_count": len(replies),
         "pages_read": 1,
         "pages_limit": 1,
-        "replies": replies[:120],
+        "replies": replies[:MAX_PAGE_REPLIES],
         "response_valid": True,
         "source": "structured",
         "protocol_version": BROWSER_PROTOCOL_VERSION,
@@ -294,8 +299,19 @@ def _positive_int(value: Any) -> int | None:
     return number if number is not None and number > 0 else None
 
 
+def _flag(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if value in (0, "0"):
+        return False
+    if value in (1, "1"):
+        return True
+    return None
+
+
 __all__ = [
     "BROWSER_PROTOCOL_VERSION",
+    "MAX_PAGE_REPLIES",
     "StructuredResponseError",
     "TARGET_FORUM_NAME",
     "parse_search_payload",
