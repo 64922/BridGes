@@ -38,13 +38,19 @@ def browser_terms(query: str) -> str:
 
 
 def read_projection(url: str, value: dict[str, Any]) -> TiebaReadResult:
+    retrieved_at = datetime.now(UTC)
+    if value.get("response_valid") is False:
+        return _unrecognized_read(url, value, retrieved_at)
     replies: list[TiebaReply] = []
     original = str(value.get("original", "")).strip()
     if original:
         replies.append(
             TiebaReply(
                 content=original[:2000],
+                floor=_optional_int(value.get("original_floor")),
+                reply_id=_optional_str(value.get("origin_reply_id")),
                 posted_at=value.get("posted_at") or None,
+                author=_optional_str(value.get("author")),
                 is_original_poster=True,
             )
         )
@@ -52,46 +58,121 @@ def read_projection(url: str, value: dict[str, Any]) -> TiebaReadResult:
         replies.append(
             TiebaReply(
                 content=str(item.get("content") or "")[:600],
-                floor=item.get("floor"),
-                reply_id=item.get("reply_id"),
-                parent_reply_id=item.get("parent_reply_id"),
+                floor=_optional_int(item.get("floor")),
+                reply_id=_optional_str(item.get("reply_id")),
+                parent_reply_id=_optional_str(item.get("parent_reply_id")),
                 posted_at=item.get("posted_at"),
+                author=_optional_str(item.get("author")),
                 is_original_poster=False,
             )
         )
     replies = [reply for reply in replies if reply.content.strip()]
-    total_replies = value.get("total_replies")
+    total_replies = _optional_count(value.get("total_replies"))
     loaded_reply_count = int(value.get("loaded_reply_count") or sum(
         not item.get("nested", False) for item in value.get("replies", [])
     ))
     complete = total_replies == 0 and loaded_reply_count == 0
+    pages_read = int(value.get("pages_read") or 1)
+    pages_limit = int(value.get("pages_limit") or 1)
+    total_pages = _optional_int(value.get("total_pages"))
     scroll_rounds = int(value.get("scroll_rounds") or 0)
     scroll_rounds_limit = int(value.get("scroll_rounds_limit") or 0)
+    has_more_pages = total_pages is not None and pages_read < total_pages
+    partial = not complete or has_more_pages
     return TiebaReadResult(
         url=canonical_url(url),
         thread_id=thread_id_of(url),
-        status=ReadStatus.READ if complete else ReadStatus.PARTIAL,
+        status=ReadStatus.PARTIAL if partial else ReadStatus.READ,
         forum_name=value.get("forum"),
         title=value.get("title"),
         replies=replies,
-        pages_read=1,
-        pages_limit=1,
+        pages_read=pages_read,
+        pages_limit=pages_limit,
         scroll_rounds=scroll_rounds,
         scroll_rounds_limit=scroll_rounds_limit,
+        total_pages=total_pages,
         total_replies=total_replies,
         floor_min=min((reply.floor for reply in replies if reply.floor is not None), default=None),
         floor_max=max((reply.floor for reply in replies if reply.floor is not None), default=None),
-        retrieved_at=datetime.now(UTC),
+        retrieved_at=retrieved_at,
         excluded_wait_ms=int(value.get("excluded_wait_ms") or 0),
-        error_code=None if complete else "tieba_browser_partial_replies",
-        error_message=None if complete else (
-            f"已读取 {loaded_reply_count} 条普通楼层，"
-            f"页面声明 {total_replies if total_replies is not None else '未知'} 条；"
-            f"向下加载 {scroll_rounds}/{scroll_rounds_limit} 轮；"
-            "页面路径不提供楼中楼全量状态，未穷尽全部回复、楼中楼或图片内容，"
-            "不作未读取内容的推断。"
+        error_code=None if not partial else "tieba_browser_partial_replies",
+        error_message=None if not partial else _partial_message(
+            value,
+            loaded_reply_count=loaded_reply_count,
+            total_replies=total_replies,
+            pages_read=pages_read,
+            total_pages=total_pages,
+            scroll_rounds=scroll_rounds,
+            scroll_rounds_limit=scroll_rounds_limit,
         ),
     )
+
+
+def _partial_message(
+    value: dict[str, Any],
+    *,
+    loaded_reply_count: int,
+    total_replies: int | None,
+    pages_read: int,
+    total_pages: int | None,
+    scroll_rounds: int,
+    scroll_rounds_limit: int,
+) -> str:
+    if value.get("source") == "structured":
+        declared = total_pages if total_pages is not None else "未知"
+        pages = (
+            f"已读取第 {pages_read} 页（页面声明共 {declared} 页）"
+            if total_pages is not None and pages_read < total_pages
+            else f"已读取 {pages_read}/{pages_read} 页"
+        )
+        return (
+            f"结构化响应记录 {loaded_reply_count} 条普通楼层，"
+            f"页面声明 {total_replies if total_replies is not None else '未知'} 条；"
+            f"{pages}；未读取的后续页、楼中楼或图片内容不作推断。"
+        )
+    return (
+        f"已读取 {loaded_reply_count} 条普通楼层，"
+        f"页面声明 {total_replies if total_replies is not None else '未知'} 条；"
+        f"向下加载 {scroll_rounds}/{scroll_rounds_limit} 轮；"
+        "页面路径不提供楼中楼全量状态，未穷尽全部回复、楼中楼或图片内容，"
+        "不作未读取内容的推断。"
+    )
+
+
+def _unrecognized_read(
+    url: str, value: dict[str, Any], retrieved_at: datetime
+) -> TiebaReadResult:
+    return TiebaReadResult(
+        url=canonical_url(url),
+        thread_id=thread_id_of(url),
+        status=ReadStatus.UNRECOGNIZED,
+        forum_name=value.get("forum"),
+        title=value.get("title"),
+        error_code="tieba_read_unrecognized",
+        error_message="页面响应结构校验失败，未取得可核实的帖子内容。",
+        retrieved_at=retrieved_at,
+    )
+
+
+def _optional_int(value: Any) -> int | None:
+    number = _optional_count(value)
+    return number if number is not None and number > 0 else None
+
+
+def _optional_count(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
+
+
+def _optional_str(value: Any) -> str | None:
+    text = str(value).strip() if value is not None else ""
+    return text or None
 
 
 class BrowserTiebaSearch:
@@ -316,22 +397,27 @@ class BrowserTiebaThreadReader:
             return TiebaReadResult(
                 url=canonical_url(url),
                 thread_id=thread_id_of(url),
-                status=(
-                    ReadStatus.CANCELLED
-                    if error.code == "tieba_browser_cancelled"
-                    else ReadStatus.ERROR
-                    if error.code
-                    in {
-                        "tieba_browser_work_time_exhausted",
-                        "tieba_browser_request_queue_full",
-                        "tieba_browser_task_changed",
-                        "tieba_browser_run_invalidated",
-                        "tieba_browser_request_guard_failed",
-                    }
-                    else ReadStatus.ACCESS_RESTRICTED
-                ),
+                status=_read_error_status(error.code),
                 error_code=error.code,
                 error_message=str(error),
                 excluded_wait_ms=error.excluded_wait_ms,
                 retrieved_at=datetime.now(UTC),
             )
+
+
+def _read_error_status(code: str) -> ReadStatus:
+    if code == "tieba_browser_cancelled":
+        return ReadStatus.CANCELLED
+    if code == "tieba_browser_response_invalid":
+        return ReadStatus.UNRECOGNIZED
+    if code == "tieba_browser_timeout":
+        return ReadStatus.TIMEOUT
+    if code in {
+        "tieba_browser_auth_required",
+        "tieba_browser_auth_interrupted",
+        "tieba_browser_auth_unverified",
+        "tieba_browser_auth_status_unknown",
+        "tieba_browser_collection_restricted",
+    }:
+        return ReadStatus.ACCESS_RESTRICTED
+    return ReadStatus.ERROR

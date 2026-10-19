@@ -32,6 +32,7 @@ def sources(posts: list[TiebaPostProjection]) -> list[dict[str, Any]]:
                 "parent_reply_id": reply.parent_reply_id,
                 "floor": reply.floor,
                 "posted_at": reply.posted_at,
+                "author": reply.author,
                 "temporal_scope": reply.temporal_scope.value,
                 "identity_state": "upstream_id" if reply.reply_id else "unknown",
                 "content": content[:800],
@@ -81,6 +82,7 @@ def build_verification_payload(
                     "id": citation_id,
                     "content": sources[citation_id]["content"][:400],
                     "time": sources[citation_id].get("posted_at"),
+                    "author": sources[citation_id].get("author"),
                     "scope": sources[citation_id].get("temporal_scope"),
                     "identity_state": sources[citation_id].get("identity_state"),
                     "duplicate_text_group": sources[citation_id].get(
@@ -104,6 +106,7 @@ def build_verification_payload(
                     "id": citation_id,
                     "content": sources[citation_id]["content"][:400],
                     "time": sources[citation_id].get("posted_at"),
+                    "author": sources[citation_id].get("author"),
                     "scope": sources[citation_id].get("temporal_scope"),
                     "identity_state": sources[citation_id].get("identity_state"),
                     "duplicate_text_group": sources[citation_id].get(

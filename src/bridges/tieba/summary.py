@@ -353,6 +353,7 @@ class TiebaSummaryGenerator:
                 parent_reply_id=source_by_id[citation_id].get("parent_reply_id"),
                 floor=source_by_id[citation_id].get("floor"),
                 posted_at=source_by_id[citation_id].get("posted_at"),
+                author=source_by_id[citation_id].get("author"),
                 quote=str(source_by_id[citation_id]["content"])[:240],
             )
             for citation_id in citation_ids

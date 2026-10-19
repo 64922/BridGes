@@ -65697,6 +65697,18 @@
             "title": "Posted At",
             "description": "页面上的发帖时间原文。"
           },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author",
+            "description": "页面显示的发言身份；缺失时为 None。"
+          },
           "temporal_scope": {
             "$ref": "#/components/schemas/TiebaTemporalScope",
             "description": "按实际发言时间确定的近期、历史或未知分类。",
@@ -66009,6 +66021,17 @@
             "title": "Completed At",
             "description": "本轮收敛时间。"
           },
+          "run_metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TiebaRunMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本轮运行记录。"
+          },
           "pending": {
             "anyOf": [
               {
@@ -66045,6 +66068,136 @@
         ],
         "title": "TiebaResearchStatus",
         "description": "一轮贴吧信息搜集的终态。\n\n``SUCCESS`` 只表示真的读到了确认属于目标贴吧的帖子；只拿到候选帖链时\n是 ``LINKS_ONLY``（如实标注归属未确认、未取得回复内容），检索完全没有\n可用候选才是 ``EMPTY``。"
+      },
+      "TiebaRunMetadata": {
+        "properties": {
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "default": "tieba-run-metadata-v1"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "本轮运行的稳定标识。"
+          },
+          "recipe_version": {
+            "type": "string",
+            "title": "Recipe Version",
+            "description": "执行的贴吧配方版本。"
+          },
+          "component_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Component Versions",
+            "description": "本轮实际使用的协议与节点能力版本。"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At",
+            "description": "本轮开始时间。"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "投影完成时间。"
+          },
+          "elapsed_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Ms",
+            "description": "本轮实际耗时（毫秒）。"
+          },
+          "request_count": {
+            "type": "integer",
+            "title": "Request Count",
+            "description": "外部请求总数。",
+            "default": 0
+          },
+          "search_request_count": {
+            "type": "integer",
+            "title": "Search Request Count",
+            "description": "贴吧检索请求数。",
+            "default": 0
+          },
+          "read_request_count": {
+            "type": "integer",
+            "title": "Read Request Count",
+            "description": "帖子读取请求数。",
+            "default": 0
+          },
+          "official_request_count": {
+            "type": "integer",
+            "title": "Official Request Count",
+            "description": "学校官方页面请求数。",
+            "default": 0
+          },
+          "model_call_count": {
+            "type": "integer",
+            "title": "Model Call Count",
+            "description": "实际发生的模型调用数。",
+            "default": 0
+          },
+          "confirmed_post_count": {
+            "type": "integer",
+            "title": "Confirmed Post Count",
+            "description": "确认属于目标吧的帖子数。",
+            "default": 0
+          },
+          "read_reply_count": {
+            "type": "integer",
+            "title": "Read Reply Count",
+            "description": "实际记录的楼层数（含楼中楼）。",
+            "default": 0
+          },
+          "source_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Urls",
+            "description": "可核对的帖子来源链接。"
+          },
+          "unread_scope": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unread Scope",
+            "description": "实际未读取的页、楼层或内容范围。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "recipe_version"
+        ],
+        "title": "TiebaRunMetadata",
+        "description": "一轮贴吧采集的可核对运行记录（不含会话秘密或原始响应）。"
       },
       "TiebaSummaryCitation": {
         "properties": {
@@ -66110,6 +66263,17 @@
               }
             ],
             "title": "Posted At"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
           },
           "quote": {
             "type": "string",

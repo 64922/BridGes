@@ -6,6 +6,7 @@ import type {
   TiebaOfficialCheck,
   TiebaPostProjection,
   TiebaRejectedCandidate,
+  TiebaRunMetadata,
   TiebaSummaryCitation,
 } from "@/lib/api";
 
@@ -43,11 +44,71 @@ export function formatTime(value: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? "时间未知" : date.toLocaleString("zh-CN");
 }
 
-/** 引用在帖子里的定位：楼层与发言时间；缺失处如实标注。 */
+/** 引用在帖子里的定位：发言者、楼层与发言时间；缺失处如实标注。 */
 export function citationLocation(citation: TiebaSummaryCitation): string {
-  const parts = [citation.floor != null ? `第 ${citation.floor} 楼` : "楼层未知"];
+  const parts = [
+    citation.author ?? "发言者未知",
+    citation.floor != null ? `第 ${citation.floor} 楼` : "楼层未知",
+  ];
   if (citation.posted_at) parts.push(citation.posted_at);
   return parts.join(" · ");
+}
+
+/** 运行记录：真实请求/模型调用计数、版本与未读范围。 */
+export function RunMetadataRow({ metadata }: { metadata: TiebaRunMetadata }) {
+  const elapsed =
+    metadata.elapsed_ms == null
+      ? "耗时未知"
+      : metadata.elapsed_ms < 1000
+        ? `${metadata.elapsed_ms} 毫秒`
+        : `${(metadata.elapsed_ms / 1000).toFixed(1)} 秒`;
+  const versions = Object.entries(metadata.component_versions ?? {});
+  return (
+    <details data-testid="tieba-run-metadata">
+      <summary style={{ cursor: "pointer", minHeight: "var(--target-size)" }}>
+        运行记录（请求、模型调用与未读范围）
+      </summary>
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: "var(--space-5)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--space-1)",
+          fontSize: "var(--text-xs)",
+        }}
+      >
+        <li>
+          运行 {metadata.run_id} · 配方 {metadata.recipe_version}
+        </li>
+        <li>
+          开始 {formatTime(metadata.started_at)} · 完成 {formatTime(metadata.completed_at)} ·{" "}
+          {elapsed}
+        </li>
+        <li>
+          外部请求 {metadata.request_count} 次：检索 {metadata.search_request_count}、读取{" "}
+          {metadata.read_request_count}、官方 {metadata.official_request_count}
+        </li>
+        <li>
+          模型调用 {metadata.model_call_count} 次 · 确认帖子 {metadata.confirmed_post_count} 个 ·
+          记录楼层 {metadata.read_reply_count} 条
+        </li>
+        {versions.length > 0 && (
+          <li>组件版本：{versions.map(([name, version]) => `${name} ${version}`).join(" · ")}</li>
+        )}
+        {(metadata.unread_scope ?? []).length > 0 && (
+          <li>
+            未读范围：
+            <ul style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
+              {metadata.unread_scope?.map((note, index) => (
+                <li key={`unread-${index}`}>{note}</li>
+              ))}
+            </ul>
+          </li>
+        )}
+      </ul>
+    </details>
+  );
 }
 
 /** 一个帖子本轮真实读到的范围：页数、楼层、时间与读取状态。 */
@@ -137,7 +198,7 @@ export function PostRow({ post }: { post: TiebaPostProjection }) {
         <>
         <ul style={{ margin: 0, paddingLeft: "var(--space-5)" }}>
           {excerpts.map((reply, index) => <li key={`excerpt-${index}`}>
-            {reply.is_original_poster ? "楼主" : "回复"}{reply.posted_at ? `（${reply.posted_at}）` : ""}：
+            {reply.author ?? (reply.is_original_poster ? "楼主" : "回复")}{reply.posted_at ? `（${reply.posted_at}）` : ""}：
             {reply.content.slice(0, 160)}{reply.content.length > 160 ? "…" : ""}
           </li>)}
         </ul>
@@ -157,6 +218,7 @@ export function PostRow({ post }: { post: TiebaPostProjection }) {
           {replies.map((reply, index) => (
             <li key={`${reply.floor ?? index}-${index}`}>
               <span style={{ color: "var(--color-text-tertiary)" }}>
+                {reply.author ? `${reply.author} · ` : ""}
                 {reply.floor != null ? `第 ${reply.floor} 楼` : "楼层未知"}
                 {reply.is_original_poster ? "（楼主）" : ""}
                 {reply.posted_at ? ` · ${reply.posted_at}` : " · 时间未给出"}：

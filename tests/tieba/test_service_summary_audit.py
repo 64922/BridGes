@@ -147,6 +147,12 @@ def test_service_persists_every_attempt_only_for_current_identity(
         else:
             assert len(locks) == gateway.calls == 3
             assert message.tieba_research["summary"] == "一条宿舍经历提到有空调。"
+            metadata = message.tieba_research["run_metadata"]
+            assert metadata["run_id"] == RUN
+            assert metadata["model_call_count"] == 3
+            assert metadata["confirmed_post_count"] == 1
+            assert metadata["source_urls"] == ["https://tieba.baidu.com/p/100"]
+            assert metadata["component_versions"]["browser_protocol"]
             assert all(
                 lock.call_contract.recipe_version == TIEBA_RECIPE_VERSION for lock in locks
             )

@@ -1,4 +1,4 @@
-"""隔离的贴吧浏览器采集进程：搜索主题与回复，读取有限范围的帖子内容。"""
+﻿"""隔离的贴吧浏览器采集进程：搜索主题与回复，读取有限范围的帖子内容。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import json
 import queue
 import sys
 import threading
-import time
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
@@ -24,9 +23,22 @@ from bridges.tieba.browser_auth import (
     auth_required,
     request_timeout_ms,
 )
-from bridges.tieba.browser_dom import SEARCH_DOM, THREAD_DOM
+from bridges.tieba.browser_capture import (
+    StructuredCapture,
+    search_structured,
+    wait_for_payloads,
+)
+from bridges.tieba.browser_dom import SEARCH_DOM, THREAD_DOM, THREAD_FLOORS
 from bridges.tieba.browser_requests import BrowserRequestTracker
 from bridges.tieba.browser_runtime import account_profile_is_fenced
+from bridges.tieba.browser_scroll import (
+    expand_thread_nested_replies,
+    scroll_thread_replies,
+)
+from bridges.tieba.browser_structured import (
+    StructuredResponseError,
+    parse_thread_payload,
+)
 from bridges.tieba.lexicon import TARGET_FORUM_URL
 
 
@@ -50,20 +62,17 @@ def wait_for_thread_page_or_auth(
     return auth_required(page)
 
 
-def search(
+def _search_tab(
     page: Page,
-    terms: str,
+    target: str,
+    tab: str,
     closed: threading.Event,
     deadline: float | None,
     auth: AuthSession,
 ) -> list[dict[str, object]]:
-    parsed = urlparse(TARGET_FORUM_URL)
-    base = f"{parsed.scheme}://{parsed.netloc}/f/search/res?"
-    found: dict[str, dict[str, object]] = {}
-    for tab in ("1", "2"):
-        params = {"kw": "华东交通大学", "qw": terms[:80], "ie": "utf-8", "tab": tab}
-        target = base + urlencode(params)
-        current_deadline = auth.deadline if auth.deadline is not None else deadline
+    current_deadline = auth.deadline if auth.deadline is not None else deadline
+    capture = StructuredCapture(page, "/mo/q/search/thread").start()
+    try:
         page.goto(
             target,
             wait_until="domcontentloaded",
@@ -79,7 +88,9 @@ def search(
         )
         reason = auth_required(page)
         if reason:
+            capture.stop()
             page = auth.recover(page, reason=reason, target_url=target)
+            capture = StructuredCapture(page, "/mo/q/search/thread").start()
             current_deadline = auth.deadline if auth.deadline is not None else deadline
             page.goto(
                 target,
@@ -91,103 +102,70 @@ def search(
             )
             if auth_required(page):
                 raise AuthWaitError(COLLECTION_RESTRICTED, reason="collection")
-        for hit in page.evaluate(SEARCH_DOM, tab):
+        wait_for_payloads(capture.payloads, page, closed, current_deadline, 1500)
+    finally:
+        capture.stop()
+    failure: StructuredResponseError | None = None
+    try:
+        hits = search_structured(capture, tab)
+    except StructuredResponseError as error:
+        hits = None
+        failure = error
+    if hits is not None:
+        return hits
+    dom_hits = page.evaluate(SEARCH_DOM, tab)
+    if dom_hits:
+        return [dict(hit) for hit in dom_hits]
+    if failure is not None:
+        raise failure
+    return []
+
+
+def search(
+    page: Page,
+    terms: str,
+    closed: threading.Event,
+    deadline: float | None,
+    auth: AuthSession,
+) -> list[dict[str, object]]:
+    parsed = urlparse(TARGET_FORUM_URL)
+    base = f"{parsed.scheme}://{parsed.netloc}/f/search/res?"
+    found: dict[str, dict[str, object]] = {}
+    for tab in ("1", "2"):
+        params = {"kw": "华东交通大学", "qw": terms[:80], "ie": "utf-8", "tab": tab}
+        target = base + urlencode(params)
+        for hit in _search_tab(page, target, tab, closed, deadline, auth):
             found.setdefault(str(hit["url"]), hit)
     return list(found.values())
 
 
-def scroll_thread_replies(
+def _read_dom(
     page: Page,
-    limit: int,
+    scroll_rounds_limit: int,
     closed: threading.Event,
-    deadline: float | None = None,
-) -> int:
-    container = page.locator(".pc-pb-box").first
-    has_container = container.count() > 0
-    prior_count = -1
-    stable_rounds = 0
-    rounds = 0
-    for _ in range(limit):
-        if closed.is_set() or (deadline is not None and time.monotonic() >= deadline):
-            break
-        rounds += 1
-        count = page.locator(".pb-comment-item, .pb-lzl-item").count()
-        if has_container:
-            before = container.evaluate(
-                "element => ({top: element.scrollTop, height: element.scrollHeight})"
-            )
-            container.hover()
-        else:
-            before = page.evaluate(
-                "() => ({top: window.scrollY, height: document.documentElement.scrollHeight})"
-            )
-        page.mouse.wheel(0, 800)
-        wait_ms = 350
-        if deadline is not None:
-            wait_ms = min(wait_ms, max(0, int((deadline - time.monotonic()) * 1000)))
-        if wait_ms:
-            page.wait_for_timeout(wait_ms)
-        if has_container:
-            after = container.evaluate(
-                "element => ({top: element.scrollTop, height: element.scrollHeight})"
-            )
-        else:
-            after = page.evaluate(
-                "() => ({top: window.scrollY, height: document.documentElement.scrollHeight})"
-            )
-        next_count = page.locator(".pb-comment-item, .pb-lzl-item").count()
-        progressed = before != after or count != next_count
-        if progressed or next_count != prior_count:
-            stable_rounds = 0
-        else:
-            stable_rounds += 1
-            if stable_rounds >= 2:
-                break
-        prior_count = next_count
-    return rounds
-
-
-def expand_thread_nested_replies(
-    page: Page,
-    closed: threading.Event,
-    deadline: float | None = None,
-) -> int:
-    stop_at = time.monotonic() + 4
-    if deadline is not None:
-        stop_at = min(stop_at, deadline)
-    expanded = 0
-    for _ in range(120):
-        remaining = stop_at - time.monotonic()
-        if closed.is_set() or remaining <= 0.1:
-            break
-        control = page.locator(".show-more-lzl").first
-        if control.count() == 0:
-            break
-        prior_count = page.locator(".pb-lzl-item").count()
-        try:
-            timeout_ms = request_timeout_ms(
-                closed, deadline, min(800, max(1, int((remaining - 0.1) * 1000)))
-            )
-            control.click(timeout=timeout_ms)
-        except BrowserTimeoutError:
-            break
-        remaining = stop_at - time.monotonic()
-        if remaining <= 0:
-            break
-        try:
-            page.wait_for_function(
-                "count => document.querySelectorAll('.pb-lzl-item').length > count "
-                "|| !document.querySelector('.show-more-lzl')",
-                arg=prior_count,
-                timeout=min(1200, max(1, int(remaining * 1000))),
-            )
-        except BrowserTimeoutError:
-            break
-        next_count = page.locator(".pb-lzl-item").count()
-        if next_count <= prior_count:
-            break
-        expanded += next_count - prior_count
-    return expanded
+    deadline: float | None,
+) -> dict[str, object]:
+    limit = max(1, min(int(scroll_rounds_limit or 1), 8))
+    scroll_rounds = scroll_thread_replies(page, limit, closed, deadline)
+    expand_thread_nested_replies(page, closed, deadline)
+    result = page.evaluate(THREAD_DOM)
+    if not isinstance(result, dict):
+        raise StructuredResponseError("帖子页面未返回可识别的 DOM 内容")
+    forum = str(result.get("forum") or "").strip()
+    title = str(result.get("title") or "").strip()
+    replies = result.get("replies")
+    original = str(result.get("original") or "").strip()
+    if not forum or not (title or original or (isinstance(replies, list) and replies)):
+        raise StructuredResponseError("帖子页面 DOM 缺少吧名、标题或正文")
+    return {
+        **{str(key): value for key, value in result.items()},
+        "scroll_rounds": scroll_rounds,
+        "scroll_rounds_limit": limit,
+        "pages_read": 1,
+        "pages_limit": 1,
+        "response_valid": True,
+        "source": "dom",
+    }
 
 
 def read_thread(
@@ -201,36 +179,52 @@ def read_thread(
     if parsed.hostname != "tieba.baidu.com" or not parsed.path.startswith("/p/"):
         raise ValueError("只允许读取贴吧帖子")
     deadline = auth.deadline
-    page.goto(
-        url,
-        wait_until="domcontentloaded",
-        timeout=request_timeout_ms(closed, deadline, 16000),
-    )
-    reason = wait_for_thread_page_or_auth(page, closed, deadline)
-    if reason:
-        page = auth.recover(page, reason=reason, target_url=url)
-        deadline = auth.deadline
+    capture = StructuredCapture(page, "/c/f/pb/page_pc").start()
+    try:
         page.goto(
             url,
             wait_until="domcontentloaded",
             timeout=request_timeout_ms(closed, deadline, 16000),
         )
-        if wait_for_thread_page_or_auth(page, closed, deadline):
-            raise AuthWaitError(COLLECTION_RESTRICTED, reason="collection")
-    page.wait_for_selector(
-        ".pb-content-wrap", timeout=request_timeout_ms(closed, deadline, 9000)
-    )
-    limit = max(1, min(int(scroll_rounds_limit or 1), 8))
-    scroll_rounds = scroll_thread_replies(page, limit, closed, deadline)
-    expand_thread_nested_replies(page, closed, deadline)
-    result = page.evaluate(THREAD_DOM)
-    if not isinstance(result, dict):
-        raise RuntimeError("贴吧帖子页面未返回结构化内容")
-    return {
-        **{str(key): value for key, value in result.items()},
-        "scroll_rounds": scroll_rounds,
-        "scroll_rounds_limit": limit,
-    }
+        reason = wait_for_thread_page_or_auth(page, closed, deadline)
+        if reason:
+            capture.stop()
+            page = auth.recover(page, reason=reason, target_url=url)
+            capture = StructuredCapture(page, "/c/f/pb/page_pc").start()
+            deadline = auth.deadline
+            page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=request_timeout_ms(closed, deadline, 16000),
+            )
+            if wait_for_thread_page_or_auth(page, closed, deadline):
+                raise AuthWaitError(COLLECTION_RESTRICTED, reason="collection")
+        page.wait_for_selector(
+            ".pb-content-wrap", timeout=request_timeout_ms(closed, deadline, 9000)
+        )
+        wait_for_payloads(capture.payloads, page, closed, deadline, 2500)
+    finally:
+        capture.stop()
+    floors = page.evaluate(THREAD_FLOORS)
+    if not isinstance(floors, dict):
+        floors = {}
+    failure: StructuredResponseError | None = None
+    for payload in capture.payloads:
+        try:
+            return parse_thread_payload(
+                payload,
+                url=url,
+                floors={str(key): int(value) for key, value in floors.items()},
+            )
+        except (StructuredResponseError, TypeError, ValueError) as error:
+            if isinstance(error, StructuredResponseError):
+                failure = failure or error
+            else:
+                failure = failure or StructuredResponseError("帖子响应字段类型不符")
+    try:
+        return _read_dom(page, scroll_rounds_limit, closed, deadline)
+    except StructuredResponseError as error:
+        raise failure or error from error
 
 
 def _run_action(
@@ -312,6 +306,11 @@ def _error_payload(error: Exception) -> dict[str, str]:
         return {
             "error": code,
             "message": message,
+        }
+    if isinstance(error, StructuredResponseError):
+        return {
+            "error": "tieba_browser_response_invalid",
+            "message": "贴吧页面响应结构校验失败，未取得可核实的帖子内容。",
         }
     if isinstance(error, BrowserTimeoutError):
         return {

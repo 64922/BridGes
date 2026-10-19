@@ -1,0 +1,160 @@
+{
+  "search": {
+    "no": 0,
+    "error": "success",
+    "data": {
+      "has_more": 1,
+      "current_page": 1,
+      "post_list": [
+        {
+          "tid": "9100000001",
+          "pid": 910000000101,
+          "cid": "0",
+          "title": "宿舍热水与查寝情况",
+          "content": "想问问北区宿舍的热水和周末查寝情况。",
+          "time": 1792135310,
+          "post_num": 12,
+          "forum_name": "华东交通大学",
+          "pb_url": "https://tieba.baidu.com/p/9100000001?tid=9100000001&jump_tieba_native=1",
+          "user": {
+            "user_name": "",
+            "user_id": 910000000001,
+            "show_nickname": "示例发言人甲"
+          }
+        },
+        {
+          "tid": "9100000002",
+          "pid": 910000000201,
+          "cid": "0",
+          "title": "南区宿舍条件",
+          "content": "南区宿舍有独立卫生间吗？",
+          "time": 1792078977,
+          "post_num": 5,
+          "forum_name": "华东交通大学",
+          "pb_url": "https://tieba.baidu.com/p/9100000002?tid=9100000002&jump_tieba_native=1",
+          "user": {
+            "user_name": "",
+            "user_id": 910000000002,
+            "show_nickname": "示例发言人乙"
+          }
+        }
+      ]
+    }
+  },
+  "thread": {
+    "forum": {
+      "id": 195707,
+      "name": "华东交通大学"
+    },
+    "user_list": [
+      {
+        "id": 910000000001,
+        "name": "example-user-a",
+        "name_show": "示例发言人甲"
+      },
+      {
+        "id": 910000000002,
+        "name": "example-user-b",
+        "name_show": "示例发言人乙"
+      },
+      {
+        "id": 910000000003,
+        "name": "example-user-c",
+        "name_show": "示例发言人丙"
+      }
+    ],
+    "thread": {
+      "id": 9100000001,
+      "title": "宿舍热水与查寝情况",
+      "reply_num": 4,
+      "author": {
+        "id": 910000000001,
+        "name": "example-user-a",
+        "name_show": "示例发言人甲"
+      }
+    },
+    "first_floor": {
+      "id": 910000000101,
+      "floor": 1,
+      "time": 1792135310,
+      "author_id": 910000000001,
+      "title": "宿舍热水与查寝情况",
+      "content": [
+        {
+          "type": 0,
+          "text": "第一次来学校，想问问北区宿舍的热水和周末查寝情况。"
+        },
+        {
+          "type": 2,
+          "text": "image_emoticon",
+          "c": "呵呵"
+        }
+      ]
+    },
+    "post_list": [
+      {
+        "id": 910000000102,
+        "floor": 0,
+        "time": 1792187109,
+        "author_id": 910000000002,
+        "content": [
+          {
+            "type": 0,
+            "text": "我住北区，晚上热水有时不稳定，周末偶尔查寝。"
+          }
+        ],
+        "sub_post_list": []
+      },
+      {
+        "id": 910000000103,
+        "floor": 0,
+        "time": 1792206130,
+        "author_id": 910000000003,
+        "content": [
+          {
+            "type": 0,
+            "text": "南区有独立卫生间，但周末查寝比较严格。"
+          }
+        ],
+        "sub_post_list": {
+          "pid": 910000000103,
+          "sub_post_list": [
+            {
+              "id": 910000000301,
+              "floor": 0,
+              "time": 1792210255,
+              "author_id": 910000000002,
+              "content": [
+                {
+                  "type": 0,
+                  "text": "补充一下，热水问题暑假刚修过。"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 910000000104,
+        "floor": 0,
+        "time": 1792211000,
+        "author_id": 999999999999,
+        "content": [
+          {
+            "type": 0,
+            "text": "这条回复的作者不在 user_list 里，身份应保持未知。"
+          }
+        ],
+        "sub_post_list": []
+      }
+    ],
+    "page": {
+      "has_more": 1,
+      "has_prev": 0,
+      "current_page": 1,
+      "total_page": 2
+    },
+    "error_code": 0,
+    "error_msg": ""
+  }
+}

@@ -1,4 +1,4 @@
-"""专用浏览器检索、实际读取范围和工作进程生命周期回归。"""
+﻿"""专用浏览器检索、实际读取范围和工作进程生命周期回归。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from bridges.runtime.lock import DataDirectoryLock
-from bridges.tieba.browser import browser_terms, read_projection
+from bridges.tieba.browser import BrowserTiebaThreadReader, browser_terms, read_projection
 from bridges.tieba.browser_runtime import (
     ACCOUNT_DELETION_MARKER,
     TiebaBrowserError,
@@ -103,6 +103,66 @@ def test_empty_thread_is_the_only_browser_read_marked_complete() -> None:
     )
     assert result.status.value == "read"
     assert (result.scroll_rounds, result.scroll_rounds_limit) == (3, 8)
+
+
+def test_structured_read_keeps_author_identity_and_unread_pages() -> None:
+    result = read_projection(
+        "https://tieba.baidu.com/p/123",
+        {
+            "forum": "华东交通大学吧",
+            "title": "宿舍条件",
+            "original": "北区宿舍热水怎么样？",
+            "author": "楼主甲",
+            "origin_reply_id": "100",
+            "original_floor": 1,
+            "posted_at": "2026-10-16 15:21",
+            "loaded_reply_count": 2,
+            "total_replies": 9,
+            "total_pages": 2,
+            "pages_read": 1,
+            "pages_limit": 1,
+            "replies": [
+                {
+                    "content": "晚上热水有时不稳定。",
+                    "reply_id": "101",
+                    "floor": 2,
+                    "posted_at": "2026-10-16 16:00",
+                    "author": "吧友乙",
+                },
+                {
+                    "content": "暑假刚修过。",
+                    "reply_id": "102",
+                    "parent_reply_id": "101",
+                    "floor": 2,
+                    "posted_at": "2026-10-16 16:10",
+                    "author": None,
+                    "nested": True,
+                },
+            ],
+            "source": "structured",
+        },
+    )
+
+    assert result.status.value == "partial"
+    assert result.replies[0].author == "楼主甲"
+    assert result.replies[0].floor == 1
+    assert result.replies[0].reply_id == "100"
+    assert result.replies[1].author == "吧友乙"
+    assert result.replies[2].author is None
+    assert result.total_pages == 2
+    assert "共 2 页" in (result.error_message or "")
+    assert "9 条" in (result.error_message or "")
+
+
+def test_explicit_invalid_response_is_unrecognized() -> None:
+    result = read_projection(
+        "https://tieba.baidu.com/p/123",
+        {"response_valid": False, "forum": "华东交通大学吧", "title": "宿舍条件"},
+    )
+
+    assert result.status.value == "unrecognized"
+    assert result.error_code == "tieba_read_unrecognized"
+    assert result.replies == []
 
 
 def test_forum_sidebar_cannot_confirm_a_different_thread() -> None:
@@ -318,6 +378,20 @@ def test_account_deletion_fence_blocks_request_waiting_for_account_lock(
     assert not waiter.is_alive()
     assert [failure.code for failure in failures] == ["tieba_browser_account_deleting"]
     assert spawned == []
+
+
+def test_response_invalid_maps_to_unrecognized_read() -> None:
+    class Runtime:
+        def request(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+            raise TiebaBrowserError(
+                "tieba_browser_response_invalid", "页面响应结构校验失败"
+            )
+
+    result = BrowserTiebaThreadReader(Runtime(), "alice").read(
+        "https://tieba.baidu.com/p/123"
+    )
+    assert result.status.value == "unrecognized"
+    assert result.error_code == "tieba_browser_response_invalid"
 
 
 def test_thread_page_wait_accepts_auth_marker_without_waiting_for_post_body() -> None:

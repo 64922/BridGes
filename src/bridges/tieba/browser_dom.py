@@ -29,6 +29,26 @@ SEARCH_DOM = r"""(tab) => {
     }).filter(item => item.url);
 }"""
 
+THREAD_FLOORS = r"""() => {
+    const text = e => e?.innerText?.trim() || '';
+    const floorOf = row => {
+        const value = text(row.querySelector('.pc-pb-comments-desc .comment-desc-left, .lzl_time'));
+        const match = value.match(/第\s*(\d+)\s*楼/);
+        return match ? Number(match[1]) : null;
+    };
+    const result = {};
+    for (const row of document.querySelectorAll('.pb-comment-item')) {
+        const id = row.getAttribute('data-id');
+        const floor = floorOf(row);
+        if (id && floor) result[id] = floor;
+        for (const nested of row.querySelectorAll('.pb-lzl-item')) {
+            const nestedId = nested.getAttribute('data-id') || nested.getAttribute('data-spid');
+            if (nestedId && floor) result[nestedId] = floor;
+        }
+    }
+    return result;
+}"""
+
 THREAD_DOM = r"""() => {
     const text = e => e?.innerText?.trim() || '';
     const forum = document.querySelector('.main-content .forum-name');
