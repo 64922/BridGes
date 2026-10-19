@@ -492,4 +492,3 @@ def _unconfirmed_link(
         read_error_code=read_error_code,
         discoveries=list(hit.discoveries),
     )
-

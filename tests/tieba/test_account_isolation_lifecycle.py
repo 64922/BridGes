@@ -388,4 +388,3 @@ def test_read_candidates_stops_after_account_deletion() -> None:
     assert reader.calls == 1
     assert outcome.partial is True
     assert outcome.closeout_reason == "account_deleting"
-

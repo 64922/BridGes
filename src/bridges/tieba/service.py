@@ -87,6 +87,15 @@ def _browser_request_block_code(guard: RunCommitGuard) -> str | None:
     return "tieba_browser_run_invalidated"
 
 
+def _account_deletion_error() -> TiebaModuleError:
+    return TiebaModuleError(
+        NODE_PARSE,
+        "account_deleting",
+        "账户正在删除，贴吧搜集已停止。",
+        retryable=False,
+    )
+
+
 def _pending_matches_task(
     pending: ModuleWaitState, task_ref: tuple[str | None, int | None] | None
 ) -> bool:
@@ -159,18 +168,13 @@ class TiebaResearchService:
     ) -> TiebaRunOutcome:
         """执行一轮贴吧信息搜集；终态全部写回同一条助手消息。"""
 
-        def account_blocked() -> str | None:
+        def account_deletion_code() -> str | None:
             if self._account_deleting is not None and self._account_deleting(account_id):
                 return "account_deleting"
             return None
 
-        if account_blocked() is not None:
-            raise TiebaModuleError(
-                NODE_PARSE,
-                "account_deleting",
-                "账户正在删除，贴吧搜集已停止。",
-                retryable=False,
-            )
+        if account_deletion_code() is not None:
+            raise _account_deletion_error()
         user_message = repo.get_message(account_id, user_message_id)
         if user_message is None:
             raise TiebaModuleError(
@@ -209,7 +213,7 @@ class TiebaResearchService:
             task_version_provider=self._task_version_provider,
             stop_event=stop_event,
             clock=self._clock,
-            external_guard=account_blocked,
+            external_guard=account_deletion_code,
         )
         budget = self._load_budget(
             repo,
@@ -299,12 +303,7 @@ class TiebaResearchService:
             decision = guard.verify()
             if not decision.ok:
                 if decision.code == "account_deleting":
-                    raise TiebaModuleError(
-                        NODE_PARSE,
-                        "account_deleting",
-                        "账户正在删除，贴吧搜集已停止。",
-                        retryable=False,
-                    )
+                    raise _account_deletion_error()
                 if decision.code != "run_stopped":
                     raise TiebaModuleError(
                         NODE_PARSE,

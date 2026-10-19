@@ -242,3 +242,65 @@ def test_same_account_two_conversations_keep_task_evidence_isolated(
         assert "https://tieba.baidu.com/p/1" not in second_payload
     finally:
         database.close()
+
+
+def test_service_maps_commit_time_deletion_to_non_retryable(tmp_path: Path) -> None:
+    database = BridgesDatabase(tmp_path / "commit-deletion.db")
+    database.initialize()
+    try:
+        seed_generation_run(database)
+        with database.transaction():
+            database.connection.execute(
+                "INSERT INTO messages (message_id, conversation_id, account_id, role,"
+                " status, content, created_at, updated_at)"
+                " VALUES ('msg-user', ?, ?, 'user', 'done', ?, ?, ?)",
+                (
+                    CONVERSATION,
+                    ACCOUNT,
+                    "华东交通大学吧 宿舍条件怎么样",
+                    NOW.isoformat(),
+                    NOW.isoformat(),
+                ),
+            )
+        repo = ConversationRepository(database)
+        deleting = {"value": False}
+        inner = _FakeReader(
+            {
+                "https://tieba.baidu.com/p/10745250786": _read_result(
+                    url="https://tieba.baidu.com/p/10745250786",
+                    status=ReadStatus.READ,
+                )
+            }
+        )
+
+        class Reader:
+            def read(self, *args: Any, **kwargs: Any) -> Any:
+                result = inner.read(*args, **kwargs)
+                deleting["value"] = True
+                return result
+
+        service = _service(
+            search=_FakeSearchPort(hits=[_hit()]),
+            reader=Reader(),
+            gateway=_SummaryGateway(),
+            account_deleting=lambda _account_id: deleting["value"],
+        )
+
+        with pytest.raises(TiebaModuleError) as failure:
+            service.run(
+                repo=repo,
+                account_id=ACCOUNT,
+                conversation_id=CONVERSATION,
+                user_message_id="msg-user",
+                assistant_message_id=ASSISTANT,
+                run_context=SimpleNamespace(run_id=RUN),
+                run_model_id="verified-model",
+                model_quota=None,
+                emit_node=lambda *_args: None,
+                stop_event=None,
+            )
+
+        assert failure.value.code == "account_deleting"
+        assert failure.value.retryable is False
+    finally:
+        database.close()
