@@ -189,6 +189,7 @@ def _has_consensus_phrases(projection: TiebaResearchProjection) -> bool:
         *(item.note for item in projection.conflicts),
         *(item.time_basis for item in projection.conflicts),
         *(item.scope_basis for item in projection.conflicts),
+        projection.summary or "",
         *(claim.text for claim in projection.summary_claims),
     ]
     return any(phrase in text for phrase in CONSENSUS_PHRASES for text in generated)

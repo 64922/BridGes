@@ -4,7 +4,7 @@
 
 **Blocked by:** 08 — 多帖证据遵守话题、校区和发言时间条件
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 实施边界与关键决策
 
@@ -12,12 +12,12 @@
 
 ## 验收条件
 
-- [ ] 小材料直接总结，超输入上限材料分批且不超额度；没有送入模型的已读证据明确标记，不假称都已归纳。
-- [ ] 跨批合并保留相反意见、纠正与时间差异，不把重复内容或未知身份同文当多份独立支持。
-- [ ] 每个关键观点与引用身份、原文匹配、时间资格和语义支持核验一致；虚构引用、越界ID和过度概括被拒绝。
-- [ ] 帖子里的提示注入仅作不可信内容，不能改变来源、权限、模型任务或读取其他账户材料。
-- [ ] 部分批次失败可交付通过核验部分；全部失败或支持核验失败保留证据并显示总结尚未完成，不输出未经核验的正文。
-- [ ] 至少一次真实生产模型多帖旅程完成总结和支持核验，记录模型/提示/证据版本、调用次数和脱敏计量。
+- [x] 小材料直接总结，超输入上限材料分批且不超额度；没有送入模型的已读证据明确标记，不假称都已归纳。
+- [x] 跨批合并保留相反意见、纠正与时间差异，不把重复内容或未知身份同文当多份独立支持。
+- [x] 每个关键观点与引用身份、原文匹配、时间资格和语义支持核验一致；虚构引用、越界ID和过度概括被拒绝。
+- [x] 帖子里的提示注入仅作不可信内容，不能改变来源、权限、模型任务或读取其他账户材料。
+- [x] 部分批次失败可交付通过核验部分；全部失败或支持核验失败保留证据并显示总结尚未完成，不输出未经核验的正文。
+- [x] 至少一次真实生产模型多帖旅程完成总结和支持核验，记录模型/提示/证据版本、调用次数和脱敏计量。
 
 ## 验证方式
 
@@ -42,3 +42,12 @@
 
 
 - 2026-10-18：用户确认拆分，正式发布为 ready-for-agent；编号、内容范围和依赖保持已批准方案，未开始业务开发。
+
+- 2026-10-19T12:30+08:00：实现交接（worktree `D:\BridGes\.worktrees\11-grounded-summary`，分支 `11-grounded-summary`，基线 `c25502ac`；前置 08 已合入 main，但其工单仍为 `ready-for-human`）。
+  - 实际行为：分批观点只允许引用本批实际送入的近期证据；聚合观点只能引用批次已产生的证据 ID，未送入的 ID 与未知身份重复原文被确定性拒绝或折叠；历史证据只作近期楼中楼的上下文，不能成为观点依据；所有 `context_only` 材料都不会进入引用。总结正文或观点出现共识式表述时丢弃对应正文；核验失败时闭锁未核验内容；部分批次失败仍交付已核验观点并合并失败说明。批次未发送、超出素材/观点上限、时间排除与历史上下文均有中文说明。
+  - 公开投影与版本：`TiebaRunMetadata` 升至 `tieba-run-metadata-v3`，新增脱敏 `summary`（`tieba-summary-run-v1`，含提示/输入/输出版本、模型 ID、送入/省略证据数、批次成功/失败数、总结模型调用数、观点与核验结论，不含正文）；总结提示词 `tieba-summary-v8`、输入合同 `tieba-read-evidence-v4`、输出合同 `tieba-summary-claims-v3`；贴吧配方 `tieba-recipe-v11`、`tieba-synthesize-v11`、`tieba-verify-v7`。`openapi.json` 与 `packages/contracts/src/generated.ts` 已重生成；无 schema/存量数据迁移。
+  - 代码拆分：`summary.py` 494 行，新增 `summary_contracts.py`（157 行，提示词/schema/metrics/结果合同）与 `summary_support.py`（78 行，计数与请求封装）；`summary_material.py` 284 行；本票测试 336 行；`TiebaEvidenceRows.tsx` 500 行。
+  - 回归：`pytest tests/tieba -q` → **398 passed / 0 failed，exit 0**（改动前基线 390）；新增 `test_grounded_summary_issue11.py` 8 项全过；`ruff check` 改动源码与测试 → 通过；`npm run typecheck` → exit 0；`npm run test:unit` → **418 passed**；`npm run build` → 编译、类型检查与 23/23 静态页生成成功并写入 `.next/BUILD_ID`（worktree junction 导致 standalone 追踪复制报 EPERM 警告，不影响构建产物）。
+  - 真实生产模型旅程：使用真实 Qwen 组合、主模型 `qwen3.7-plus-2026-05-26`、提示词 `tieba-summary-v8`、输入 `tieba-read-evidence-v4`，经 `127.0.0.1:7890` 代理完成 2 帖 / 10 条已读证据的受控多帖旅程；**2 个批次全部成功，4 次结构化模型调用，5 条观点通过核验，9 条引用，0 条省略证据**，`summary_supported=true`，运行锁 4 条。总结明确保留“北区 3 栋近期断供 / 5 栋本学期未断”的差异与“南区整体稳定、7 栋水压偏小”的限定。
+  - 限制与未验证：真实旅程使用受控合成已读证据（阅读端替身未写 `temporal_scope`，10 条均为 unknown，总结说明如实记录该限制），**不是**真实浏览器/专用登录会话采集；04 的真实贴吧会话 + 生产模型完整旅程仍待人工复核。全仓 `pytest -q` 在收集期被 4 个既有 `CareerBackgroundLoader` ImportError 阻断；`pytest -q --ignore=tests/career_plan` 为 **6004 passed / 330 failed / 37 skipped**，失败集中在既有 career/routing/plugins/resources/architecture 等非贴吧模块，抽查 `tests/career/test_career_routing.py` 在主工作区同样失败，`browser_capture.py` 的 BOM 也在 main 存在；未逐项建立完整主基线。`mypy` 改动文件检查报 10 个既有跨模块错误，均不在本票改动文件。
+  - 回滚：回退本票提交即可；无数据库迁移或外部数据写入，历史消息中的 v3 元数据可被旧前端忽略 `summary` 字段读取。真实旅程临时数据库、脚本与结果均在忽略的 `.tmp/`，未纳入提交。

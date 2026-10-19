@@ -52,8 +52,12 @@ from bridges.tieba.recipe import (
     TIEBA_CAPABILITY_VERSIONS,
     TIEBA_RECIPE_VERSION,
 )
-from bridges.tieba.run_metadata import TiebaRunMetadata
+from bridges.tieba.run_metadata import (
+    TiebaRunMetadata,
+    TiebaSummaryRunMetadata,
+)
 from bridges.tieba.summary import TiebaSummaryGenerator
+from bridges.tieba.summary_contracts import TiebaSummaryMetrics
 
 
 def _official_unverified_note(
@@ -89,6 +93,7 @@ def _run_metadata(
     started_at: datetime,
     finished_at: datetime,
     model_calls: int,
+    summary_metrics: TiebaSummaryMetrics | None = None,
 ) -> TiebaRunMetadata:
     search_count = len(attempts.records)
     scope = getattr(attempts, "scope", ())
@@ -132,6 +137,11 @@ def _run_metadata(
         exclusion_reasons=exclusion_reasons,
         source_urls=[post.url for post in confirmed],
         unread_scope=_unread_scope(confirmed, scope),
+        summary=(
+            TiebaSummaryRunMetadata(**summary_metrics.to_record())
+            if summary_metrics is not None
+            else None
+        ),
     )
 
 
@@ -244,6 +254,7 @@ class TiebaSynthesisNodes:
         note = _official_unverified_note(analysis, plan, checks)
         if note is not None:
             projection = projection.model_copy(update={"official_unverified_note": note})
+        summary_metrics: TiebaSummaryMetrics | None = None
         if self._summary_generator is not None:
             summary = self._summary_generator.generate(
                 self._run_context,
@@ -263,6 +274,7 @@ class TiebaSynthesisNodes:
                     "summary_note": summary.note,
                 }
             )
+            summary_metrics = summary.metrics
         else:
             projection = projection.model_copy(
                 update={"summary_note": "总结未生成：当前运行没有可用的模型网关。"}
@@ -282,6 +294,7 @@ class TiebaSynthesisNodes:
                     model_calls=(
                         self._summary_call_count() if self._summary_call_count else 0
                     ),
+                    summary_metrics=summary_metrics,
                 )
             }
         )

@@ -66361,7 +66361,7 @@
           "contract_version": {
             "type": "string",
             "title": "Contract Version",
-            "default": "tieba-run-metadata-v2"
+            "default": "tieba-run-metadata-v3"
           },
           "run_id": {
             "type": "string",
@@ -66526,6 +66526,17 @@
             "type": "array",
             "title": "Unread Scope",
             "description": "实际未读取的页、楼层或内容范围。"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TiebaSummaryRunMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "模型总结的版本、调用、批次与证据计量；未生成时为 None。"
           }
         },
         "type": "object",
@@ -66834,6 +66845,110 @@
         ],
         "title": "TiebaSummaryClaim",
         "description": "模型总结中的单项观点及其可验证引用。"
+      },
+      "TiebaSummaryRunMetadata": {
+        "properties": {
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "default": "tieba-summary-run-v1"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id",
+            "description": "本轮实际使用的主模型 ID。"
+          },
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version",
+            "description": "总结提示词版本。"
+          },
+          "input_schema_version": {
+            "type": "string",
+            "title": "Input Schema Version",
+            "description": "送入模型的证据输入合同版本。"
+          },
+          "output_schema_version": {
+            "type": "string",
+            "title": "Output Schema Version",
+            "description": "模型观点的输出合同版本。"
+          },
+          "read_evidence_count": {
+            "type": "integer",
+            "title": "Read Evidence Count",
+            "description": "时间范围内可总结的已读证据数。",
+            "default": 0
+          },
+          "model_evidence_count": {
+            "type": "integer",
+            "title": "Model Evidence Count",
+            "description": "实际送入模型的证据数。",
+            "default": 0
+          },
+          "omitted_evidence_count": {
+            "type": "integer",
+            "title": "Omitted Evidence Count",
+            "description": "已读但未送入模型或未进入总结的证据数。",
+            "default": 0
+          },
+          "batch_count": {
+            "type": "integer",
+            "title": "Batch Count",
+            "description": "总结批次数（含拆分与未发送批次）。",
+            "default": 0
+          },
+          "succeeded_batch_count": {
+            "type": "integer",
+            "title": "Succeeded Batch Count",
+            "description": "成功完成的批次调用数。",
+            "default": 0
+          },
+          "failed_batch_count": {
+            "type": "integer",
+            "title": "Failed Batch Count",
+            "description": "失败的批次调用数。",
+            "default": 0
+          },
+          "model_call_count": {
+            "type": "integer",
+            "title": "Model Call Count",
+            "description": "总结相关模型调用总数。",
+            "default": 0
+          },
+          "claim_count": {
+            "type": "integer",
+            "title": "Claim Count",
+            "description": "送入支持核验的观点数。",
+            "default": 0
+          },
+          "supported_claim_count": {
+            "type": "integer",
+            "title": "Supported Claim Count",
+            "description": "通过支持核验并交付的观点数。",
+            "default": 0
+          },
+          "summary_supported": {
+            "type": "boolean",
+            "title": "Summary Supported",
+            "description": "连贯总结正文是否通过语义支持核验。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt_version",
+          "input_schema_version",
+          "output_schema_version"
+        ],
+        "title": "TiebaSummaryRunMetadata",
+        "description": "一次总结的版本、调用与证据计数（只含标识和数字，不含正文）。"
       },
       "TiebaTemporalScope": {
         "type": "string",
