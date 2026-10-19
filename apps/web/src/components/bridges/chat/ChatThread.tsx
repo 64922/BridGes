@@ -11,6 +11,7 @@ import type {
   CommuteRouteProjection,
   PaperSearchProjection,
   TiebaPostProjection,
+  TiebaResearchProjection,
   TiebaSummaryCitation,
 } from "@/lib/api";
 import type { ChatMediaTarget } from "@/lib/chat-media";
@@ -51,6 +52,7 @@ interface ChatThreadProps {
     messageId: string,
     citation: TiebaSummaryCitation,
     post: TiebaPostProjection | null,
+    research: TiebaResearchProjection,
     trigger: HTMLButtonElement
   ) => void;
   /** 打开该轮校园通勤的路线详情面板 */

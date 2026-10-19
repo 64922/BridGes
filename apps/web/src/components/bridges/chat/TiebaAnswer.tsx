@@ -13,7 +13,8 @@ import { citationLocation } from "./TiebaEvidenceRows";
 type OpenCitation = (
   citation: TiebaSummaryCitation,
   post: TiebaPostProjection | null,
-  trigger: HTMLButtonElement
+  trigger: HTMLButtonElement,
+  research: TiebaResearchProjection
 ) => void;
 
 export function TiebaCitationLinks({
@@ -103,7 +104,7 @@ export function TiebaAnswer({
   const fallback = fallbackText?.trim() ?? "";
 
   const openCitation = (citation: TiebaSummaryCitation, trigger: HTMLButtonElement) =>
-    onOpenCitation?.(citation, postByUrl.get(citation.url) ?? null, trigger);
+    onOpenCitation?.(citation, postByUrl.get(citation.url) ?? null, trigger, research);
 
   return (
     <div
@@ -369,7 +370,12 @@ export function TiebaCompositeEvidence({
       <TiebaCitationLinks
         citations={citations}
         onOpenCitation={(citation, trigger) =>
-          onOpenCitation?.(citation, postByUrl.get(citation.url) ?? null, trigger)
+          onOpenCitation?.(
+            citation,
+            postByUrl.get(citation.url) ?? null,
+            trigger,
+            research
+          )
         }
       />
       <TiebaEvidenceDetails research={research} />

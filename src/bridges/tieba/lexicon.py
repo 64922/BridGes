@@ -24,6 +24,19 @@ TARGET_FORUM_URL = (
     "%E9%80%9A%E5%A4%A7%E5%AD%A6"
 )
 
+#: 明确核验的来源意图用语：表达「去核实」而不是检索主题名词。
+VERIFICATION_MARKERS: tuple[str, ...] = (
+    "核实",
+    "核验",
+    "查证",
+    "确认",
+    "真伪",
+    "属实",
+    "官网",
+    "官方",
+    "查询",
+)
+
 #: 模块自身用语：这些词不能进入检索查询词。
 MODULE_STOPWORDS: frozenset[str] = frozenset(
     {
@@ -73,7 +86,7 @@ MODULE_STOPWORDS: frozenset[str] = frozenset(
         "the",
         "and",
     }
-)
+) | frozenset(VERIFICATION_MARKERS)
 
 #: 事件／地点类名词（校园语境）。命中即作为事件／地点记录并参与检索。
 PLACE_EVENT_TERMS: frozenset[str] = frozenset(

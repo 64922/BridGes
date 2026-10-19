@@ -5,17 +5,24 @@ import { useEffect, useRef } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import type {
   TiebaPostProjection,
+  TiebaResearchProjection,
   TiebaSummaryCitation,
 } from "@/lib/api";
 
 import styles from "./TiebaEvidencePanel.module.css";
-import { READ_STATUS_LABELS, formatTime, postReadScope } from "./TiebaEvidenceRows";
+import {
+  OfficialCheckRow,
+  READ_STATUS_LABELS,
+  formatTime,
+  postReadScope,
+} from "./TiebaEvidenceRows";
 
 export interface TiebaEvidenceSelection {
   conversationId: string;
   messageId: string;
   citation: TiebaSummaryCitation;
   post: TiebaPostProjection | null;
+  research?: TiebaResearchProjection | null;
 }
 
 /** 只接受同源相对路径或 https 地址，拒绝 javascript: 与协议相对地址。 */
@@ -40,7 +47,8 @@ function TiebaEvidenceContent({
   selection: TiebaEvidenceSelection;
   onClose: () => void;
 }) {
-  const { citation, post } = selection;
+  const { citation, post, research } = selection;
+  const official = research?.official_checks ?? [];
   const panelRef = useRef<HTMLElement>(null);
   const openUrl = safeOpenUrl(citation.url) ?? safeOpenUrl(post?.url);
   const replies = post?.replies ?? [];
@@ -137,6 +145,83 @@ function TiebaEvidenceContent({
             不在本轮已读原文里，无法展开该楼层原文。
           </p>
         )}
+
+        {research &&
+          (official.length > 0 ||
+            research.official_check_requested ||
+            research.official_unverified_note ||
+            research.official_blocked_reason) && (
+            <section className={styles.section} data-testid="tieba-evidence-official">
+              <h3 className={styles.sectionTitle}>
+                学校官方依据（与上面的吧友引用分列）
+              </h3>
+              {official.length > 0 ? (
+                <ul
+                  style={{
+                    margin: 0,
+                    paddingLeft: "var(--space-5)",
+                    listStyle: "disc",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "var(--space-1)",
+                  }}
+                >
+                  {official.map((check, index) => (
+                    <OfficialCheckRow key={`${check.url}-${index}`} check={check} />
+                  ))}
+                </ul>
+              ) : (
+                <p className={styles.warning} data-testid="tieba-evidence-official-missing">
+                  本轮未取得学校官方页面，官方规定保持未核实；以上贴吧引用不构成官方结论。
+                </p>
+              )}
+              {research.official_unverified_note && (
+                <p
+                  className={styles.warning}
+                  data-testid="tieba-evidence-official-note"
+                >
+                  {research.official_unverified_note}
+                </p>
+              )}
+              {research.official_blocked_reason && (
+                <p className={styles.note}>
+                  来源限制：{research.official_blocked_reason}
+                </p>
+              )}
+              {(research.conflicts ?? []).length > 0 && (
+                <div data-testid="tieba-evidence-conflicts">
+                  <p className={styles.note}>官方与帖子经历存在冲突：</p>
+                  <ul
+                    style={{
+                      margin: 0,
+                      paddingLeft: "var(--space-5)",
+                      listStyle: "disc",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "var(--space-1)",
+                    }}
+                  >
+                    {(research.conflicts ?? []).map((conflict, index) => (
+                      <li key={`${conflict.official_url}-${index}`}>
+                        <a
+                          href={conflict.official_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {conflict.official_title}
+                        </a>
+                        ：{conflict.official_statement}
+                        <p className={styles.note}>
+                          {conflict.time_basis} {conflict.scope_basis}
+                        </p>
+                        <p className={styles.note}>{conflict.note}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
+          )}
 
         <section className={styles.section} data-testid="tieba-evidence-replies">
           <h3 className={styles.sectionTitle}>
