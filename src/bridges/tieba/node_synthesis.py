@@ -58,8 +58,10 @@ from bridges.tieba.run_metadata import (
     TiebaBrowserCleanup,
     TiebaRequestBreakdown,
     TiebaRunMetadata,
+    TiebaSummaryRunMetadata,
 )
 from bridges.tieba.summary import TiebaSummaryGenerator
+from bridges.tieba.summary_contracts import TiebaSummaryMetrics
 
 
 def _official_unverified_note(
@@ -100,6 +102,7 @@ def _run_metadata(
     remaining_work_ms: int | None = None,
     request_breakdown: Sequence[TiebaRequestBreakdown] = (),
     browser_cleanup: TiebaBrowserCleanup | None = None,
+    summary_metrics: TiebaSummaryMetrics | None = None,
 ) -> TiebaRunMetadata:
     search_count = len(attempts.records)
     scope = getattr(attempts, "scope", ())
@@ -157,6 +160,11 @@ def _run_metadata(
             "official": official_closeout_reason,
         },
         browser_cleanup=browser_cleanup,
+        summary=(
+            TiebaSummaryRunMetadata(**summary_metrics.to_record())
+            if summary_metrics is not None
+            else None
+        ),
     )
 
 
@@ -275,6 +283,7 @@ class TiebaSynthesisNodes:
         note = _official_unverified_note(analysis, plan, checks)
         if note is not None:
             projection = projection.model_copy(update={"official_unverified_note": note})
+        summary_metrics: TiebaSummaryMetrics | None = None
         if self._summary_generator is not None:
             summary = self._summary_generator.generate(
                 self._run_context,
@@ -294,6 +303,7 @@ class TiebaSynthesisNodes:
                     "summary_note": summary.note,
                 }
             )
+            summary_metrics = summary.metrics
         else:
             projection = projection.model_copy(
                 update={"summary_note": "总结未生成：当前运行没有可用的模型网关。"}
@@ -330,6 +340,7 @@ class TiebaSynthesisNodes:
                         if self._budget is not None
                         else None
                     ),
+                    summary_metrics=summary_metrics,
                 )
             }
         )

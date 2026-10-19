@@ -87,6 +87,19 @@ function browserCleanupLabel(cleanup: BrowserCleanup): string {
   )} · 容差 ${durationLabel(cleanup.tolerance_ms)}${timedOut}`;
 }
 
+function summaryMetricsText(
+  summary: NonNullable<TiebaRunMetadata["summary"]>
+): string {
+  const omitted =
+    summary.omitted_evidence_count > 0
+      ? ` · 省略 ${summary.omitted_evidence_count} 条`
+      : "";
+  const failed =
+    summary.failed_batch_count > 0 ? `（失败 ${summary.failed_batch_count}）` : "";
+  const verdict = summary.summary_supported ? "正文通过核验" : "仅观点通过核验";
+  return `总结提示词 ${summary.prompt_version} · 送入证据 ${summary.model_evidence_count}/${summary.read_evidence_count} 条${omitted} · 批次 ${summary.succeeded_batch_count}/${summary.batch_count}${failed} · 总结模型调用 ${summary.model_call_count} 次 · 观点 ${summary.supported_claim_count}/${summary.claim_count} · ${verdict}`;
+}
+
 export function RunMetadataRow({ metadata }: { metadata: TiebaRunMetadata }) {
   const elapsed =
     metadata.elapsed_ms == null
@@ -136,6 +149,11 @@ export function RunMetadataRow({ metadata }: { metadata: TiebaRunMetadata }) {
             ? ` · 剩余工作预算 ${durationLabel(metadata.remaining_work_ms)}`
             : ""}
         </li>
+        {metadata.summary && (
+          <li data-testid="tieba-summary-metrics">
+            {summaryMetricsText(metadata.summary)}
+          </li>
+        )}
         {breakdown.length > 0 && (
           <li data-testid="tieba-request-breakdown">
             请求节奏：

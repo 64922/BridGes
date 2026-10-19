@@ -11,6 +11,34 @@ from bridges.tieba.contracts import (
     TiebaSummaryClaimKind,
     TiebaTimeScopeMode,
 )
+from bridges.tieba.recipe import CONSENSUS_PHRASES
+
+
+def contains_consensus_phrase(text: str) -> bool:
+    """是否出现把样本写成全体共识的固定表述（确定性拒绝）。"""
+    return any(phrase in text for phrase in CONSENSUS_PHRASES)
+
+
+def deduplicate_unknown_group_citations(
+    claims: list[TiebaSummaryClaim],
+    sources: dict[str, dict[str, Any]],
+) -> tuple[list[TiebaSummaryClaim], int]:
+    """同一未知身份的重复原文只保留一条引用，避免冒充多份独立支持。"""
+    collapsed = 0
+    result: list[TiebaSummaryClaim] = []
+    for claim in claims:
+        seen_groups: set[str] = set()
+        citation_ids: list[str] = []
+        for citation_id in claim.citation_ids:
+            group = sources.get(citation_id, {}).get("duplicate_text_group")
+            if isinstance(group, str) and group in seen_groups:
+                collapsed += 1
+                continue
+            if isinstance(group, str):
+                seen_groups.add(group)
+            citation_ids.append(citation_id)
+        result.append(claim.model_copy(update={"citation_ids": citation_ids}))
+    return result, collapsed
 
 
 def sources(posts: list[TiebaPostProjection]) -> list[dict[str, Any]]:
@@ -86,72 +114,51 @@ def summary_payload(topic: str, sources: list[dict[str, Any]]) -> dict[str, Any]
     return {"topic": topic, "evidence": sources}
 
 
+def _verification_evidence(
+    sources: dict[str, dict[str, Any]], citation_ids: list[str]
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": citation_id,
+            "content": sources[citation_id]["content"][:400],
+            "time": sources[citation_id].get("posted_at"),
+            "author": sources[citation_id].get("author"),
+            "scope": sources[citation_id].get("temporal_scope"),
+            "nested": sources[citation_id].get("nested"),
+            "parent_reply_id": sources[citation_id].get("parent_reply_id"),
+            "parent_context_state": sources[citation_id].get("parent_context_state"),
+            "parent_content": sources[citation_id].get("parent_content"),
+            "identity_state": sources[citation_id].get("identity_state"),
+            "duplicate_text_group": sources[citation_id].get("duplicate_text_group"),
+            "duplicate_text_count": sources[citation_id].get("duplicate_text_count"),
+        }
+        for citation_id in citation_ids
+    ]
+
+
 def build_verification_payload(
     claims: list[TiebaSummaryClaim],
     sources: dict[str, dict[str, Any]],
     *,
-    summary_text: str,
+    summary_text: str | None,
     summary_citation_ids: list[str],
 ) -> dict[str, Any]:
     items = [
         {
             "index": index,
             "text": claim.text,
-            "evidence": [
-                {
-                    "id": citation_id,
-                    "content": sources[citation_id]["content"][:400],
-                    "time": sources[citation_id].get("posted_at"),
-                    "author": sources[citation_id].get("author"),
-                    "scope": sources[citation_id].get("temporal_scope"),
-                    "nested": sources[citation_id].get("nested"),
-                    "parent_reply_id": sources[citation_id].get("parent_reply_id"),
-                    "parent_context_state": sources[citation_id].get(
-                        "parent_context_state"
-                    ),
-                    "parent_content": sources[citation_id].get("parent_content"),
-                    "identity_state": sources[citation_id].get("identity_state"),
-                    "duplicate_text_group": sources[citation_id].get(
-                        "duplicate_text_group"
-                    ),
-                    "duplicate_text_count": sources[citation_id].get(
-                        "duplicate_text_count"
-                    ),
-                }
-                for citation_id in claim.citation_ids
-            ],
+            "evidence": _verification_evidence(sources, claim.citation_ids),
         }
         for index, claim in enumerate(claims)
     ]
-    items.append(
-        {
-            "index": len(claims),
-            "text": summary_text,
-            "evidence": [
-                {
-                    "id": citation_id,
-                    "content": sources[citation_id]["content"][:400],
-                    "time": sources[citation_id].get("posted_at"),
-                    "author": sources[citation_id].get("author"),
-                    "scope": sources[citation_id].get("temporal_scope"),
-                    "nested": sources[citation_id].get("nested"),
-                    "parent_reply_id": sources[citation_id].get("parent_reply_id"),
-                    "parent_context_state": sources[citation_id].get(
-                        "parent_context_state"
-                    ),
-                    "parent_content": sources[citation_id].get("parent_content"),
-                    "identity_state": sources[citation_id].get("identity_state"),
-                    "duplicate_text_group": sources[citation_id].get(
-                        "duplicate_text_group"
-                    ),
-                    "duplicate_text_count": sources[citation_id].get(
-                        "duplicate_text_count"
-                    ),
-                }
-                for citation_id in summary_citation_ids
-            ],
-        }
-    )
+    if summary_text:
+        items.append(
+            {
+                "index": len(claims),
+                "text": summary_text,
+                "evidence": _verification_evidence(sources, summary_citation_ids),
+            }
+        )
     return {"claims": items}
 
 

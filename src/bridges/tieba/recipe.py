@@ -39,7 +39,7 @@ TIEBA_CAPABILITY_VERSIONS: dict[str, str] = {
     "tieba.search_threads": "tieba-search-v11",
     "tieba.read_threads": "tieba-read-v12",
     "tieba.synthesize_evidence": "tieba-synthesize-v11",
-    "tieba.verify_evidence": "tieba-verify-v6",
+    "tieba.verify_evidence": "tieba-verify-v7",
 }
 
 TIEBA_GATES: tuple[str, ...] = (

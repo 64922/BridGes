@@ -26,6 +26,30 @@ class TiebaBrowserCleanup(BaseModel):
     timed_out: int = Field(default=0, description="超过清理容差的次数。")
 
 
+class TiebaSummaryRunMetadata(BaseModel):
+    """一次总结的版本、调用与证据计数（只含标识和数字，不含正文）。"""
+
+    contract_version: str = Field(default="tieba-summary-run-v1")
+    model_id: str | None = Field(default=None, description="本轮实际使用的主模型 ID。")
+    prompt_version: str = Field(description="总结提示词版本。")
+    input_schema_version: str = Field(description="送入模型的证据输入合同版本。")
+    output_schema_version: str = Field(description="模型观点的输出合同版本。")
+    read_evidence_count: int = Field(default=0, description="时间范围内可总结的已读证据数。")
+    model_evidence_count: int = Field(default=0, description="实际送入模型的证据数。")
+    omitted_evidence_count: int = Field(
+        default=0, description="已读但未送入模型或未进入总结的证据数。"
+    )
+    batch_count: int = Field(default=0, description="总结批次数（含拆分与未发送批次）。")
+    succeeded_batch_count: int = Field(default=0, description="成功完成的批次调用数。")
+    failed_batch_count: int = Field(default=0, description="失败的批次调用数。")
+    model_call_count: int = Field(default=0, description="总结相关模型调用总数。")
+    claim_count: int = Field(default=0, description="送入支持核验的观点数。")
+    supported_claim_count: int = Field(default=0, description="通过支持核验并交付的观点数。")
+    summary_supported: bool = Field(
+        default=False, description="连贯总结正文是否通过语义支持核验。"
+    )
+
+
 class TiebaRunMetadata(BaseModel):
     """一轮贴吧采集的可核对运行记录（不含会话秘密或原始响应）。"""
 
@@ -81,7 +105,7 @@ class TiebaRunMetadata(BaseModel):
         default_factory=dict, description="各节点实际阶段耗时（毫秒）。"
     )
     remaining_work_ms: int | None = Field(
-        default=None, description="完成投影时账本剩余工作时间（毫秒）。"
+        default=None, description="生成本轮运行记录时的账本剩余工作时间（毫秒）。"
     )
     closeout_reasons: dict[str, str] = Field(
         default_factory=dict, description="检索、读取与官方路径的收尾原因。"
@@ -89,10 +113,14 @@ class TiebaRunMetadata(BaseModel):
     browser_cleanup: TiebaBrowserCleanup | None = Field(
         default=None, description="浏览器 worker 清理耗时与容差。"
     )
+    summary: TiebaSummaryRunMetadata | None = Field(
+        default=None, description="模型总结的版本、调用、批次与证据计量；未生成时为 None。"
+    )
 
 
 __all__ = [
     "TiebaBrowserCleanup",
     "TiebaRequestBreakdown",
     "TiebaRunMetadata",
+    "TiebaSummaryRunMetadata",
 ]

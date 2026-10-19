@@ -150,6 +150,13 @@ def test_service_persists_every_attempt_only_for_current_identity(
             metadata = message.tieba_research["run_metadata"]
             assert metadata["run_id"] == RUN
             assert metadata["model_call_count"] == 3
+            summary_metadata = metadata["summary"]
+            assert summary_metadata["contract_version"] == "tieba-summary-run-v1"
+            assert summary_metadata["prompt_version"] == "tieba-summary-v8"
+            assert summary_metadata["model_evidence_count"] == 1
+            assert summary_metadata["model_call_count"] == 3
+            assert summary_metadata["supported_claim_count"] == 1
+            assert summary_metadata["summary_supported"] is True
             assert metadata["confirmed_post_count"] == 1
             assert metadata["source_urls"] == ["https://tieba.baidu.com/p/100"]
             assert metadata["component_versions"]["browser_protocol"]
