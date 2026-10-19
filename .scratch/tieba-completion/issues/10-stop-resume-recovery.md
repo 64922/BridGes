@@ -45,7 +45,7 @@
 - 2026-10-18：用户确认拆分，正式发布为 ready-for-agent；编号、内容范围和依赖保持已批准方案，未开始业务开发。
 
 - 2026-10-19：实现与受控验证完成，转 `ready-for-human`。前置 09 当前仍为 `ready-for-human`（实现已合并 main 的 `f81ec2df`），本票未把 09 当作人工验收通过；13/14 的阻塞不因本票状态自动解除。
-  - 工作树 `D:\BridGes\.worktrees\10-stop-resume-recovery`；分支 `10-stop-resume-recovery`；基线 `8ad71b1c`（main）。合并后 main 哈希见后续评论。
+  - 工作树 `D:\BridGes\.worktrees\10-stop-resume-recovery`；分支 `10-stop-resume-recovery`；基线 `8ad71b1c`（main）；本票提交 `52047b41`，已合并 main 至 `b10df566`，合并后 `tests/tieba` 重跑 `418 passed`。
   - 检查点与恢复：搜索每轮、每次已确认帖子读取后写 `partial=True` 产物（只写产物，不写完成收据，提交仍由 `RunCommitGuard.verify()` 守卫）。恢复先找 input_key 精确 partial，再按 parse/plan 内容哈希扫描历史 partial；校验任务、配方、能力、schema、产物类型、partial/reusable/hash 后才复用。不兼容产物拒绝恢复。
   - 任务绑定：parse input_key 纳入任务版本；pending 登录等待保存 `task_id`/`task_version`，任务变化时旧等待清除且旧任务不能提交。自然语言“继续”在没有显式续接问题时使用当前任务主题词，避免把“继续”当作检索主题；已有显式问题仍优先。
   - 停止与总结：停止事件传入总结批次、聚合和核验前检查；模型失败或未完整总结时 synthesize payload 标 `partial=True`，kernel 不复用 partial 产物；合法重试优先复用搜索/读取证据，只重做总结与核验。服务端投影新增 `recovery`（动作、范围说明、追问），认证等待、停止、失败均由真实能力生成。
