@@ -4,7 +4,7 @@
 
 **Blocked by:** 10 — 停止、登录等待和故障后从有效证据续接；11 — 多批次总结保留分歧、时间与可核对引用；12 — 明确核实时追加学校官网并区分两类结论
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 实施边界与关键决策
 
@@ -43,3 +43,17 @@
 
 
 - 2026-10-18：用户确认拆分，正式发布为 ready-for-agent；编号、内容范围和依赖保持已批准方案，未开始业务开发。
+
+- 2026-10-19T21:10+08:00：实现与受控验证完成，转 `ready-for-human`。工作树 `D:\BridGes\.worktrees\13-delivery-and-history`；分支 `13-delivery-and-history`；基线 `2afb8644`（main）；本票提交 `acc85eab`，已合并 main 为 `ecffcebd`。前置 10/11/12 仍为 `ready-for-human`，本票未把它们当作人工验收通过，15 的阻塞不因本票状态自动解除。
+  - 公开进度：新增 `AuthWaitProgress`（ContextVar 绑定本次运行），只在认证等待真正开始/结束时投影 `tieba.auth started/completed`，重复事件忽略；等待结束后重新声明等待前的真实节点，不把认证等待误当成完成阶段。浏览器接收层在 `auth_wait.finish` 后同步通知，事件仍走既有 `emit_node` 持久化，刷新可回放；`PublicProcess` 新增取证计划、整理、核验与认证等待中文标签。
+  - 等待与恢复：`waiting_auth`/`clarification` 在生成中优先显示“等待你完成贴吧登录或安全验证”/“等待你补充贴吧问题”；`DeliveryStatus` 通过 `waitReasonLabel` 显示中文，不泄露 `tieba_authentication` 等内部代码。恢复按钮继续复用服务端真实 `recovery`，未新增第二套动作；工具栏“重试未完成阶段”已由既有 `AssistantActions` 提供，`TiebaAnswer` 未重复添加。
+  - 正文与引用：复核既有单一权威总结路径并纳入 E2E；纯贴吧只渲染 `tieba-summary`，不复述服务端同份正文，复合回合由既有 `MessageList.presentation.test.tsx` 保证保留综合正文、只追加贴吧引用。引用详情新增发言者、缺失时的“发言者未给出”、缺失时间“发言时间未给出”，普通/嵌套楼层、父上下文、原帖与读取范围保持可核对。
+  - 历史与边界：旧记录 `pages_limit=0` 显示“旧记录未保存分页范围”，不再显示 `0/0` 或声称普通楼层页已读完；零证据新增可执行下一步说明；部分成功、取消、耗尽分别只给真实动作；导出保留 `evidence_boundary`、分页、`recovery` 与引用作者，旧记录按原合同读取。
+  - 可访问性与布局：生成中公开过程标签为 `role=status`/`aria-live=polite`；引用面板键盘 Enter/Escape 与焦点归还通过；1024×576（等价 1280×720 @125% 的 CSS 布局视口）无水平溢出，输入区与引用入口可见。
+  - 测试与退出码：`python -m pytest tests/tieba tests/lifecycle` → exit 0，`500 passed`；`npm run test:unit` → exit 0，`55 files / 429 tests passed`；`npm run typecheck` → exit 0；`npm run build` → exit 0（既有 `<img>` 警告；worktree junction 触发 standalone 符号链接 EPERM 警告，构建产物仍成功）；`ruff check` 本票 Python 文件 → exit 0；`git diff --check` → exit 0。
+  - E2E：开发配置 `issue13-delivery-and-history.spec.ts` → 3 passed；生产构建配置 → 3 passed；同生产构建复验 `issue10-tieba-answer`、`issue15-historical-results`、`issue06-public-progress`、`issue38-trusted-progress` → 14 passed。覆盖成功、等待认证、有证据无总结、零证据、旧记录、部分成功、取消、耗尽、复制、尝试历史、刷新、引用键盘、1024×576 与生成中 `active_run.current_node=tieba.auth`。
+  - 全量 pytest 未取得通过结论：直接运行有 4 个既有 `CareerBackgroundLoader` collection ImportError（main 同样失败）；忽略这 4 个文件后为 `6133 passed / 345 failed / 39 skipped`，失败集中在既有 career/routing/plugins/resources/architecture 等非贴吧模块，代表性失败文件在主工作区同样失败；本票相关的 `tests/tieba` 与 `tests/lifecycle` 全绿。该结果不作为全仓基线的通过证据。
+  - 真实/模拟证据：E2E 使用真实生产/开发构建与真实后端注册/会话服务，但对话、贴吧投影与事件响应为受控替身；认证进度由可控浏览器 worker 事件测试，未执行真实专用贴吧会话登录等待。未把替身结果声明为真实上游采集通过。
+  - 未验证/剩余：真实登录窗口自动续接与关闭后“继续”；真实贴吧上游限流、分页与模型完整旅程；人工按验收方式核对一条真实成功与一条真实部分失败。上述需在有人工环境和真实凭据时复核。
+  - 公开契约/版本：无 Pydantic 契约、OpenAPI、数据库 schema、recipe/能力版本变化，无数据迁移；仅新增内部进度模块、`tieba.auth` 运行事件与前端展示映射。
+  - 回滚：回退 `ecffcebd`（或 `acc85eab`）即可；无 schema 迁移、无外部数据写入；前后端成组回退可避免旧界面遇到未知 `tieba.auth` 节点。
