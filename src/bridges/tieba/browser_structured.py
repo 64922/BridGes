@@ -7,13 +7,14 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
 
 from bridges.tieba.lexicon import TARGET_FORUM_NAME
 
-BROWSER_PROTOCOL_VERSION = "tieba-browser-protocol-v1"
+BROWSER_PROTOCOL_VERSION = "tieba-browser-protocol-v2"
 
 _CHINA_TZ = timezone(timedelta(hours=8))
 
@@ -22,17 +23,28 @@ class StructuredResponseError(ValueError):
     """结构化响应缺失关键字段或声明失败。"""
 
 
-def parse_search_payload(
+@dataclass(frozen=True)
+class SearchPage:
+    """一页搜索响应的真实分页元数据与候选。"""
+
+    page: int
+    has_more: bool
+    hits: tuple[dict[str, object], ...]
+
+
+def parse_search_page(
     payload: Any,
     *,
     discovery_type: str,
-) -> list[dict[str, object]]:
-    """把一次吧内搜索响应转成候选；摘要只用于发现，不进入总结证据。"""
+) -> SearchPage:
+    """解析一页搜索响应；页码与 has_more 缺失时保持保守默认。"""
     _validate_envelope(payload)
     data = _mapping(_mapping(payload).get("data"))
     posts = data.get("post_list")
     if not isinstance(posts, list):
         raise StructuredResponseError("搜索响应缺少 post_list")
+    page = _positive_int(data.get("current_page")) or 1
+    has_more = _as_int(data.get("has_more"))
     hits: list[dict[str, object]] = []
     for item in posts:
         if not isinstance(item, dict):
@@ -45,18 +57,35 @@ def parse_search_payload(
         snippet = "\n".join(
             part for part in (_with_forum_suffix(forum), content) if part
         )[:900]
+        is_reply = discovery_type == "reply"
         hits.append(
             {
                 "url": _thread_url(tid, item.get("pb_url")),
                 "title": (_text(item.get("title")) or "（页面未给出标题）")[:160],
                 "snippet": snippet,
                 "discovery_type": discovery_type,
-                "matched_reply": content or None if discovery_type == "reply" else None,
+                "matched_reply": content or None if is_reply else None,
+                "matched_reply_id": _reply_locator(item) if is_reply else None,
+                "matched_author": _search_author(item) if is_reply else None,
+                "search_page": page,
             }
         )
     if posts and not hits:
         raise StructuredResponseError("搜索响应的候选都缺少帖子 ID")
-    return hits
+    return SearchPage(
+        page=page,
+        has_more=has_more is not None and has_more != 0,
+        hits=tuple(hits),
+    )
+
+
+def parse_search_payload(
+    payload: Any,
+    *,
+    discovery_type: str,
+) -> list[dict[str, object]]:
+    """把一次吧内搜索响应转成候选；摘要只用于发现，不进入总结证据。"""
+    return list(parse_search_page(payload, discovery_type=discovery_type).hits)
 
 
 def parse_thread_payload(
@@ -199,6 +228,26 @@ def _author(item: dict[str, Any], users: dict[str, str]) -> str | None:
     return users.get(author_id) if author_id else None
 
 
+def _search_author(item: dict[str, Any]) -> str | None:
+    user = item.get("user")
+    if not isinstance(user, dict):
+        return None
+    return _text(
+        user.get("show_nickname")
+        or user.get("name_show")
+        or user.get("user_name")
+        or user.get("name")
+    ) or None
+
+
+def _reply_locator(item: dict[str, Any]) -> str | None:
+    """回复搜索的定位：优先楼中楼 ID，其次楼层 ID。"""
+    cid = _text(item.get("cid"))
+    if cid and cid != "0":
+        return cid
+    return _text(item.get("pid")) or None
+
+
 def _sub_posts(item: dict[str, Any]) -> list[dict[str, Any]]:
     raw = item.get("sub_post_list")
     if isinstance(raw, dict):
@@ -296,8 +345,10 @@ def _positive_int(value: Any) -> int | None:
 
 __all__ = [
     "BROWSER_PROTOCOL_VERSION",
+    "SearchPage",
     "StructuredResponseError",
     "TARGET_FORUM_NAME",
+    "parse_search_page",
     "parse_search_payload",
     "parse_thread_payload",
 ]

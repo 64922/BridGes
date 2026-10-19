@@ -335,6 +335,9 @@ class TiebaNodeFlow:
             "rounds": list(attempts.rounds),
             "raw_hits": attempts.diagnostics.raw_hits,
             "usable": attempts.diagnostics.usable,
+            "search_scope": [
+                scope.model_dump(mode="json") for scope in attempts.scope
+            ],
             "partial": attempts.partial,
         }
         return NodeExecution(

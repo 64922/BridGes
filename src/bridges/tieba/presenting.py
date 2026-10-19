@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 
 from bridges.tieba.contracts import (
@@ -16,6 +17,7 @@ from bridges.tieba.contracts import (
     TiebaPostProjection,
     TiebaQuestionAnalysis,
     TiebaResearchProjection,
+    TiebaSearchDiscovery,
 )
 from bridges.tieba.lexicon import TARGET_FORUM_NAME
 from bridges.tieba.official import STATUS_VERIFIED
@@ -144,6 +146,7 @@ def render_result_content(projection: TiebaResearchProjection) -> str:
     if projection.official_blocked_reason:
         lines.append(f"· 来源限制：{projection.official_blocked_reason}")
     lines.append(f"· 时间条件：{projection.time_filter.note}")
+    lines.extend(_search_scope_lines(projection))
     if projection.summary:
         citations = "、".join(
             f"[{item.citation_id}]" for item in projection.summary_citations
@@ -167,6 +170,9 @@ def render_result_content(projection: TiebaResearchProjection) -> str:
             lines.append(f"   链接：{post.url}")
             lines.append(f"   归属依据：{post.affiliation_evidence}")
             lines.append(f"   已读范围：{_read_scope(post)}")
+            discoveries = _discovery_text(post.discoveries)
+            if discoveries:
+                lines.append(f"   发现路径：{discoveries}")
             if post.replies:
                 for reply in post.replies:
                     lines.append(
@@ -208,6 +214,7 @@ def render_empty_content(projection: TiebaResearchProjection) -> str:
         lines.append(f"· 检索计划：{plan_line}")
     if projection.official_blocked_reason:
         lines.append(f"· 来源限制：{projection.official_blocked_reason}")
+    lines.extend(_search_scope_lines(projection))
     if projection.empty_reason:
         lines.append(projection.empty_reason)
     for record in projection.queries:
@@ -257,8 +264,50 @@ def _candidate_link_lines(projection: TiebaResearchProjection) -> list[str]:
     ]
     for index, link in enumerate(projection.candidate_links, start=1):
         reason = f"{link.unconfirmed_reason}；" if link.unconfirmed_reason else ""
-        lines.append(f"{index}. {link.title}｜{link.url}（{link.source}；{reason}归属未确认）")
+        discoveries = _discovery_text(link.discoveries)
+        path = f"发现路径：{discoveries}；" if discoveries else ""
+        lines.append(
+            f"{index}. {link.title}｜{link.url}"
+            f"（{link.source}；{path}{reason}归属未确认）"
+        )
     return lines
+
+
+def _search_scope_lines(projection: TiebaResearchProjection) -> list[str]:
+    lines: list[str] = []
+    for scope in projection.search_scope:
+        label = "主题" if scope.tab == "thread" else "回复"
+        pages = (
+            f"第 {scope.visited_pages[0]}–{scope.visited_pages[-1]} 页"
+            if scope.visited_pages
+            else "未读到页面"
+        )
+        line = (
+            f"· 搜索页范围：{label}页签「{scope.query}」已读 {pages}"
+            f"（{scope.pages_read}/{scope.pages_limit} 页）"
+        )
+        if scope.has_more is True:
+            line += "，页面声明还有后续结果"
+        elif scope.has_more is False:
+            line += "，页面声明没有更多结果"
+        if scope.note:
+            line += f"；{scope.note}"
+        lines.append(line)
+    return lines
+
+
+def _discovery_text(discoveries: Sequence[TiebaSearchDiscovery]) -> str:
+    parts: list[str] = []
+    for discovery in discoveries:
+        kind = "回复命中" if discovery.discovery_type == "reply" else "主题命中"
+        query_text = f"「{discovery.query}」" if discovery.query else ""
+        page_text = (
+            f"第 {discovery.search_page} 页"
+            if discovery.search_page is not None
+            else "页码未知"
+        )
+        parts.append(f"{kind}{query_text} · {page_text}")
+    return "；".join(parts)
 
 
 def _official_lines(projection: TiebaResearchProjection) -> list[str]:

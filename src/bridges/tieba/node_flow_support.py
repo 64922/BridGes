@@ -24,6 +24,7 @@ from bridges.tieba.contracts import (
     TiebaQuestionAnalysis,
     TiebaRejectedCandidate,
     TiebaSearchHit,
+    TiebaSearchScope,
 )
 from bridges.tieba.evidence import ReadOutcome
 from bridges.tieba.evidence_search import (
@@ -97,12 +98,19 @@ def read_search_attempts(invocation: NodeInvocation) -> SearchAttempts:
         duplicate=max(0, raw_hits - not_a_thread - other_forum - usable),
         usable=usable,
     )
+    scope: list[TiebaSearchScope] = []
+    for raw in payload.get("search_scope", []):
+        try:
+            scope.append(TiebaSearchScope.model_validate(raw))
+        except ValueError:
+            continue
     return SearchAttempts(
         hits=tuple(hits),
         rejected=tuple(rejected),
         records=records,
         diagnostics=diagnostics,
         rounds=tuple(str(note) for note in payload.get("rounds", [])),
+        scope=tuple(scope),
         partial=bool(payload.get("partial")),
     )
 

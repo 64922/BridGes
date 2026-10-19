@@ -22,6 +22,7 @@ from bridges.tieba.contracts import (
     TiebaQuestionAnalysis,
     TiebaRejectedCandidate,
     TiebaSearchHit,
+    TiebaSearchScope,
 )
 from bridges.tieba.lexicon import (
     MAX_QUERY_TERMS,
@@ -30,6 +31,7 @@ from bridges.tieba.lexicon import (
     TIEBA_HOST,
     relaxed_topic_terms,
 )
+from bridges.tieba.search_merge import merge_search_hit, with_discovery
 from bridges.web_search.scope import query_scopes, url_in_scopes
 
 #: 候选帖链接形态（含移动端与桌面端主机）。
@@ -88,6 +90,7 @@ class SearchOutcome:
     rejected: tuple[TiebaRejectedCandidate, ...]
     diagnostics: HitDiagnostics = HitDiagnostics()
     prior_records: tuple[ModuleQueryRecord, ...] = ()
+    scope: tuple[TiebaSearchScope, ...] = ()
     excluded_wait_ms: int = 0
 
 
@@ -210,6 +213,22 @@ def classify_hits(
     return kept, rejected
 
 
+def merge_search_hits(hits: tuple[TiebaSearchHit, ...]) -> tuple[TiebaSearchHit, ...]:
+    """按规范帖子链接合并候选，保留首次出现顺序。"""
+    merged: dict[str, TiebaSearchHit] = {}
+    order: list[str] = []
+    for hit in hits:
+        thread_id = thread_id_of(hit.url)
+        url = canonical_url(hit.url) if thread_id is not None else hit.url.strip()
+        normalized = hit.model_copy(update={"url": url, "thread_id": thread_id or hit.thread_id})
+        if url in merged:
+            merged[url] = merge_search_hit(merged[url], normalized)
+        else:
+            merged[url] = normalized
+            order.append(url)
+    return tuple(merged[url] for url in order)
+
+
 def classify_hits_with_diagnostics(
     hits: tuple[TiebaSearchHit, ...],
 ) -> tuple[
@@ -220,9 +239,11 @@ def classify_hits_with_diagnostics(
     """同上，并给出脱敏计数：非帖子链接、他吧证据、重复与可用候选各多少条。
 
     不是帖子页面的命中（用户主页、专题页、官网页面）也留下剔除记录：空态
-    必须能解释「搜索结果为什么没有可用帖子」，不能静默丢弃。
+    必须能解释「搜索结果为什么没有可用帖子」，不能静默丢弃。同一帖子的
+    重复命中若已保留，则把后来的发现路径合并进去，而不是直接丢弃。
     """
     kept: list[TiebaSearchHit] = []
+    kept_by_url: dict[str, TiebaSearchHit] = {}
     rejected: list[TiebaRejectedCandidate] = []
     seen: set[str] = set()
     not_a_thread = 0
@@ -241,19 +262,27 @@ def classify_hits_with_diagnostics(
             )
             continue
         url = canonical_url(hit.url)
+        normalized = with_discovery(
+            hit.model_copy(update={"url": url, "thread_id": thread_id})
+        )
+        if url in kept_by_url:
+            duplicate += 1
+            kept_by_url[url] = merge_search_hit(kept_by_url[url], normalized)
+            continue
         if url in seen:
             duplicate += 1
             continue
         seen.add(url)
-        hit = hit.model_copy(update={"url": url, "thread_id": thread_id})
-        rejection = _rejection_evidence(hit)
+        rejection = _rejection_evidence(normalized)
         if rejection is None:
-            kept.append(hit)
+            kept.append(normalized)
+            kept_by_url[url] = normalized
         else:
             other_forum += 1
             rejected.append(
-                TiebaRejectedCandidate(url=url, title=hit.title, evidence=rejection)
+                TiebaRejectedCandidate(url=url, title=normalized.title, evidence=rejection)
             )
+    kept = [kept_by_url.get(hit.url, hit) for hit in kept]
     diagnostics = HitDiagnostics(
         raw_hits=len(hits),
         not_a_thread=not_a_thread,

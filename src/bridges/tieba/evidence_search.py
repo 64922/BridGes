@@ -13,10 +13,12 @@ from bridges.tieba.contracts import (
     TiebaQuestionAnalysis,
     TiebaRejectedCandidate,
     TiebaSearchHit,
+    TiebaSearchScope,
 )
 from bridges.tieba.lexicon import (
     TARGET_FORUM_NAME,
 )
+from bridges.tieba.search_merge import merge_search_hit
 from bridges.tieba.searching import (
     REJECT_NOT_A_THREAD,
     HitDiagnostics,
@@ -57,6 +59,7 @@ class SearchAttempts:
     records: list[ModuleQueryRecord]
     diagnostics: HitDiagnostics = HitDiagnostics()
     rounds: tuple[str, ...] = ()
+    scope: tuple[TiebaSearchScope, ...] = ()
     #: 是否因停止／预算／可重试失败而没有跑完计划（供恢复续作）。
     partial: bool = False
 
@@ -81,6 +84,7 @@ def search_candidates(
     rejected: list[TiebaRejectedCandidate] = []
     rejected_urls: set[str] = set()
     rounds: list[str] = []
+    scopes: dict[tuple[str, str], TiebaSearchScope] = {}
     raw_hits = 0
     usable = 0
     completed: set[str] = set()
@@ -108,11 +112,22 @@ def search_candidates(
                 seeded_hits.append(TiebaSearchHit.model_validate(raw))
             except ValueError:
                 continue
+        for raw in resume.get("search_scope", []):
+            try:
+                scope = TiebaSearchScope.model_validate(raw)
+            except ValueError:
+                continue
+            scopes[(scope.tab, scope.query)] = scope
         rounds.extend(str(note) for note in resume.get("rounds", []))
         raw_hits += int(resume.get("raw_hits") or 0)
         usable += int(resume.get("usable", len(seeded_hits)) or 0)
     partial = False
-    found_by_url: dict[str, TiebaSearchHit] = {hit.url: hit for hit in seeded_hits}
+    found_by_url: dict[str, TiebaSearchHit] = {}
+    for hit in seeded_hits:
+        if hit.url in found_by_url:
+            found_by_url[hit.url] = merge_search_hit(found_by_url[hit.url], hit)
+        else:
+            found_by_url[hit.url] = hit
     query_rounds = plan_query_rounds(analysis)
     executed_expressions = {
         item.execution_terms for item in query_rounds if item.query in completed
@@ -144,8 +159,13 @@ def search_candidates(
         rejected_urls.update(item.url for item in fresh)
         rejected.extend(fresh)
         rounds.append(_round_note(query_round.goal, outcome))
+        for scope in outcome.scope:
+            scopes[(scope.tab, scope.query)] = scope
         for hit in outcome.candidates:
-            found_by_url.setdefault(hit.url, hit)
+            if hit.url in found_by_url:
+                found_by_url[hit.url] = merge_search_hit(found_by_url[hit.url], hit)
+            else:
+                found_by_url[hit.url] = hit
         if not _plan_continues(outcome.record):
             browser_blocked = outcome.record.error_code in {
                 "tieba_browser_auth_required",
@@ -166,6 +186,7 @@ def search_candidates(
         records=records,
         diagnostics=_deduped_diagnostics(rejected, raw_hits=raw_hits, usable=usable),
         rounds=tuple(rounds),
+        scope=tuple(scopes.values()),
         partial=partial
         or any(record.retryable for record in records if record.status in FAILED_QUERY_STATUSES),
     )
@@ -218,12 +239,19 @@ def _round_note(goal: str, outcome: SearchOutcome) -> str:
             f"{goal}「{outcome.record.query}」未完成（{reason}），"
             f"取得 {len(outcome.hits)} 条原始结果。"
         )
-    return (
+    note = (
         f"{goal}「{outcome.record.query}」取得 {len(outcome.hits)} 条原始结果："
         f"可用候选 {len(outcome.candidates)} 条，"
         f"剔除 {len(outcome.rejected)} 条（其中非帖子链接 {outcome.diagnostics.not_a_thread} 条、"
         f"他吧证据 {outcome.diagnostics.other_forum} 条）。"
     )
+    if outcome.scope:
+        pages = "、".join(
+            f"{'主题' if item.tab == 'thread' else '回复'} {item.pages_read}/{item.pages_limit} 页"
+            for item in outcome.scope
+        )
+        note += f" 页范围：{pages}。"
+    return note
 
 
 def _skipped_round_note(goal: str, stop_event: threading.Event | None) -> str:

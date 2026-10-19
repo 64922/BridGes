@@ -56,7 +56,7 @@ def test_run_metadata_records_counts_versions_and_unread_scope() -> None:
     assert metadata.confirmed_post_count == 1
     assert metadata.read_reply_count == 3
     assert metadata.source_urls == ["https://tieba.baidu.com/p/123"]
-    assert metadata.component_versions["browser_protocol"] == "tieba-browser-protocol-v1"
+    assert metadata.component_versions["browser_protocol"] == "tieba-browser-protocol-v2"
     assert any("页面声明共 2 页" in note for note in metadata.unread_scope)
     assert any("9 条回复" in note for note in metadata.unread_scope)
     assert any("本轮记录 3 条楼层" in note for note in metadata.unread_scope)

@@ -7,7 +7,7 @@ import queue
 import sys
 import threading
 from pathlib import Path
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlparse
 
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 from playwright.sync_api import TimeoutError as BrowserTimeoutError
@@ -23,11 +23,7 @@ from bridges.tieba.browser_auth import (
     auth_required,
     request_timeout_ms,
 )
-from bridges.tieba.browser_capture import (
-    StructuredCapture,
-    search_structured,
-    wait_for_payloads,
-)
+from bridges.tieba.browser_capture import StructuredCapture, wait_for_payloads
 from bridges.tieba.browser_dom import SEARCH_DOM, THREAD_DOM, THREAD_FLOORS
 from bridges.tieba.browser_requests import BrowserRequestTracker
 from bridges.tieba.browser_runtime import account_profile_is_fenced
@@ -35,11 +31,13 @@ from bridges.tieba.browser_scroll import (
     expand_thread_nested_replies,
     scroll_thread_replies,
 )
+from bridges.tieba.browser_search import run_search
 from bridges.tieba.browser_structured import (
     StructuredResponseError,
     parse_thread_payload,
 )
-from bridges.tieba.lexicon import TARGET_FORUM_URL
+
+__all__ = ["SEARCH_DOM", "main", "search"]
 
 
 def emit(value: object) -> None:
@@ -62,65 +60,6 @@ def wait_for_thread_page_or_auth(
     return auth_required(page)
 
 
-def _search_tab(
-    page: Page,
-    target: str,
-    tab: str,
-    closed: threading.Event,
-    deadline: float | None,
-    auth: AuthSession,
-) -> list[dict[str, object]]:
-    current_deadline = auth.deadline if auth.deadline is not None else deadline
-    capture = StructuredCapture(page, "/mo/q/search/thread").start()
-    try:
-        page.goto(
-            target,
-            wait_until="domcontentloaded",
-            timeout=request_timeout_ms(closed, current_deadline, 18000),
-        )
-        page.wait_for_function(
-            """() => document.querySelector('.tbm-post-thread, .tbm-floor-thread, .thread-new3') ||
-            document.querySelector('.login-guide-placeholder') ||
-            document.querySelector('#captcha, .pass-sms-wrap') ||
-            /没有找到|暂无.*结果|百度安全验证/.test(document.body.innerText) ||
-            /百度安全验证/.test(document.title)""",
-            timeout=request_timeout_ms(closed, current_deadline, 9000),
-        )
-        reason = auth_required(page)
-        if reason:
-            capture.stop()
-            page = auth.recover(page, reason=reason, target_url=target)
-            capture = StructuredCapture(page, "/mo/q/search/thread").start()
-            current_deadline = auth.deadline if auth.deadline is not None else deadline
-            page.goto(
-                target,
-                wait_until="domcontentloaded",
-                timeout=request_timeout_ms(closed, current_deadline, 18000),
-            )
-            page.wait_for_timeout(
-                min(700, request_timeout_ms(closed, current_deadline, 700))
-            )
-            if auth_required(page):
-                raise AuthWaitError(COLLECTION_RESTRICTED, reason="collection")
-        wait_for_payloads(capture.payloads, page, closed, current_deadline, 1500)
-    finally:
-        capture.stop()
-    failure: StructuredResponseError | None = None
-    try:
-        hits = search_structured(capture, tab)
-    except StructuredResponseError as error:
-        hits = None
-        failure = error
-    if hits is not None:
-        return hits
-    dom_hits = page.evaluate(SEARCH_DOM, tab)
-    if dom_hits:
-        return [dict(hit) for hit in dom_hits]
-    if failure is not None:
-        raise failure
-    return []
-
-
 def search(
     page: Page,
     terms: str,
@@ -128,15 +67,14 @@ def search(
     deadline: float | None,
     auth: AuthSession,
 ) -> list[dict[str, object]]:
-    parsed = urlparse(TARGET_FORUM_URL)
-    base = f"{parsed.scheme}://{parsed.netloc}/f/search/res?"
-    found: dict[str, dict[str, object]] = {}
-    for tab in ("1", "2"):
-        params = {"kw": "华东交通大学", "qw": terms[:80], "ie": "utf-8", "tab": tab}
-        target = base + urlencode(params)
-        for hit in _search_tab(page, target, tab, closed, deadline, auth):
-            found.setdefault(str(hit["url"]), hit)
-    return list(found.values())
+    """兼容入口：只返回候选；分页边界由 ``run_search`` 返回。"""
+    result, _ = run_search(page, terms, closed, deadline, auth)
+    if result.get("stop_reason") == "cancelled":
+        raise InterruptedError("tieba_browser_cancelled")
+    raw_hits = result.get("hits")
+    if not isinstance(raw_hits, list):
+        return []
+    return [item for item in raw_hits if isinstance(item, dict)]
 
 
 def _read_dom(
@@ -246,9 +184,9 @@ def _run_action(
     )
     page = auth.ensure(page)
     if action == "search":
-        result: dict[str, object] = {
-            "hits": search(page, str(payload["terms"]), closed, auth.deadline, auth)
-        }
+        result, page = run_search(
+            page, str(payload["terms"]), closed, auth.deadline, auth
+        )
     elif action == "read":
         raw_scroll_limit = payload.get("scroll_rounds_limit")
         scroll_limit = int(str(raw_scroll_limit or 8))

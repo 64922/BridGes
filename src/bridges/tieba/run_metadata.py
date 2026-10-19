@@ -21,6 +21,7 @@ class TiebaRunMetadata(BaseModel):
     elapsed_ms: int | None = Field(default=None, description="本轮实际耗时（毫秒）。")
     request_count: int = Field(default=0, description="外部请求总数。")
     search_request_count: int = Field(default=0, description="贴吧检索请求数。")
+    search_page_count: int = Field(default=0, description="实际读取的搜索页数（含主题与回复）。")
     read_request_count: int = Field(default=0, description="帖子读取请求数。")
     official_request_count: int = Field(default=0, description="学校官方页面请求数。")
     model_call_count: int = Field(default=0, description="实际发生的模型调用数。")
