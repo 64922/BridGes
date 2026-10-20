@@ -78,9 +78,12 @@ def _html(*, next_page: int = 2) -> str:
         </div>
         <script>
           const box = document.querySelector('.frs-page-wrap');
-          const tab = new URLSearchParams(location.search).get('tab') || '1';
+          const params = new URLSearchParams(location.search);
+          const tab = params.get('tab') || '1';
+          const word = params.get('qw') || '';
           function load(page) {{
-            fetch('/mo/q/search/thread?pn=' + page + '&tab=' + tab);
+            fetch('/mo/q/search/thread?pn=' + page + '&tab=' + tab +
+                  '&word=' + encodeURIComponent(word));
           }}
           load(1);
           box.addEventListener('scroll', () => {{
@@ -92,6 +95,75 @@ def _html(*, next_page: int = 2) -> str:
       </body>
     </html>
     """
+
+
+def _html_with_stale_response() -> str:
+    return """
+    <!doctype html>
+    <html>
+      <head><meta charset="utf-8"><title>搜索</title></head>
+      <body>
+        <div class="thread-new3" style="display:none"></div>
+        <script>
+          const params = new URLSearchParams(location.search);
+          const tab = params.get('tab') || '1';
+          const word = params.get('qw') || '';
+          function load(value) {
+            fetch('/mo/q/search/thread?pn=1&tab=' + tab +
+                  '&word=' + encodeURIComponent(value));
+          }
+          load('旧词');
+          setTimeout(() => load(word), 2200);
+        </script>
+      </body>
+    </html>
+    """
+
+
+def _serve_with_stale_response(route: Route) -> None:
+    url = route.request.url
+    if "/f/search/res" in url:
+        route.fulfill(
+            status=200,
+            content_type="text/html; charset=utf-8",
+            body=_html_with_stale_response(),
+        )
+        return
+    if "/mo/q/search/thread" not in url:
+        route.fulfill(status=204, body="")
+        return
+    query = parse_qs(urlparse(url).query)
+    word = query.get("word", [""])[0]
+    tab = query.get("tab", ["1"])[0]
+    pn = int(query.get("pn", ["1"])[0])
+    if pn > 1:
+        body = {
+            "no": 0,
+            "error": "success",
+            "data": {"current_page": pn, "has_more": 0, "post_list": []},
+        }
+    elif word == "旧词":
+        body = _payload(
+            page=1,
+            has_more=1,
+            tid="999",
+            title="上一轮查询的帖子",
+            content="上一轮查询的旧内容。",
+        )
+    else:
+        body = _payload(
+            page=1,
+            has_more=0,
+            tid=str(101),
+            title="当前查询的帖子",
+            content="当前查询的内容。",
+            cid="991" if tab == "2" else "0",
+        )
+    route.fulfill(
+        status=200,
+        content_type="application/json; charset=utf-8",
+        body=json.dumps(body, ensure_ascii=False),
+    )
 
 
 def _serve(route: Route, *, scenario: str = "normal") -> None:
@@ -200,6 +272,26 @@ def test_real_scroll_loads_second_page_and_records_scope(chrome_page: Page) -> N
     assert thread_scope["visited_pages"] == [1, 2]
     assert thread_scope["has_more"] is False
     assert thread_scope["stop_reason"] is None
+
+
+def test_stale_previous_query_response_is_ignored(chrome_page: Page) -> None:
+    chrome_page.route("**/*", _serve_with_stale_response)
+
+    result, _ = run_search(
+        chrome_page,
+        "空调",
+        threading.Event(),
+        None,
+        _NoAuth(),  # type: ignore[arg-type]
+        pages_limit=2,
+    )
+
+    assert [hit["url"] for hit in result["hits"]] == [URL_101]
+    assert all(
+        discovery["query"] == "空调"
+        for hit in result["hits"]
+        for discovery in hit["discoveries"]
+    )
 
 
 def test_real_reply_tab_merges_same_thread_discovery_paths(chrome_page: Page) -> None:

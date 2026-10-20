@@ -37,8 +37,8 @@ from bridges.tieba.lexicon import TARGET_FORUM_URL
 #: 每个页签最多读取的搜索页数；真实翻页仍逐请求计量。
 SEARCH_PAGES_LIMIT = 2
 
-#: 首屏结构化响应的等待上限。
-SEARCH_FIRST_PAYLOAD_WAIT_MS = 1500
+#: 首屏结构化响应的等待上限；真实搜索走代理时首包可能晚于 1.5s。
+SEARCH_FIRST_PAYLOAD_WAIT_MS = 5000
 
 #: 滚动后等待下一页响应的上限。
 SEARCH_PAGE_WAIT_MS = 2500
@@ -162,14 +162,18 @@ def _search_tab(
 ) -> SearchTabResult:
     discovery_type = "thread" if tab == "1" else "reply"
     current_deadline = auth.deadline if auth.deadline is not None else deadline
-    capture = StructuredCapture(page, "/mo/q/search/thread").start()
+    capture = StructuredCapture(
+        page, "/mo/q/search/thread", expected_word=terms
+    ).start()
     try:
         _navigate(page, target, closed, current_deadline)
         reason = auth_required(page)
         if reason:
             capture.stop()
             page = auth.recover(page, reason=reason, target_url=target)
-            capture = StructuredCapture(page, "/mo/q/search/thread").start()
+            capture = StructuredCapture(
+                page, "/mo/q/search/thread", expected_word=terms
+            ).start()
             current_deadline = auth.deadline if auth.deadline is not None else deadline
             _navigate(page, target, closed, current_deadline)
             if auth_required(page):

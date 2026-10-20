@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from urllib.parse import parse_qs, urlparse
 
 from playwright.sync_api import Page, Response
 
@@ -17,9 +18,12 @@ from bridges.tieba.browser_structured import (
 class StructuredCapture:
     """在页面导航期间收集结构化响应；不读取 Cookie 或会话字段。"""
 
-    def __init__(self, page: Page, path: str) -> None:
+    def __init__(
+        self, page: Page, path: str, *, expected_word: str | None = None
+    ) -> None:
         self._page = page
         self._path = path
+        self._expected_word = expected_word
         self.payloads: list[dict[str, object]] = []
 
     def start(self) -> StructuredCapture:
@@ -42,6 +46,11 @@ class StructuredCapture:
     def _capture(self, response: Response) -> None:
         if self._path not in response.url:
             return
+        if self._expected_word is not None:
+            query = parse_qs(urlparse(response.url).query)
+            word = (query.get("word") or query.get("qw") or [""])[0]
+            if word != self._expected_word:
+                return
         try:
             body = json.loads(response.text())
         except Exception:  # noqa: BLE001 - 单个响应解析失败不终止页面
