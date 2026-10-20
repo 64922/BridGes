@@ -4,7 +4,7 @@
 
 **Blocked by:** 09 — 五分钟内优先覆盖多帖并准时收尾；13 — 完整旅程的进度、引用和历史结果可用；14 — 账户隔离与浏览器生命周期闭环验收
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 实施边界与关键决策
 
@@ -43,3 +43,14 @@
 
 
 - 2026-10-18：用户确认拆分，正式发布为 ready-for-agent；编号、内容范围和依赖保持已批准方案，未开始业务开发。
+
+- 2026-10-20：真实验收发现并修复搜索陈旧响应缺陷；真实复验尚未完成，不能标完整可用。
+  - 真实环境已具备：专用贴吧 profile 已登录（`is_login=1`），Qwen 真实凭据可用，production 应用 `/health/ready` 为 `live=pass, ready=pass, degraded=fail`（仅 Tavily 可选依赖失败）。
+  - 真实失败证据：原始「宿舍」请求返回 `empty`；「宿舍热水」请求取得 20 条候选，但候选发现词全是「宿舍」，总结实际回答的是宿舍条件而非热水。两次运行的 `tieba.search` 节点仅耗时 46ms/112ms，不可能是真实搜索。
+  - 根因：`StructuredCapture` 只按接口路径收集响应，未校验响应属于当前查询；首屏等待仅 1500ms，慢响应会被下一轮/下一页签捕获，造成跨查询污染和空结果误判。
+  - 同 profile 直接 worker 复测证明上游正常：`宿舍` 45 条/7.02s，`宿舍 热水` 49 条/6.39s，`转专业` 40 条/6.76s；问题在采集边界而非上游。
+  - 修复：结构化响应按当前 `word` 查询词过滤；首屏等待上限提高到 5000ms；失败测试先覆盖陈旧响应和延迟首包，再实现。
+  - 检查：`pytest tests/tieba/test_browser_capture.py tests/tieba/test_browser_search_pagination.py -q` → 14 passed/14.52s；`pytest tests/tieba tests/contracts tests/lifecycle -q` → 524 passed/170.09s；`ruff check` → All checks passed。前端无改动，先前 typecheck/unit(429)/lint/build 已通过。
+  - 未完成/剩余限制：修复后的原始宿舍请求、多帖、回复独有命中、分页外回复、默认/明确时间、明确校区、官网核验、认证成功自动续接及完整故障矩阵尚未重新真实验收；认证未知曾快速连跑时出现一次，冷却后恢复。按用户要求跳过本轮真实复跑，直接完成代码与记录。
+  - 下一步（可执行）：启动应用前先 mint 临时会话，再执行原始宿舍请求；确认 `tieba.search` 耗时 >5s、候选 `discoveries.query` 与当前轮一致、`search_scope.query` 不再出现上一轮词；随后按验收条件补跑矩阵。不得因本次修复直接关闭前置 09/13/14。
+  - 回滚：回退本分支提交即可；无 schema/存量数据变更。
