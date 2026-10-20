@@ -45,6 +45,9 @@ class _WebCommandRunner:
         self.calls.append((call, cwd, env))
         if call == ("npm", "ci"):
             (cwd / "node_modules").mkdir(parents=True, exist_ok=True)
+            (cwd / "node_modules" / ".package-lock.json").write_text(
+                '{"lockfileVersion":3}', encoding="utf-8"
+            )
         elif call == ("npm", "run", "build"):
             artifact = cwd / ".next" / "standalone" / "server.js"
             artifact.parent.mkdir(parents=True, exist_ok=True)
@@ -133,6 +136,39 @@ def test_web_build_uses_configured_api_port(
     ).prepare(interactive=True)
 
     assert runner.calls[0][2]["API_BASE_URL"] == "http://127.0.0.1:9100"
+
+
+def test_empty_node_modules_directory_triggers_dependency_install(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "BRIDGES_ENVIRONMENT",
+        "BRIDGES_QWEN_API_KEY",
+        "BRIDGES_QWEN_API_KEY_FILE",
+        "BRIDGES_TAVILY_API_KEY",
+        "BRIDGES_TAVILY_API_KEY_FILE",
+        "BRIDGES_DATABASE_URL",
+        "BRIDGES_SECRET_KEY",
+        "BRIDGES_SECRET_KEY_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("BRIDGES_QWEN_API_KEY", "sk-qwen")
+    repo_root = tmp_path / "repo"
+    web_dir = _web_fixture(repo_root)
+    (web_dir / "node_modules").mkdir()
+    runner = _WebCommandRunner()
+
+    LocalRuntimeBootstrap(
+        repo_root=repo_root,
+        app_home=tmp_path / "app-home",
+        command_runner=runner,
+        credential_store=_MemoryCredentialStore(),
+    ).prepare(interactive=False)
+
+    assert [call[0] for call in runner.calls] == [
+        ("npm", "ci"),
+        ("npm", "run", "build"),
+    ]
 
 
 def test_second_prepare_reuses_runtime_and_skips_prompt_and_build(

@@ -501,7 +501,8 @@ class LocalRuntimeBootstrap:
         lock_hash = _file_hash(web_dir / "package-lock.json")
         build_env = _web_build_env(os.environ)
         build_env["API_BASE_URL"] = api_base_url
-        needs_install = not node_modules.exists() or marker.get("package_lock_hash") != lock_hash
+        installed = (node_modules / ".package-lock.json").is_file()
+        needs_install = not installed or marker.get("package_lock_hash") != lock_hash
         if needs_install:
             self.emit("正在安装 Web 依赖（npm ci）……")
             self.command_runner(("npm", "ci"), web_dir, build_env)

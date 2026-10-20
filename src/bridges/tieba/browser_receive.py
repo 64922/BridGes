@@ -129,8 +129,9 @@ def receive_result(
                     "tieba_browser_request_guard_failed",
                     request_denial_message("tieba_browser_request_guard_failed"),
                 ) from None
-            if request_event is not None:
-                if not request_event:
+            # 排队请求的处理结果也是 None；它仍是控制事件，不能作为采集结果返回。
+            if value.get("browser_request") in {"started", "finished"}:
+                if request_event is False:
                     error_code = (
                         request_ledger.denial_code
                         or "tieba_browser_run_invalidated"

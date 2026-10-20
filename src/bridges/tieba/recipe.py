@@ -29,15 +29,15 @@ NODE_VERIFY = "tieba.verify"
 
 TIEBA_RECIPE_ID = "tieba-research"
 
-TIEBA_RECIPE_VERSION = "tieba-recipe-v12"
+TIEBA_RECIPE_VERSION = "tieba-recipe-v13"
 
 #: 各节点能力版本（产物兼容性与收据键的一部分）。
 TIEBA_CAPABILITY_VERSIONS: dict[str, str] = {
     "tieba.parse_request": "tieba-parse-v6",
     "tieba.plan_evidence": "tieba-plan-v6",
     "tieba.verify_official_pages": "tieba-official-v6",
-    "tieba.search_threads": "tieba-search-v12",
-    "tieba.read_threads": "tieba-read-v13",
+    "tieba.search_threads": "tieba-search-v13",
+    "tieba.read_threads": "tieba-read-v14",
     "tieba.synthesize_evidence": "tieba-synthesize-v12",
     "tieba.verify_evidence": "tieba-verify-v7",
 }
