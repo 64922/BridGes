@@ -74,6 +74,28 @@ def test_capture_only_keeps_dict_payloads_from_expected_path() -> None:
     assert page.handlers == {}
 
 
+def test_capture_only_keeps_responses_for_the_current_search_word() -> None:
+    page = _Page()
+    capture = StructuredCapture(
+        page, "/mo/q/search/thread", expected_word="空调"
+    ).start()
+    page.fire(
+        _Response(
+            "https://tieba.baidu.com/mo/q/search/thread?word=%E6%97%A7%E8%AF%8D",
+            _search_body(),
+        )
+    )
+    page.fire(
+        _Response(
+            "https://tieba.baidu.com/mo/q/search/thread?word=%E7%A9%BA%E8%B0%83",
+            _search_body(),
+        )
+    )
+    capture.stop()
+
+    assert len(capture.payloads) == 1
+
+
 def test_search_structured_uses_valid_payload_and_ignores_malformed_one() -> None:
     page = _Page()
     capture = StructuredCapture(page, "/mo/q/search/thread").start()
